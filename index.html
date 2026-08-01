@@ -1237,6 +1237,7 @@ function renderTab(tab){
   if(tab!=='goals') state.goalsPeriod = null;
   if(!['eduHq','eduInhouse','eduEtc'].includes(tab)) state.eduScheduleEditId = null;
   if(tab!=='collectContest') state.cgEditId = null;
+  if(tab!=='bestPractice') state.bpEditId = null;
   afterRenderHooks(tab);
 }
 
@@ -4428,21 +4429,65 @@ function updateBpManagerOptions(){
   const branchId = document.getElementById('bpBranch').value;
   document.getElementById('bpManager').innerHTML = bpManagerOptionsHtml(branchId, null);
 }
+function updateBpEditManagerOptions(id){
+  const branchId = document.getElementById('bpe_'+id+'_branch').value;
+  document.getElementById('bpe_'+id+'_manager').innerHTML = bpManagerOptionsHtml(branchId, null);
+}
+function canEditBestPractice(p){
+  return !!(p && (SESSION.role==='admin' || p.authorEmpId===SESSION.empId));
+}
 function renderBestPractice(){
   const myBranch = SESSION.branchId || DB.branches[0].id;
   const sorted = [...DB.bestPractices].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const editId = state.bpEditId;
   const posts = sorted.map(p=>{
-    const canDelete = SESSION.role==='admin' || p.authorEmpId===SESSION.empId;
+    const canEdit = canEditBestPractice(p);
     const attachmentsHtml = (p.attachments||[]).map(a=>
       /^data:image\//.test(a.dataUrl)
-        ? `<img src="${a.dataUrl}" style="width:90px;height:90px;object-fit:cover;border-radius:6px;margin:4px 4px 0 0;">`
+        ? `<img class="xlsx-photo" src="${a.dataUrl}" onclick="openImgLightbox(this.src)" style="width:90px;height:90px;object-fit:cover;border-radius:6px;margin:4px 4px 0 0;cursor:zoom-in;">`
         : `<a href="${a.dataUrl}" target="_blank" rel="noopener" style="display:inline-block;margin:4px 4px 0 0;">${a.name||'첨부'}</a>`
     ).join('');
+
+    if(canEdit && editId===p.id){
+      return `
+      <div class="card" style="margin-bottom:14px;border:1.5px dashed var(--primary);">
+        <div class="form-row">
+          <div class="field">
+            <label>지점명</label>
+            <select id="bpe_${p.id}_branch" style="width:150px" onchange="updateBpEditManagerOptions('${p.id}')">${branchOptionsHtml(p.branchId)}</select>
+          </div>
+          <div class="field">
+            <label>매니저명</label>
+            <select id="bpe_${p.id}_manager" style="width:150px">${bpManagerOptionsHtml(p.branchId, SESSION.role==='staff' ? SESSION.empId : (p.managerEmpId||null))}</select>
+          </div>
+          <div class="field">
+            <label>활동일자</label>
+            <input id="bpe_${p.id}_date" type="date" value="${p.activityDate||''}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="flex:1;min-width:320px;">
+            <label>활동 내용</label>
+            <textarea id="bpe_${p.id}_content" rows="5" style="width:100%;">${escapeHtml(p.content||'')}</textarea>
+          </div>
+        </div>
+        ${attachmentsHtml ? `<div style="margin-bottom:8px;">기존 첨부: ${attachmentsHtml}</div>` : ''}
+        <div class="form-row">
+          <div class="field">
+            <label>새 첨부파일 추가 (선택, 기존 첨부에 이어서 추가됨)</label>
+            <input id="bpe_${p.id}_files" type="file" accept="image/*,.pdf" multiple>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="saveEditBestPractice('${p.id}')">저장</button>
+          <button class="btn btn-sm" onclick="cancelEditBestPractice()">취소</button>
+        </div>
+      </div>`;
+    }
+
     return `
       <div class="card" style="margin-bottom:14px;">
         <div class="flex-between" style="margin-bottom:6px;">
           <div><b>${branchName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>
-          ${canDelete ? `<button class="btn btn-sm" onclick="deleteBestPractice('${p.id}')">삭제</button>` : ''}
+          <div>${canEdit ? `<button class="btn btn-sm" onclick="startEditBestPractice('${p.id}')">수정</button> <button class="btn btn-sm" onclick="deleteBestPractice('${p.id}')">삭제</button>` : ''}</div>
         </div>
         <div style="white-space:pre-wrap;line-height:1.6;margin-bottom:8px;">${escapeHtml(p.content)}</div>
         ${attachmentsHtml ? `<div>${attachmentsHtml}</div>` : ''}
@@ -4536,6 +4581,55 @@ function deleteBestPractice(id){
   DB.bestPractices = DB.bestPractices.filter(x=>x.id!==id);
   saveDB();
   renderTab('bestPractice');
+}
+function startEditBestPractice(id){
+  const p = DB.bestPractices.find(x=>x.id===id);
+  if(!canEditBestPractice(p)) return;
+  state.bpEditId = id;
+  renderTab('bestPractice');
+}
+function cancelEditBestPractice(){
+  state.bpEditId = null;
+  renderTab('bestPractice');
+}
+function saveEditBestPractice(id){
+  const p = DB.bestPractices.find(x=>x.id===id);
+  if(!canEditBestPractice(p)) return;
+  const branchId = document.getElementById(`bpe_${id}_branch`).value;
+  const managerSelect = document.getElementById(`bpe_${id}_manager`);
+  const managerEmpId = managerSelect.value || null;
+  const managerOpt = managerSelect.options && Array.from(managerSelect.options||[]).find(o=>o.value===managerEmpId);
+  const managerName = managerOpt ? managerOpt.textContent : null;
+  const activityDate = document.getElementById(`bpe_${id}_date`).value;
+  const content = document.getElementById(`bpe_${id}_content`).value.trim();
+  const fileInput = document.getElementById(`bpe_${id}_files`);
+  if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
+
+  const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
+  function finalize(newAttachments){
+    p.branchId = branchId; p.managerEmpId = managerEmpId; p.managerName = managerName;
+    p.activityDate = activityDate; p.content = content;
+    if(newAttachments && newAttachments.length>0){
+      p.attachments = (p.attachments||[]).concat(newAttachments);
+    }
+    state.bpEditId = null;
+    saveDB();
+    renderTab('bestPractice');
+  }
+  if(files.length===0){ finalize([]); return; }
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ alert('첨부파일은 각 5MB 이하로 업로드해 주세요.'); return; }
+  const newAttachments = [];
+  let remaining = files.length;
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      newAttachments.push({dataUrl: e.target.result, name: file.name});
+      remaining--;
+      if(remaining===0) finalize(newAttachments);
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 /* =========================================================================
