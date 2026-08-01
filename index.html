@@ -269,6 +269,7 @@
     <div class="nav-item sub" data-tab="branches">전체 지점 현황</div>
     <div class="nav-group-label">운영 관리</div>
     <div class="nav-item sub" data-tab="notices">공지사항</div>
+    <div class="nav-item sub" data-tab="infoReports">정보보고</div>
     <div class="nav-item sub" data-tab="inventory" id="navInventoryLabel">
       <div>재고 조회</div>
       <div id="navInventoryDate" class="nav-sub-date"></div>
@@ -1088,6 +1089,8 @@ function migrateDB(){
   });
   if(!DB.notices) DB.notices = [];
   DB.notices.forEach(n=>{ if(!n.attachments) n.attachments = []; });
+  if(!DB.infoReports) DB.infoReports = [];
+  DB.infoReports.forEach(r=>{ if(!r.attachments) r.attachments = []; });
   if(!DB.execPhotos) DB.execPhotos = [];
   if(!DB.giftcardRequests) DB.giftcardRequests = [];
   if(DB.giftcardBudgetWon===undefined || DB.giftcardBudgetWon===null) DB.giftcardBudgetWon = 0;
@@ -1290,6 +1293,7 @@ function renderTab(tab){
   if(tab==='goals') main.innerHTML = renderGoals();
   if(tab==='branches') main.innerHTML = renderBranches();
   if(tab==='notices') main.innerHTML = renderNoticesBoard();
+  if(tab==='infoReports') main.innerHTML = renderInfoReports();
   if(tab==='subscription') main.innerHTML = renderSubscription();
   if(tab==='subB2bSales') main.innerHTML = renderSubB2bSales();
   if(tab==='sales') main.innerHTML = renderSales();
@@ -1320,6 +1324,7 @@ function renderTab(tab){
   if(tab!=='bestPractice') state.bpEditId = null;
   if(tab!=='systemAdmin') loginStatsCache = null;
   if(tab!=='notices') state.noticeBoardEditId = null;
+  if(tab!=='infoReports') state.infoReportEditId = null;
   afterRenderHooks(tab);
 }
 
@@ -1958,12 +1963,28 @@ function renderNoticeBanner(){
     ${state.noticeFormOpen ? renderNoticeForm() : ''}
   `;
 }
+function isImageAttachment(f){
+  return /^data:image\//i.test((f && f.dataUrl) || '');
+}
+function noticeAttachmentHtml(f, size, removeOnClick){
+  const removeBtn = removeOnClick ? `<span onclick="${removeOnClick}" title="삭제" style="position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;border-radius:50%;width:16px;height:16px;font-size:11px;line-height:16px;text-align:center;cursor:pointer;">×</span>` : '';
+  if(isImageAttachment(f)){
+    return `<span style="position:relative;display:inline-block;margin:2px 8px 2px 0;">
+      <img class="xlsx-photo" src="${f.dataUrl}" onclick="openImgLightbox(this.src)" style="width:${size}px;height:${size}px;object-fit:cover;border-radius:6px;cursor:zoom-in;">
+      ${removeBtn}
+    </span>`;
+  }
+  return `<span style="position:relative;display:inline-block;margin:2px 8px 2px 0;vertical-align:top;">
+    <a href="${f.dataUrl}" download="${escapeHtml(f.name||'file')}" style="display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:#f7f7f8;font-size:11.5px;text-decoration:none;color:inherit;max-width:160px;">📎 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name||'파일')}</span></a>
+    ${removeBtn}
+  </span>`;
+}
 function noticeBodyHtml(n){
   const dt = new Date(n.createdAt);
   const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   const photosHtml = (n.attachments && n.attachments.length>0) ? `
     <div class="nb-photos" style="margin:8px 0;">
-      ${n.attachments.map(f=>`<img class="xlsx-photo" src="${f.dataUrl}" onclick="openImgLightbox(this.src)" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:zoom-in;margin-right:6px;">`).join('')}
+      ${n.attachments.map(f=>noticeAttachmentHtml(f, 56, null)).join('')}
     </div>` : '';
   return `
     <div class="nb-title">${escapeHtml(n.title)}</div>
@@ -2092,22 +2113,18 @@ function renderNoticesBoard(){
       </div>
       <div class="form-row">
         <div class="field" style="flex:1;">
-          <label>사진 첨부 (선택, 다중 선택 가능)</label>
-          <input type="file" id="nbFiles" accept="image/*" multiple>
+          <label>파일 첨부 (선택, 사진·문서 등 다중 선택 가능)</label>
+          <input type="file" id="nbFiles" multiple>
         </div>
       </div>
-      <div class="small-note">※ 촬영한 사진을 첨부 할 시 대용량 이슈로 인하여 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
+      <div class="small-note">※ 사진, PDF, 워드/엑셀 등 어떤 파일이든 첨부할 수 있습니다. 대용량 파일은 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
       <button class="btn btn-primary" style="margin-top:8px;" onclick="submitNoticeBoard()">등록</button>
       <div id="nbMsg" class="small-note"></div>
     </div>` : '';
 
   const listHtml = notices.map(n=>{
     if(editId === n.id){
-      const existingPhotosHtml = (n.attachments||[]).map((f,idx)=>`
-        <span style="position:relative;display:inline-block;margin:2px 8px 2px 0;">
-          <img class="xlsx-photo" src="${f.dataUrl}" onclick="openImgLightbox(this.src)" style="width:44px;height:44px;object-fit:cover;border-radius:5px;cursor:zoom-in;">
-          <span onclick="removeNoticeAttachment('${n.id}', ${idx})" title="이 사진 삭제" style="position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;border-radius:50%;width:16px;height:16px;font-size:11px;line-height:16px;text-align:center;cursor:pointer;">×</span>
-        </span>`).join('');
+      const existingPhotosHtml = (n.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 44, `removeNoticeAttachment('${n.id}', ${idx})`)).join('');
       return `
         <div class="card" style="margin-bottom:12px;">
           <div class="form-row">
@@ -2118,14 +2135,14 @@ function renderNoticesBoard(){
           </div>
           <div class="form-row">
             <div class="field" style="flex:1;">
-              <label>기존 첨부 사진 (× 클릭 시 즉시 삭제)</label>
-              <div>${existingPhotosHtml || '<span class="muted">첨부된 사진이 없습니다.</span>'}</div>
+              <label>기존 첨부 파일 (× 클릭 시 즉시 삭제)</label>
+              <div>${existingPhotosHtml || '<span class="muted">첨부된 파일이 없습니다.</span>'}</div>
             </div>
           </div>
           <div class="form-row">
             <div class="field" style="flex:1;">
-              <label>새 사진 추가 (선택, 기존 첨부에 이어서 추가됨)</label>
-              <input type="file" id="nbe_${n.id}_files" accept="image/*" multiple>
+              <label>새 파일 추가 (선택, 기존 첨부에 이어서 추가됨)</label>
+              <input type="file" id="nbe_${n.id}_files" multiple>
             </div>
           </div>
           <div class="form-row">
@@ -2136,11 +2153,7 @@ function renderNoticesBoard(){
     }
     const dt = new Date(n.createdAt);
     const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-    const photosHtml = (n.attachments||[]).map((f,idx)=>`
-      <span style="position:relative;display:inline-block;margin:2px 8px 2px 0;">
-        <img class="xlsx-photo" src="${f.dataUrl}" onclick="openImgLightbox(this.src)" style="width:56px;height:56px;object-fit:cover;border-radius:6px;cursor:zoom-in;">
-        ${isAdmin ? `<span onclick="removeNoticeAttachment('${n.id}', ${idx})" title="이 사진 삭제" style="position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;border-radius:50%;width:16px;height:16px;font-size:11px;line-height:16px;text-align:center;cursor:pointer;">×</span>` : ''}
-      </span>`).join('');
+    const photosHtml = (n.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 56, isAdmin ? `removeNoticeAttachment('${n.id}', ${idx})` : null)).join('');
     return `
       <div class="card" style="margin-bottom:12px;">
         <div class="flex-between">
@@ -2233,6 +2246,189 @@ function saveEditNoticeBoard(id){
     state.noticeBoardEditId = null;
     saveDB();
     renderTab('notices');
+  }
+  if(files.length===0){ finalize([]); return; }
+  const newAttachments = [];
+  let remaining = files.length;
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      newAttachments.push({dataUrl: e.target.result, name: file.name});
+      remaining--;
+      if(remaining===0) finalize(newAttachments);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* =========================================================================
+   6a3. 정보보고 게시판 (운영 관리 하위 — 공지사항과 재고조회 사이)
+   매니저·사원 누구나 작성할 수 있고, 본인 글은 직접 수정/삭제할 수 있다
+   (관리자는 전체 글 수정/삭제 가능). 사진·파일 첨부는 공지사항과 동일한
+   noticeAttachmentHtml()을 재사용한다.
+   ========================================================================= */
+function canEditInfoReport(r){
+  return !!(r && (SESSION.role==='admin' || r.authorEmpId===SESSION.empId));
+}
+function sortedInfoReports(){
+  return [...(DB.infoReports||[])].sort((a,b)=> b.createdAt.localeCompare(a.createdAt));
+}
+function renderInfoReports(){
+  const editId = state.infoReportEditId || null;
+  const reports = sortedInfoReports();
+
+  const createFormHtml = `
+    <div class="card" style="margin-bottom:16px;">
+      <h3>정보보고 작성</h3>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="irTitle" style="width:100%" placeholder="정보보고 제목"></div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;"><label>내용</label><textarea id="irContent" rows="3" placeholder="정보보고 내용을 입력하세요"></textarea></div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;">
+          <label>파일 첨부 (선택, 사진·문서 등 다중 선택 가능)</label>
+          <input type="file" id="irFiles" multiple>
+        </div>
+      </div>
+      <div class="small-note">※ 사진, PDF, 워드/엑셀 등 어떤 파일이든 첨부할 수 있습니다. 대용량 파일은 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
+      <button class="btn btn-primary" style="margin-top:8px;" onclick="submitInfoReport()">등록</button>
+      <div id="irMsg" class="small-note"></div>
+    </div>`;
+
+  const listHtml = reports.map(r=>{
+    const canManage = canEditInfoReport(r);
+    if(editId === r.id && canManage){
+      const existingHtml = (r.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 44, `removeInfoReportAttachment('${r.id}', ${idx})`)).join('');
+      return `
+        <div class="card" style="margin-bottom:12px;">
+          <div class="form-row">
+            <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="ire_${r.id}_title" style="width:100%" value="${escapeHtml(r.title)}"></div>
+          </div>
+          <div class="form-row">
+            <div class="field" style="flex:1;"><label>내용</label><textarea id="ire_${r.id}_content" rows="3">${escapeHtml(r.content)}</textarea></div>
+          </div>
+          <div class="form-row">
+            <div class="field" style="flex:1;">
+              <label>기존 첨부 파일 (× 클릭 시 즉시 삭제)</label>
+              <div>${existingHtml || '<span class="muted">첨부된 파일이 없습니다.</span>'}</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field" style="flex:1;">
+              <label>새 파일 추가 (선택, 기존 첨부에 이어서 추가됨)</label>
+              <input type="file" id="ire_${r.id}_files" multiple>
+            </div>
+          </div>
+          <div class="form-row">
+            <button class="btn btn-primary" onclick="saveEditInfoReport('${r.id}')">저장</button>
+            <button class="btn" onclick="cancelEditInfoReport()">취소</button>
+          </div>
+        </div>`;
+    }
+    const dt = new Date(r.createdAt);
+    const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    const filesHtml = (r.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 56, canManage ? `removeInfoReportAttachment('${r.id}', ${idx})` : null)).join('');
+    return `
+      <div class="card" style="margin-bottom:12px;">
+        <div class="flex-between">
+          <div class="nb-title" style="font-size:15px;">${escapeHtml(r.title)}</div>
+          ${canManage ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="startEditInfoReport('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteInfoReport('${r.id}')">삭제</button></div>` : ''}
+        </div>
+        <div class="nb-content" style="margin:8px 0;white-space:pre-wrap;">${escapeHtml(r.content)}</div>
+        ${filesHtml ? `<div style="margin-bottom:6px;">${filesHtml}</div>` : ''}
+        <div class="nb-meta muted" style="font-size:11.5px;">${escapeHtml(r.authorName)} · ${escapeHtml(branchName(r.branchId))} · ${dtStr}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="page-title">정보보고</div>
+    <div class="page-desc">현장에서 파악한 정보나 이슈를 자유롭게 공유하는 게시판입니다. 매니저 누구나 작성할 수 있고, 본인이 작성한 글은 직접 수정·삭제할 수 있습니다.</div>
+
+    <div class="card" style="margin-bottom:16px;border:1.5px solid #f5b100;background:#fffbf0;">
+      <div style="font-weight:700;">🏆 우수 정보 보고자는 월별 시상 예정입니다.</div>
+    </div>
+
+    ${createFormHtml}
+    ${listHtml || `<div class="card muted">등록된 정보보고가 없습니다.</div>`}
+  `;
+}
+function startEditInfoReport(id){
+  const r = DB.infoReports.find(x=>x.id===id);
+  if(!canEditInfoReport(r)){ alert('본인이 작성한 글 또는 관리자만 수정할 수 있습니다.'); return; }
+  state.infoReportEditId = id;
+  renderTab('infoReports');
+}
+function cancelEditInfoReport(){
+  state.infoReportEditId = null;
+  renderTab('infoReports');
+}
+function deleteInfoReport(id){
+  const r = DB.infoReports.find(x=>x.id===id);
+  if(!canEditInfoReport(r)){ alert('본인이 작성한 글 또는 관리자만 삭제할 수 있습니다.'); return; }
+  if(!confirm('이 정보보고를 삭제하시겠습니까?')) return;
+  DB.infoReports = DB.infoReports.filter(x=>x.id!==id);
+  saveDB();
+  renderTab('infoReports');
+}
+function removeInfoReportAttachment(id, idx){
+  const r = DB.infoReports.find(x=>x.id===id);
+  if(!canEditInfoReport(r) || !r.attachments) return;
+  r.attachments.splice(idx, 1);
+  saveDB();
+  renderTab('infoReports');
+}
+function submitInfoReport(){
+  const title = document.getElementById('irTitle').value.trim();
+  const content = document.getElementById('irContent').value.trim();
+  const msgEl = document.getElementById('irMsg');
+  if(!title){ if(msgEl) msgEl.textContent = '제목을 입력해 주세요.'; return; }
+  const fileInput = document.getElementById('irFiles');
+  const files = (fileInput && fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ if(msgEl) msgEl.textContent = `"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`; return; }
+  function finalize(attachments){
+    DB.infoReports.push({
+      id: 'ir_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      title, content, attachments,
+      authorEmpId: SESSION.empId, authorName: SESSION.name, branchId: SESSION.branchId,
+      createdAt: new Date().toISOString()
+    });
+    saveDB();
+    logActivity('post', `${SESSION.name}님이 [정보보고]를 등록했습니다: ${title}`);
+    renderTab('infoReports');
+  }
+  if(files.length===0){ finalize([]); return; }
+  const attachments = [];
+  let remaining = files.length;
+  files.forEach(file=>{
+    const reader = new FileReader();
+    reader.onload = e=>{
+      attachments.push({dataUrl: e.target.result, name: file.name});
+      remaining--;
+      if(remaining===0) finalize(attachments);
+    };
+    reader.readAsDataURL(file);
+  });
+}
+function saveEditInfoReport(id){
+  const r = DB.infoReports.find(x=>x.id===id);
+  if(!canEditInfoReport(r)){ alert('본인이 작성한 글 또는 관리자만 수정할 수 있습니다.'); return; }
+  const title = document.getElementById(`ire_${id}_title`).value.trim();
+  const content = document.getElementById(`ire_${id}_content`).value.trim();
+  if(!title){ alert('제목을 입력해 주세요.'); return; }
+  const fileInput = document.getElementById(`ire_${id}_files`);
+  const files = (fileInput && fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ alert(`"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
+  function finalize(newAttachments){
+    r.title = title;
+    r.content = content;
+    if(newAttachments && newAttachments.length>0) r.attachments = (r.attachments||[]).concat(newAttachments);
+    state.infoReportEditId = null;
+    saveDB();
+    renderTab('infoReports');
   }
   if(files.length===0){ finalize([]); return; }
   const newAttachments = [];
