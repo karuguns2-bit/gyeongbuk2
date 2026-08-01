@@ -624,11 +624,11 @@ function buildSeedDataFromReal(){
   // 교육 관리: "본부 교육 대상자"/"청소로봇 로니 신제품 교육" 실제 자료를 일정으로 반영
   const eduSchedulesHq = EDU_HQ_SCHEDULE_SEED.map((s,i)=>({
     id:'es_seed_hq_'+i, title:s.title, date:s.date, branchId:null,
-    location:s.location, note:s.note, createdAt:new Date().toISOString()
+    location:s.location, note:s.note, targetEmpIds: s.targetEmpIds||[], alarmDaysBefore: s.alarmDaysBefore||null, createdAt:new Date().toISOString()
   }));
   const eduSchedulesEtc = EDU_ETC_SCHEDULE_SEED.map((s,i)=>({
     id:'es_seed_etc_'+i, title:s.title, date:s.date, branchId:null,
-    location:s.location, note:s.note, createdAt:new Date().toISOString()
+    location:s.location, note:s.note, targetEmpIds: s.targetEmpIds||[], alarmDaysBefore: s.alarmDaysBefore||null, createdAt:new Date().toISOString()
   }));
   // 교육 관리: "화상교육 이수현황"/"월간test 응시현황" 실제 자료 반영 — 혼매경북팀(경북2담당) 43명 전원 완료
   const eduStaffMembers = users.filter(u=>u.role==='staff');
@@ -701,16 +701,36 @@ const EDU_HQ_SCHEDULE_SEED = [
   { title:'심화 과정 교육', date:'2026-08-24', location:'평택 본사 교육장',
     note:'8/24(월)~8/28(금), 4박5일 과정. 이번 달은 혼매경북팀(경북2담당) 대상자가 없습니다.' }
 ];
+// "(경북2담당)로봇청소기 로니 신제품 교육 대상자.xlsx" 실제 자료 기준 날짜별 대상자 (경북2담당 소속만, 휴직/퇴사예정/휴가 등 '제외' 인원 제외)
+const RONI_EDU_TARGETS_0804 = [
+  ['1800390','강봉성'],['1071213','김선희'],['1901600','김수민'],['1056006','박대성'],['1093250','배강원'],
+  ['1100010','김정일'],['1800129','임현미'],['1800134','배동호'],['1053880','서성영'],['2503309','최재원'],
+  ['1002525','최영숙'],['1107294','김민재'],['1072073','김우중'],['1035418','박원규']
+];
+const RONI_EDU_TARGETS_0805 = [
+  ['1067476','옥정순'],['1102742','공복순'],['2202964','김신'],['2102340','백두현'],['2303137','전경희'],
+  ['2403256','황재욱'],['1053006','김희성'],['1000969','신수미'],['2102610','배진만'],['1086624','변재광'],
+  ['1043736','황영희'],['1011307','이재성'],['1071817','김은정'],['1104204','박신욱'],['1001124','이동우'],
+  ['1032231','임병숙'],['1000994','이창희'],['1001496','김순영']
+];
+const RONI_EDU_TARGETS_0806 = [
+  ['2303156','백상훈'],['1901417','최영경'],['2102390','이소미'],['1070180','최심숙'],['2202859','한상현'],
+  ['1035213','석명걸'],['1001620','김민경'],['2202860','이은진'],['1012629','이삼석'],['1001031','추봉희'],
+  ['1015214','한동훈'],['2303005','김형준'],['1901212','신해경']
+];
+function roniNoteFor(targets){
+  return `15:00~16:00 · 대상자(${targets.length}명): ` + targets.map(t=>t[1]).join(', ') + ' · 8/4~6 中 1일만 참석 (연차·휴가·휴직 등으로 제외된 인원은 명단에서 빠져 있습니다)';
+}
 const EDU_ETC_SCHEDULE_SEED = [
   { title:'8월 청소로봇 로니(RONi) 신제품 화상교육', date:'2026-08-04',
     location:'Zoom 화상교육(근무 중 지점에서 참여)',
-    note:'15:00~16:00 · 8/4(화) 15명 참석 예정 · 대상자: 전 매니저(단, 8/4~6 기간 중 연차·휴가로 휴무인 경우 제외) · 8/4~6 中 1일만 참석' },
+    note: roniNoteFor(RONI_EDU_TARGETS_0804), targetEmpIds: RONI_EDU_TARGETS_0804.map(t=>t[0]), alarmDaysBefore:3 },
   { title:'8월 청소로봇 로니(RONi) 신제품 화상교육', date:'2026-08-05',
     location:'Zoom 화상교육(근무 중 지점에서 참여)',
-    note:'15:00~16:00 · 8/5(수) 17명 참석 예정 · 대상자: 전 매니저(단, 8/4~6 기간 중 연차·휴가로 휴무인 경우 제외) · 8/4~6 中 1일만 참석' },
+    note: roniNoteFor(RONI_EDU_TARGETS_0805), targetEmpIds: RONI_EDU_TARGETS_0805.map(t=>t[0]), alarmDaysBefore:3 },
   { title:'8월 청소로봇 로니(RONi) 신제품 화상교육', date:'2026-08-06',
     location:'Zoom 화상교육(근무 중 지점에서 참여)',
-    note:'15:00~16:00 · 8/6(목) 13명 참석 예정 · 대상자: 전 매니저(단, 8/4~6 기간 중 연차·휴가로 휴무인 경우 제외) · 8/4~6 中 1일만 참석' }
+    note: roniNoteFor(RONI_EDU_TARGETS_0806), targetEmpIds: RONI_EDU_TARGETS_0806.map(t=>t[0]), alarmDaysBefore:3 }
 ];
 // "26년 7월 화상교육 이수현황"/"26년 7월 월간 test 응시현황" 두 파일 모두 확인 결과,
 // 혼매경북팀(경북2담당) 소속 43명 전원이 2026-07-29 기준 완료 상태였음(실제 데이터 그대로 반영, 임의 추정 아님).
@@ -995,6 +1015,12 @@ function migrateDB(){
   if(!DB.eduSchedules.hq) DB.eduSchedules.hq = [];
   if(!DB.eduSchedules.inhouse) DB.eduSchedules.inhouse = [];
   if(!DB.eduSchedules.etc) DB.eduSchedules.etc = [];
+  ['hq','inhouse','etc'].forEach(cat=>{
+    DB.eduSchedules[cat].forEach(s=>{
+      if(s.targetEmpIds===undefined) s.targetEmpIds = [];
+      if(s.alarmDaysBefore===undefined) s.alarmDaysBefore = null;
+    });
+  });
   if(!DB.eduCompletion) DB.eduCompletion = { video: [], test: [], aiRp: [] };
   if(!DB.eduCompletion.video) DB.eduCompletion.video = [];
   if(!DB.eduCompletion.test) DB.eduCompletion.test = [];
@@ -1199,6 +1225,7 @@ function renderTab(tab){
   if(tab!=='kakaoFriends'){ state.kakaoContestEditing = false; state.kfEditKey = null; }
   if(tab!=='policyQuiz') state.policyQuizEditingId = null;
   if(tab!=='goals') state.goalsPeriod = null;
+  if(!['eduHq','eduInhouse','eduEtc'].includes(tab)) state.eduScheduleEditId = null;
   afterRenderHooks(tab);
 }
 
@@ -1563,6 +1590,13 @@ function renderSystemAdmin(){
       <div class="muted" style="margin-bottom:10px;">여러 지점·매니저의 실적이 한 파일에 섞여 있어도 괜찮습니다. <b>지점</b> 컬럼과 <b>담당자(또는 사번)</b> 컬럼 값을 기준으로 자동으로 구분해서 반영합니다. 파일에 있는데 시스템에 없는 지점/담당자는 자동으로 새 계정(초기 비밀번호 1234)으로 생성됩니다.</div>
       <input type="file" id="salesFileInput" accept=".xlsx,.xls,.csv" onchange="handleSalesFile(event)">
       <div id="uploadMsg" class="small-note"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>구독 실적 파일 업로드 <small>(.xlsx / .csv · 이번 달 구독 실적 갱신)</small></h3>
+      <div class="muted" style="margin-bottom:10px;"><b>지점</b>, <b>담당자</b>, <b>수량</b>, <b>실적(백만원 단위)</b> 컬럼이 있는 파일을 올려주세요. <b>목표</b> 컬럼은 선택 사항이며, 없으면 기존 목표가 그대로 유지됩니다. 관리자(이광환·박귀복·손영길·이재림 등) 구분은 지점명 기준으로 자동 반영됩니다. 이번달(${currentGoalsPeriod()}) 데이터로 반영되며, 파일에 포함된 지점만 갱신되고 나머지 지점은 그대로 유지됩니다.</div>
+      <input type="file" id="subscriptionFileInput" accept=".xlsx,.xls,.csv" onchange="handleSubscriptionFile(event)">
+      <div id="subUploadMsg" class="small-note"></div>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
@@ -2394,6 +2428,77 @@ function computeSubscriptionView(d){
 function setSubscriptionPeriod(period){
   state.subscriptionPeriod = period;
   renderTab('subscription');
+}
+function applySubscriptionFile(json){
+  if(!json || json.length===0) return {error:'파일에 데이터가 없습니다.'};
+  const sample = json[0];
+  const branchCol = findCol(sample, ['지점','매장']);
+  const repCol = findCol(sample, ['담당자','이름','사원','매니저']);
+  const qtyCol = findCol(sample, ['수량','건수','판매수량','판매건수']);
+  const amtCol = findCol(sample, ['실적','금액','판매금액','매출']);
+  const targetCol = findCol(sample, ['목표']);
+  if(!branchCol || !repCol || !qtyCol || !amtCol){
+    return {error:'지점/담당자/수량/실적(금액) 컬럼을 인식하지 못했습니다. 컬럼명을 확인해 주세요.'};
+  }
+  const byBranch = {};
+  json.forEach(row=>{
+    const rawName = String(row[branchCol]||'').trim();
+    if(!rawName) return;
+    const found = DB.branches.find(b=>b.name===rawName || b.name.includes(rawName) || rawName.includes(b.name));
+    if(!found) return;
+    const name = String(row[repCol]||'').trim();
+    if(!name) return;
+    const qty = Number(row[qtyCol])||0;
+    const amt = Math.round((Number(row[amtCol])||0)*10)/10;
+    if(!byBranch[found.id]) byBranch[found.id] = { branchId:found.id, name:found.name, reps:[], target:null };
+    byBranch[found.id].reps.push({name, qty, amt});
+    if(targetCol){
+      const t = Number(row[targetCol]);
+      if(t) byBranch[found.id].target = t;
+    }
+  });
+  const branchIds = Object.keys(byBranch);
+  if(branchIds.length===0) return {error:'지점명을 인식하지 못했습니다. 등록된 지점명과 일치하는지 확인해 주세요.'};
+
+  const period = currentGoalsPeriod();
+  const d = getSubscriptionData(period);
+  branchIds.forEach(branchId=>{
+    const manager = BRANCH_MANAGER_MAP[branchId] || '미지정';
+    let grp = d.emart.groups.find(g=>g.manager===manager);
+    if(!grp){ grp = {manager, branches:[], total:{}}; d.emart.groups.push(grp); }
+    let b = grp.branches.find(x=>x.branchId===branchId);
+    const incoming = byBranch[branchId];
+    if(!b){
+      b = { branchId, name: incoming.name, reps:[], subtotal:{qty:0,target:0,amt:0,rate:0} };
+      grp.branches.push(b);
+    }
+    b.reps = incoming.reps;
+    if(incoming.target!=null) b.subtotal.target = incoming.target;
+  });
+  d.asOf = todayStr();
+  return { period, branchCount: branchIds.length, repCount: Object.values(byBranch).reduce((s,x)=>s+x.reps.length,0) };
+}
+function handleSubscriptionFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const msgEl = document.getElementById('subUploadMsg');
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const raw = new Uint8Array(e.target.result);
+      const wb = XLSX.read(raw, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, {defval:''});
+      const result = applySubscriptionFile(json);
+      if(result.error){ msgEl.textContent = result.error; return; }
+      saveDB();
+      msgEl.innerHTML = `<span style="color:var(--good);">${result.period} 구독 실적 반영 완료: ${result.branchCount}개 지점 · ${result.repCount}명</span>`;
+      renderTab('systemAdmin');
+    }catch(err){
+      msgEl.textContent = '파일을 읽는 중 오류가 발생했습니다: ' + err.message;
+    }
+  };
+  reader.readAsArrayBuffer(file);
 }
 function updateSubscriptionRepField(period, branchId, repName, field, value){
   if(SESSION.role!=='admin') return;
@@ -4560,11 +4665,29 @@ function eduTabName(cat){
 }
 
 // ---- 교육 일정 (본부/사내) ----
+function resolveEduTargets(text){
+  const tokens = String(text||'').split(/[,\n]/).map(t=>t.trim()).filter(Boolean);
+  const empIds = [];
+  const unresolved = [];
+  tokens.forEach(tok=>{
+    const byId = DB.users.find(u=>u.empId===tok);
+    if(byId){ empIds.push(byId.empId); return; }
+    const byName = DB.users.filter(u=>u.name===tok);
+    if(byName.length===1){ empIds.push(byName[0].empId); return; }
+    unresolved.push(tok);
+  });
+  return { empIds: Array.from(new Set(empIds)), unresolved };
+}
+function eduTargetNamesTitle(s){
+  if(!s.targetEmpIds || s.targetEmpIds.length===0) return '';
+  return s.targetEmpIds.map(id=>{ const u = DB.users.find(x=>x.empId===id); return u ? u.name : id; }).join(', ');
+}
 function renderEduSchedule(cat){
   const isAdmin = SESSION.role==='admin';
   const list = (DB.eduSchedules[cat]||[]);
   const sorted = [...list].sort((a,b)=>a.date.localeCompare(b.date));
   const today = todayStr();
+  const editId = state.eduScheduleEditId;
   const rows = sorted.map(s=>{
     const dday = Math.round((toDateObj(s.date) - toDateObj(today)) / 86400000);
     let ddayLabel;
@@ -4572,14 +4695,33 @@ function renderEduSchedule(cat){
     else if(dday===0) ddayLabel = `D-DAY`;
     else ddayLabel = `종료`;
     const badgeClass = dday<0 ? '' : (dday<=2 ? 'bad' : (dday<=7 ? 'warn' : 'good'));
+    const targetLabel = (s.targetEmpIds && s.targetEmpIds.length>0)
+      ? `<span title="${escapeHtml(eduTargetNamesTitle(s))}">${s.targetEmpIds.length}명 지정</span>`
+      : (s.branchId ? branchName(s.branchId) : '전체');
+
+    if(isAdmin && editId===s.id){
+      return `<tr>
+        <td><input id="ese_${cat}_${s.id}_date" type="date" value="${s.date}" style="width:130px"></td>
+        <td class="muted">-</td>
+        <td><input id="ese_${cat}_${s.id}_title" value="${escapeHtml(s.title)}" style="width:180px"></td>
+        <td><input id="ese_${cat}_${s.id}_target" value="${escapeHtml((s.targetEmpIds||[]).join(', '))}" placeholder="사번, 쉼표로 구분 (비워두면 전체)" style="width:160px"></td>
+        <td><input id="ese_${cat}_${s.id}_location" value="${escapeHtml(s.location||'')}" style="width:140px"></td>
+        <td><input id="ese_${cat}_${s.id}_note" value="${escapeHtml(s.note||'')}" style="width:220px"></td>
+        <td style="white-space:nowrap;">
+          <input id="ese_${cat}_${s.id}_alarm" type="number" min="0" max="30" value="${s.alarmDaysBefore!=null?s.alarmDaysBefore:2}" style="width:44px" title="알람 기준일(D-N)">
+          <button class="btn btn-sm btn-primary" onclick="saveEditEduSchedule('${cat}','${s.id}')">저장</button>
+          <button class="btn btn-sm" onclick="cancelEditEduSchedule()">취소</button>
+        </td>
+      </tr>`;
+    }
     return `<tr>
       <td>${s.date}</td>
       <td>${dday>=0 ? `<span class="badge ${badgeClass}">${ddayLabel}</span>` : `<span class="muted">${ddayLabel}</span>`}</td>
       <td>${escapeHtml(s.title)}</td>
-      <td>${s.branchId ? branchName(s.branchId) : '전체'}</td>
+      <td>${targetLabel}</td>
       <td class="muted">${escapeHtml(s.location||'-')}</td>
       <td class="muted">${escapeHtml(s.note||'-')}</td>
-      <td>${isAdmin ? `<button class="btn btn-sm" onclick="deleteEduSchedule('${cat}','${s.id}')">삭제</button>` : ''}</td>
+      <td style="white-space:nowrap;">${isAdmin ? `<button class="btn btn-sm" onclick="startEditEduSchedule('${cat}','${s.id}')">수정</button> <button class="btn btn-sm" onclick="deleteEduSchedule('${cat}','${s.id}')">삭제</button>` : ''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="7" class="muted">등록된 일정이 없습니다.</td></tr>`;
 
@@ -4602,6 +4744,10 @@ function renderEduSchedule(cat){
             ${branchOptionsHtml(null)}
           </select>
         </div>
+        <div class="field">
+          <label>알람 기준일 (D-N)</label>
+          <input id="es_${cat}_alarmDays" type="number" min="0" max="30" value="2" style="width:60px">
+        </div>
       </div>
       <div class="form-row">
         <div class="field">
@@ -4612,13 +4758,20 @@ function renderEduSchedule(cat){
           <label>비고</label>
           <input id="es_${cat}_note" style="width:100%" placeholder="참고사항">
         </div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:280px;">
+          <label>대상자 (사번을 쉼표(,)로 구분해 입력 · 비워두면 대상 지점 전체)</label>
+          <input id="es_${cat}_target" style="width:100%" placeholder="예: 1001620, 1071817, 1104204">
+        </div>
         <button class="btn btn-primary" onclick="addEduSchedule('${cat}')">등록</button>
       </div>
+      <div id="es_${cat}_msg" class="small-note"></div>
     </div>` : '';
 
   return `
     <div class="page-title">${eduCategoryLabel(cat)} 안내</div>
-    <div class="page-desc">${cat==='hq' ? '본부(평택)에서 진행되는 교육 일정을 안내합니다.' : (cat==='inhouse' ? '사내(지점/본부)에서 진행되는 교육 일정을 안내합니다.' : '위 항목에 속하지 않는 기타 교육 일정을 안내합니다.')} 일정 2일 전 로그인 시 자동으로 안내해 드립니다.</div>
+    <div class="page-desc">${cat==='hq' ? '본부(평택)에서 진행되는 교육 일정을 안내합니다.' : (cat==='inhouse' ? '사내(지점/본부)에서 진행되는 교육 일정을 안내합니다.' : '위 항목에 속하지 않는 기타 교육 일정을 안내합니다.')} 대상자로 지정된 경우 참석일 기준 알람일(D-N) 전부터 로그인 시 안내됩니다 (대상자 미지정 시 대상 지점 전체, 기본 D-2).</div>
     ${formHtml}
     <div class="card">
       <table>
@@ -4634,11 +4787,46 @@ function addEduSchedule(cat){
   const branchId = document.getElementById(`es_${cat}_branch`).value || null;
   const location = document.getElementById(`es_${cat}_location`).value.trim();
   const note = document.getElementById(`es_${cat}_note`).value.trim();
+  const alarmDays = Number(document.getElementById(`es_${cat}_alarmDays`).value);
+  const targetText = document.getElementById(`es_${cat}_target`).value.trim();
   if(!title || !date){ alert('교육명과 일자를 입력해 주세요.'); return; }
+  const { empIds, unresolved } = resolveEduTargets(targetText);
   DB.eduSchedules[cat].push({
     id: 'es_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    title, date, branchId, location: location||null, note: note||null, createdAt: new Date().toISOString()
+    title, date, branchId, location: location||null, note: note||null,
+    targetEmpIds: empIds, alarmDaysBefore: isNaN(alarmDays) ? 2 : alarmDays,
+    createdAt: new Date().toISOString()
   });
+  saveDB();
+  const msgEl = document.getElementById(`es_${cat}_msg`);
+  if(msgEl && unresolved.length>0) msgEl.textContent = `다음 대상자를 인식하지 못했습니다(사번을 확인해 주세요): ${unresolved.join(', ')}`;
+  renderTab(eduTabName(cat));
+}
+function startEditEduSchedule(cat, id){
+  if(SESSION.role!=='admin') return;
+  state.eduScheduleEditId = id;
+  renderTab(eduTabName(cat));
+}
+function cancelEditEduSchedule(){
+  state.eduScheduleEditId = null;
+  renderTab(state.tab);
+}
+function saveEditEduSchedule(cat, id){
+  if(SESSION.role!=='admin') return;
+  const s = DB.eduSchedules[cat].find(x=>x.id===id);
+  if(!s) return;
+  const title = document.getElementById(`ese_${cat}_${id}_title`).value.trim();
+  const date = document.getElementById(`ese_${cat}_${id}_date`).value;
+  const location = document.getElementById(`ese_${cat}_${id}_location`).value.trim();
+  const note = document.getElementById(`ese_${cat}_${id}_note`).value.trim();
+  const alarmDays = Number(document.getElementById(`ese_${cat}_${id}_alarm`).value);
+  const targetText = document.getElementById(`ese_${cat}_${id}_target`).value.trim();
+  if(!title || !date){ alert('교육명과 일자를 입력해 주세요.'); return; }
+  const { empIds, unresolved } = resolveEduTargets(targetText);
+  if(unresolved.length>0 && !confirm(`다음 대상자를 인식하지 못했습니다(사번 확인 필요): ${unresolved.join(', ')}\n나머지 인원으로 저장하시겠습니까?`)) return;
+  s.title = title; s.date = date; s.location = location||null; s.note = note||null;
+  s.targetEmpIds = empIds; s.alarmDaysBefore = isNaN(alarmDays) ? 2 : alarmDays;
+  state.eduScheduleEditId = null;
   saveDB();
   renderTab(eduTabName(cat));
 }
@@ -4789,11 +4977,17 @@ function handleEduCompletionFile(evt, cat){
 function computeEduReminders(){
   if(!SESSION || SESSION.role!=='staff') return [];
   const messages = [];
-  const targetDate = addDaysStr(todayStr(), 2);
+  const today = todayStr();
   [['hq','본부(평택)교육'], ['inhouse','사내교육'], ['etc','기타교육']].forEach(([cat,label])=>{
     (DB.eduSchedules[cat]||[]).forEach(s=>{
-      if(s.date===targetDate && (!s.branchId || s.branchId===SESSION.branchId)){
-        messages.push(`📅 <b>${label}</b> &quot;${escapeHtml(s.title)}&quot; 일정이 <b>${s.date}</b>(이틀 후)로 예정되어 있습니다.${s.location?` 장소: ${escapeHtml(s.location)}`:''}`);
+      const hasTargets = s.targetEmpIds && s.targetEmpIds.length>0;
+      const targetMatch = hasTargets ? s.targetEmpIds.includes(SESSION.empId) : (!s.branchId || s.branchId===SESSION.branchId);
+      if(!targetMatch) return;
+      const daysUntil = Math.round((toDateObj(s.date) - toDateObj(today)) / 86400000);
+      const threshold = (s.alarmDaysBefore!=null) ? s.alarmDaysBefore : 2;
+      if(daysUntil>=0 && daysUntil<=threshold){
+        const ddayText = daysUntil===0 ? '오늘' : `${daysUntil}일 후`;
+        messages.push(`📅 <b>${label}</b> &quot;${escapeHtml(s.title)}&quot; 일정이 <b>${s.date}</b>(${ddayText})로 예정되어 있습니다.${s.location?` 장소: ${escapeHtml(s.location)}`:''}`);
       }
     });
   });
