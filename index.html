@@ -3643,6 +3643,7 @@ function renderCollectGiftcard(){
       <td><select id="gceTransferBranch_${r.id}" style="width:120px"><option value="NONE" ${(r.transferBranchId==='NONE'||!r.transferBranchId)?'selected':''}>해당없음</option>${branchOptionsHtml(r.transferBranchId)}</select></td>
       <td><input id="gceOrderNo_${r.id}" value="${escapeHtml(r.orderNo||'')}" style="width:110px"></td>
       <td><input id="gceModel_${r.id}" value="${escapeHtml(r.model||'')}" style="width:130px"></td>
+      <td><input id="gceSaleType_${r.id}" value="${escapeHtml(r.saleType||'')}" style="width:180px"></td>
       <td><input id="gceAmount_${r.id}" type="number" value="${r.amountWon!=null?r.amountWon:''}" style="width:100px"></td>
       <td><input id="gceSaleDate_${r.id}" type="date" value="${r.saleDate||''}" style="width:135px"></td>
       <td><input id="gceDeliveryDate_${r.id}" type="date" value="${r.deliveryDate||''}" style="width:135px"></td>
@@ -3665,6 +3666,7 @@ function renderCollectGiftcard(){
       <td>${r.transferBranchId==='NONE'||!r.transferBranchId ? '해당없음' : branchName(r.transferBranchId)}</td>
       <td class="muted">${r.orderNo||'-'}</td>
       <td>${r.model}</td>
+      <td>${escapeHtml(r.saleType||'-')}</td>
       <td>${r.amountWon!=null ? fmtWon(r.amountWon) : '-'}</td>
       <td>${r.saleDate||'-'}</td>
       <td>${r.deliveryDate||'-'}</td>
@@ -3674,7 +3676,7 @@ function renderCollectGiftcard(){
       <td>${r.requesterName}</td>
       <td style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditGiftcardRequest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteGiftcardRequest('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="12" class="muted">등록된 내역이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="13" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">모바일 상품권 취합</div>
@@ -3732,14 +3734,21 @@ function renderCollectGiftcard(){
         </div>
         <div class="field">
           <label>모델명</label>
-          <input id="gcModel" placeholder="예: SC5GMR81S.AKOR" style="width:170px">
+          <input id="gcModel" placeholder="예: SC5GMR81S.AKOR / FQ18GC1EB2.CKOR" style="width:190px">
         </div>
         <div class="field">
           <label>사용 금액</label>
           <input id="gcAmount" type="number" placeholder="예: 10000" style="width:120px">
         </div>
       </div>
-      <div class="small-note" style="margin-top:-8px;">※ &quot;I&quot;로 시작하는 주문번호를 입력해 주세요. (예: I051245311)</div>
+      <div class="small-note" style="margin-top:-8px;">※ &quot;I&quot;로 시작하는 주문번호를 입력해 주세요. (예: I051245311)<br>주문번호 없을 시 &quot;i&quot;만 입력하면 됨.</div>
+      <div class="small-note" style="margin-top:2px;">※ 모델명은 반드시 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)</div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:260px;">
+          <label>판매 유형 <span style="color:var(--bad);">*필히 작성</span></label>
+          <input id="gcSaleType" placeholder="예: FQ18GC1EB2(일시불) + Z330MEEF21(구독) / 구재고 소진 / 에어컨 판매 시 등" style="width:100%">
+        </div>
+      </div>
       <div class="form-row">
         <div class="field">
           <label>판매일자</label>
@@ -3766,18 +3775,24 @@ function renderCollectGiftcard(){
     </div>
 
     <div class="card">
+      <div class="table-scroll">
       <table>
-        <thead><tr><th>지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th></th></tr></thead>
+        <thead><tr><th>지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>판매 유형</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
     </div>
   `;
+}
+function isValidGiftcardModel(model){
+  return /^\S+\.[A-Za-z]{3,6}$/.test(String(model||'').trim());
 }
 function submitGiftcardRequest(){
   const branchId = document.getElementById('gcBranch').value;
   const transferBranchId = document.getElementById('gcTransferBranch').value;
   const orderNo = document.getElementById('gcOrderNo').value.trim();
   const model = document.getElementById('gcModel').value.trim();
+  const saleType = document.getElementById('gcSaleType').value.trim();
   const amountWon = Number(document.getElementById('gcAmount').value)||0;
   const saleDate = document.getElementById('gcSaleDate').value;
   const deliveryDate = document.getElementById('gcDeliveryDate').value;
@@ -3785,13 +3800,14 @@ function submitGiftcardRequest(){
   const phone = document.getElementById('gcPhone').value.trim();
   const fileInput = document.getElementById('gcReceipt');
 
-  if(!orderNo || !model || !customerName || !phone || amountWon<=0){ alert('주문번호, 모델명, 사용 금액, 고객명, 연락처를 입력해 주세요.'); return; }
+  if(!orderNo || !model || !saleType || !customerName || !phone || amountWon<=0){ alert('주문번호, 모델명, 판매 유형, 사용 금액, 고객명, 연락처를 입력해 주세요.'); return; }
   if(orderNo[0].toLowerCase() !== 'i'){ alert('주문번호는 "I"로 시작해야 합니다. (예: I051245311)'); return; }
+  if(!isValidGiftcardModel(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)'); return; }
 
   function finalize(receiptDataUrl, receiptName){
     DB.giftcardRequests.push({
       id: 'gc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      branchId, transferBranchId, orderNo, model, amountWon, saleDate, deliveryDate,
+      branchId, transferBranchId, orderNo, model, saleType, amountWon, saleDate, deliveryDate,
       customerName, phone, receiptDataUrl: receiptDataUrl||null, receiptName: receiptName||null,
       requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
     });
@@ -3831,17 +3847,20 @@ function saveEditGiftcardRequest(id){
   if(!canEditGiftcardRequest(r)){ alert('본인이 등록한 건 또는 관리자만 수정할 수 있습니다.'); return; }
   const orderNo = document.getElementById('gceOrderNo_'+id).value.trim();
   const model = document.getElementById('gceModel_'+id).value.trim();
+  const saleType = document.getElementById('gceSaleType_'+id).value.trim();
   const amountWon = Number(document.getElementById('gceAmount_'+id).value)||0;
   const customerName = document.getElementById('gceCustomerName_'+id).value.trim();
   const phone = document.getElementById('gcePhone_'+id).value.trim();
-  if(!orderNo || !model || !customerName || !phone || amountWon<=0){ alert('주문번호, 모델명, 사용 금액, 고객명, 연락처를 입력해 주세요.'); return; }
+  if(!orderNo || !model || !saleType || !customerName || !phone || amountWon<=0){ alert('주문번호, 모델명, 판매 유형, 사용 금액, 고객명, 연락처를 입력해 주세요.'); return; }
   if(orderNo[0].toLowerCase() !== 'i'){ alert('주문번호는 "I"로 시작해야 합니다. (예: I051245311)'); return; }
+  if(!isValidGiftcardModel(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)'); return; }
 
   function finalize(receiptDataUrl, receiptName){
     r.branchId = document.getElementById('gceBranch_'+id).value;
     r.transferBranchId = document.getElementById('gceTransferBranch_'+id).value;
     r.orderNo = orderNo;
     r.model = model;
+    r.saleType = saleType;
     r.amountWon = amountWon;
     r.saleDate = document.getElementById('gceSaleDate_'+id).value;
     r.deliveryDate = document.getElementById('gceDeliveryDate_'+id).value;
@@ -3865,13 +3884,25 @@ function saveEditGiftcardRequest(id){
 }
 
 // ---- 3) 컨테스트 사은품 취합 ----
+const CONTEST_GIFT_TYPE_OPTIONS = [
+  { value:'26년 8월 구독특별 사은품', gift:'[가이타이너]슈라우프 와이드 그릴' },
+  { value:'26년 8월 에어컨 구독 특별사은품', gift:'[셰퍼]에어브리즈 14인치 선풍기' }
+];
+function syncContestGiftName(){
+  const sel = document.getElementById('cgContestType');
+  const giftEl = document.getElementById('cgGiftName');
+  if(!sel || !giftEl) return;
+  const opt = CONTEST_GIFT_TYPE_OPTIONS.find(o=>o.value===sel.value);
+  giftEl.value = opt ? opt.gift : '';
+}
 function renderCollectContest(){
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.contestGifts);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const rows = sorted.map(r=>`
     <tr>
-      <td>${r.contestType||'-'}</td>
+      <td>${escapeHtml(r.contestType||'-')}</td>
+      <td>${escapeHtml(r.giftName||'-')}</td>
       <td>${branchName(r.branchId)}</td>
       <td>${r.saleDate||'-'}</td>
       <td>${r.deliveryDate||'-'}</td>
@@ -3881,7 +3912,7 @@ function renderCollectContest(){
       <td>${r.phone}</td>
       <td class="muted">${r.address||'-'}</td>
       <td>${SESSION.role==='admin' ? `<button class="btn btn-sm" onclick="deleteContestGift('${r.id}')">삭제</button>` : ''}</td>
-    </tr>`).join('') || `<tr><td colspan="10" class="muted">등록된 내역이 없습니다.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="11" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">컨테스트 사은품 취합</div>
@@ -3893,7 +3924,14 @@ function renderCollectContest(){
       <div class="form-row">
         <div class="field">
           <label>컨테스트 구분</label>
-          <input id="cgContestType" placeholder="예: 7월 판매왕 컨테스트" style="width:190px">
+          <select id="cgContestType" style="width:220px" onchange="syncContestGiftName()">
+            <option value="">선택하세요</option>
+            ${CONTEST_GIFT_TYPE_OPTIONS.map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(o.value)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>사은품명</label>
+          <input id="cgGiftName" style="width:220px;background:#f7f7f8;" placeholder="컨테스트 구분 선택 시 자동 입력">
         </div>
         <div class="field">
           <label>지점명</label>
@@ -3907,16 +3945,16 @@ function renderCollectContest(){
           <label>배송일자</label>
           <input id="cgDeliveryDate" type="date">
         </div>
+      </div>
+      <div class="form-row">
         <div class="field">
           <label>모델명</label>
-          <input id="cgModel" placeholder="예: MW23GD" style="width:150px">
+          <input id="cgModel" placeholder="예: SC5GMR81S.AKOR" style="width:170px">
         </div>
         <div class="field">
           <label>판매 건수</label>
           <input id="cgQty" type="number" style="width:90px" placeholder="예: 1">
         </div>
-      </div>
-      <div class="form-row">
         <div class="field">
           <label>고객명</label>
           <input id="cgCustomerName" placeholder="예: 홍길동" style="width:130px">
@@ -3925,27 +3963,37 @@ function renderCollectContest(){
           <label>연락처</label>
           <input id="cgPhone" placeholder="예: 010-1234-5678" style="width:150px">
         </div>
-        <div class="field" style="min-width:280px;">
+      </div>
+      <div class="small-note" style="margin-top:-8px;">※ 모델명은 반드시 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)</div>
+      <div class="form-row">
+        <div class="field" style="min-width:260px;">
           <label>주소</label>
           <div style="display:flex;gap:6px;">
             <input id="cgAddress" placeholder="주소 검색 버튼을 눌러 입력하세요" style="width:220px">
             <button type="button" class="btn btn-sm" onclick="openAddressSearch('cgAddress')">주소 검색</button>
           </div>
         </div>
+        <div class="field" style="min-width:160px;">
+          <label>상세주소</label>
+          <input id="cgAddressDetail" placeholder="예: 101동 202호" style="width:160px">
+        </div>
         <button class="btn btn-primary" onclick="submitContestGift()">등록</button>
       </div>
     </div>
 
     <div class="card">
+      <div class="table-scroll">
       <table>
-        <thead><tr><th>컨테스트 구분</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th></th></tr></thead>
+        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
     </div>
   `;
 }
 function submitContestGift(){
   const contestType = document.getElementById('cgContestType').value.trim();
+  const giftName = document.getElementById('cgGiftName').value.trim();
   const branchId = document.getElementById('cgBranch').value;
   const saleDate = document.getElementById('cgSaleDate').value;
   const deliveryDate = document.getElementById('cgDeliveryDate').value;
@@ -3953,13 +4001,16 @@ function submitContestGift(){
   const qty = Number(document.getElementById('cgQty').value)||0;
   const customerName = document.getElementById('cgCustomerName').value.trim();
   const phone = document.getElementById('cgPhone').value.trim();
-  const address = document.getElementById('cgAddress').value.trim();
+  const addressBase = document.getElementById('cgAddress').value.trim();
+  const addressDetail = document.getElementById('cgAddressDetail').value.trim();
+  const address = [addressBase, addressDetail].filter(Boolean).join(' ');
 
-  if(!model || qty<=0 || !customerName || !phone){ alert('모델명, 판매 건수, 고객명, 연락처를 입력해 주세요.'); return; }
+  if(!contestType || !model || qty<=0 || !customerName || !phone){ alert('컨테스트 구분, 모델명, 판매 건수, 고객명, 연락처를 입력해 주세요.'); return; }
+  if(!isValidGiftcardModel(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)'); return; }
 
   DB.contestGifts.push({
     id: 'cg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    contestType: contestType||null, branchId, saleDate, deliveryDate, model, qty,
+    contestType: contestType||null, giftName: giftName||null, branchId, saleDate, deliveryDate, model, qty,
     customerName, phone, address: address||null,
     requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
   });
