@@ -1502,8 +1502,8 @@ function renderSystemAdmin(){
       <tr>
         <td><input id="sueEmpId_${u.empId}" value="${escapeHtml(u.empId)}" style="width:100px"></td>
         <td><input id="sueName_${u.empId}" value="${escapeHtml(u.name)}" style="width:90px"></td>
-        <td>${u.empId==='admin' ? '본사(전체)' : `<select id="sueBranch_${u.empId}" style="width:130px">${branchOptionsHtml(u.branchId)}</select>`}</td>
-        <td><select id="sueRole_${u.empId}" style="width:90px" ${u.empId==='admin'?'disabled':''}>${roleOptionsHtml(u.role)}</select></td>
+        <td>${u.empId==='admin' ? '본사(전체)' : `<select id="sueBranch_${u.empId}" style="width:130px" ${u.role==='admin'?'disabled':''}>${branchOptionsHtml(u.role==='admin'?'':u.branchId, true)}</select>`}</td>
+        <td><select id="sueRole_${u.empId}" style="width:90px" ${u.empId==='admin'?'disabled':''} onchange="syncEditUserBranchByRole('${u.empId}')">${roleOptionsHtml(u.role)}</select></td>
         <td><input id="suePw_${u.empId}" type="text" placeholder="변경 시에만 입력" style="width:110px"></td>
         <td style="white-space:nowrap;">
           <button class="btn btn-sm btn-primary" onclick="saveEditSystemUser('${u.empId}')">저장</button>
@@ -1535,8 +1535,8 @@ function renderSystemAdmin(){
       <div class="form-row">
         <div class="field"><label>사번</label><input id="suNewEmpId" placeholder="예: 1234567" style="width:120px"></div>
         <div class="field"><label>이름</label><input id="suNewName" placeholder="예: 홍길동" style="width:110px"></div>
-        <div class="field"><label>지점명</label><select id="suNewBranch" style="width:150px">${branchOptionsHtml(DB.branches[0] && DB.branches[0].id)}</select></div>
-        <div class="field"><label>직책</label><select id="suNewRole" style="width:90px">${roleOptionsHtml('staff')}</select></div>
+        <div class="field"><label>지점명</label><select id="suNewBranch" style="width:150px">${branchOptionsHtml(DB.branches[0] && DB.branches[0].id, true)}</select></div>
+        <div class="field"><label>직책</label><select id="suNewRole" style="width:90px" onchange="syncNewUserBranchByRole()">${roleOptionsHtml('staff')}</select></div>
         <button class="btn btn-primary" onclick="createSystemUser()">계정 생성</button>
       </div>
       <div id="suNewMsg" class="small-note"></div>
@@ -1609,22 +1609,49 @@ function resetSystemUserPw(empId){
   saveDB();
   renderTab('systemAdmin');
 }
+function syncNewUserBranchByRole(){
+  const roleSel = document.getElementById('suNewRole');
+  const branchSel = document.getElementById('suNewBranch');
+  if(!roleSel || !branchSel) return;
+  if(roleSel.value==='admin'){
+    branchSel.value = '';
+    branchSel.disabled = true;
+  }else{
+    branchSel.disabled = false;
+    if(!branchSel.value) branchSel.value = DB.branches[0] ? DB.branches[0].id : '';
+  }
+}
+function syncEditUserBranchByRole(empId){
+  const roleSel = document.getElementById('sueRole_'+empId);
+  const branchSel = document.getElementById('sueBranch_'+empId);
+  if(!roleSel || !branchSel) return;
+  if(roleSel.value==='admin'){
+    branchSel.value = '';
+    branchSel.disabled = true;
+  }else{
+    branchSel.disabled = false;
+    if(!branchSel.value) branchSel.value = DB.branches[0] ? DB.branches[0].id : '';
+  }
+}
 function createSystemUser(){
   if(!isSystemAdmin()) return;
   const msgEl = document.getElementById('suNewMsg');
   const empId = document.getElementById('suNewEmpId').value.trim();
   const name = document.getElementById('suNewName').value.trim();
-  const branchId = document.getElementById('suNewBranch').value;
+  const branchIdRaw = document.getElementById('suNewBranch').value;
   const role = document.getElementById('suNewRole').value;
   if(!empId || !name){ msgEl.textContent = '사번과 이름을 입력해 주세요.'; return; }
   if(DB.users.find(u=>u.empId===empId)){ msgEl.textContent = '이미 존재하는 사번입니다.'; return; }
-  DB.users.push({empId, pw:'1234', name, role, branchId: role==='admin' ? null : branchId});
-  const g = getGoals(branchId, currentGoalsPeriod());
-  if(role!=='admin' && g && !g.allocations.find(a=>a.empId===empId)) g.allocations.push({empId, name, target:0, subQtyTarget:0, subAmtTarget:0});
-  const att = DB.attendance[branchId];
-  if(role!=='admin' && att && !att.records.find(r=>r.empId===empId)) att.records.push({empId, name, status:'출근', checkin:'09:00', checkout:'18:00'});
+  const branchId = (role==='admin' || !branchIdRaw) ? null : branchIdRaw;
+  DB.users.push({empId, pw:'1234', name, role, branchId});
+  if(role!=='admin' && branchId){
+    const g = getGoals(branchId, currentGoalsPeriod());
+    if(g && !g.allocations.find(a=>a.empId===empId)) g.allocations.push({empId, name, target:0, subQtyTarget:0, subAmtTarget:0});
+    const att = DB.attendance[branchId];
+    if(att && !att.records.find(r=>r.empId===empId)) att.records.push({empId, name, status:'출근', checkin:'09:00', checkout:'18:00'});
+  }
   saveDB();
-  msgEl.innerHTML = `<span style="color:var(--good);">계정이 생성되었습니다: ${escapeHtml(name)}(${escapeHtml(empId)}), 초기 비밀번호 1234</span>`;
+  msgEl.innerHTML = `<span style="color:var(--good);">계정이 생성되었습니다: ${escapeHtml(name)}(${escapeHtml(empId)}), 초기 비밀번호 1234${role==='admin'?' · 관리자 권한 부여됨':''}</span>`;
   renderTab('systemAdmin');
 }
 function saveEditSystemUser(oldEmpId){
@@ -1646,7 +1673,7 @@ function saveEditSystemUser(oldEmpId){
   }
   u.name = newName;
   u.role = newRole;
-  u.branchId = newRole==='admin' ? null : newBranch;
+  u.branchId = (newRole==='admin' || !newBranch) ? null : newBranch;
   if(newPw) u.pw = newPw;
 
   state.sysUserEditId = null;
@@ -3383,8 +3410,9 @@ function setInvPage(delta){
 /* =========================================================================
    9c. RENDER: 각종 취합 (실행력 점검 사진 / 모바일 상품권 / 컨테스트 사은품)
    ========================================================================= */
-function branchOptionsHtml(selectedId){
-  return DB.branches.map(b=>`<option value="${b.id}" ${b.id===selectedId?'selected':''}>${b.name}</option>`).join('');
+function branchOptionsHtml(selectedId, includeNone){
+  const noneOpt = includeNone ? `<option value="" ${!selectedId?'selected':''}>설정안함</option>` : '';
+  return noneOpt + DB.branches.map(b=>`<option value="${b.id}" ${b.id===selectedId?'selected':''}>${b.name}</option>`).join('');
 }
 function collectScopeBranch(){
   return SESSION.role==='admin' ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : DB.branches[0].id) : SESSION.branchId;
