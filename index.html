@@ -311,6 +311,15 @@
 <div id="imgLightbox" class="img-lightbox" onclick="closeImgLightbox()">
   <img id="imgLightboxImg" src="" alt="확대 이미지">
 </div>
+<div id="addressSearchModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this) closeAddressSearch();">
+  <div style="background:#fff;border-radius:10px;overflow:hidden;width:420px;max-width:92vw;box-shadow:0 8px 40px rgba(0,0,0,.4);">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border);">
+      <b style="font-size:14px;">주소 검색</b>
+      <button type="button" onclick="closeAddressSearch()" style="border:none;background:none;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div id="addressSearchContainer" style="width:100%;height:470px;"></div>
+  </div>
+</div>
 
 <script>
 /* =========================================================================
@@ -4061,20 +4070,38 @@ function deleteContestGift(id){
   saveDB();
   renderTab('collectContest');
 }
+let addressSearchTargetId = null;
 function openAddressSearch(inputId){
   try{
     if(typeof daum === 'undefined' || !daum.Postcode){
       alert('주소 검색 서비스를 불러오지 못했습니다. 인터넷 연결을 확인하거나 직접 입력해 주세요.');
       return;
     }
+    addressSearchTargetId = inputId;
+    const modal = document.getElementById('addressSearchModal');
+    const container = document.getElementById('addressSearchContainer');
+    if(!modal || !container) return;
+    container.innerHTML = '';
+    modal.style.display = 'flex';
     new daum.Postcode({
       oncomplete: function(data){
-        document.getElementById(inputId).value = data.address;
-      }
-    }).open();
+        const el = document.getElementById(addressSearchTargetId);
+        if(el) el.value = data.address;
+        closeAddressSearch();
+      },
+      width: '100%',
+      height: '100%'
+    }).embed(container);
   } catch(err){
     alert('주소 검색 서비스를 불러오지 못했습니다. 직접 입력해 주세요.');
   }
+}
+function closeAddressSearch(){
+  const modal = document.getElementById('addressSearchModal');
+  if(modal) modal.style.display = 'none';
+  const container = document.getElementById('addressSearchContainer');
+  if(container) container.innerHTML = '';
+  addressSearchTargetId = null;
 }
 
 /* =========================================================================
