@@ -1235,6 +1235,7 @@ function renderTab(tab){
   if(tab!=='policyQuiz') state.policyQuizEditingId = null;
   if(tab!=='goals') state.goalsPeriod = null;
   if(!['eduHq','eduInhouse','eduEtc'].includes(tab)) state.eduScheduleEditId = null;
+  if(tab!=='collectContest') state.cgEditId = null;
   afterRenderHooks(tab);
 }
 
@@ -3904,11 +3905,51 @@ function syncContestGiftName(){
   const opt = CONTEST_GIFT_TYPE_OPTIONS.find(o=>o.value===sel.value);
   giftEl.value = opt ? opt.gift : '';
 }
+function syncContestGiftNameFor(selectId, giftId){
+  const sel = document.getElementById(selectId);
+  const giftEl = document.getElementById(giftId);
+  if(!sel || !giftEl) return;
+  const opt = CONTEST_GIFT_TYPE_OPTIONS.find(o=>o.value===sel.value);
+  giftEl.value = opt ? opt.gift : '';
+}
 function renderCollectContest(){
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.contestGifts);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
-  const rows = sorted.map(r=>`
+  const isAdmin = SESSION.role==='admin';
+  const editId = state.cgEditId;
+  const rows = sorted.map(r=>{
+    if(isAdmin && editId===r.id){
+      const existingPhotos = (r.evidenceFiles&&r.evidenceFiles.length>0)
+        ? r.evidenceFiles.map((f,i)=>`<a href="${f.dataUrl}" target="_blank" rel="noopener">사진${i+1}</a>`).join(' ')
+        : '없음';
+      return `
+    <tr>
+      <td><select id="cge_${r.id}_contestType" style="width:170px" onchange="syncContestGiftNameFor('cge_${r.id}_contestType','cge_${r.id}_giftName')">
+        <option value="">선택하세요</option>
+        ${CONTEST_GIFT_TYPE_OPTIONS.map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===r.contestType?'selected':''}>${escapeHtml(o.value)}</option>`).join('')}
+      </select></td>
+      <td><input id="cge_${r.id}_giftName" value="${escapeHtml(r.giftName||'')}" style="width:170px"></td>
+      <td><select id="cge_${r.id}_branch" style="width:120px">${branchOptionsHtml(r.branchId)}</select></td>
+      <td><input id="cge_${r.id}_saleDate" type="date" value="${r.saleDate||''}" style="width:135px"></td>
+      <td><input id="cge_${r.id}_deliveryDate" type="date" value="${r.deliveryDate||''}" style="width:135px"></td>
+      <td><input id="cge_${r.id}_model" value="${escapeHtml(r.model||'')}" style="width:150px"></td>
+      <td><input id="cge_${r.id}_qty" type="number" value="${r.qty!=null?r.qty:''}" style="width:70px"></td>
+      <td><input id="cge_${r.id}_customerName" value="${escapeHtml(r.customerName||'')}" style="width:100px"></td>
+      <td><input id="cge_${r.id}_phone" value="${escapeHtml(r.phone||'')}" style="width:120px"></td>
+      <td><input id="cge_${r.id}_address" value="${escapeHtml(r.address||'')}" style="width:160px"></td>
+      <td>
+        기존: ${existingPhotos}<br>
+        <input id="cge_${r.id}_evidence" type="file" accept="image/*" multiple style="width:130px;font-size:11px;">
+        <div class="small-note" style="margin:2px 0 0;">새로 첨부 시 기존 사진을 대체합니다.</div>
+      </td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-primary" onclick="saveEditContestGift('${r.id}')">저장</button>
+        <button class="btn btn-sm" onclick="cancelEditContestGift()">취소</button>
+      </td>
+    </tr>`;
+    }
+    return `
     <tr>
       <td>${escapeHtml(r.contestType||'-')}</td>
       <td>${escapeHtml(r.giftName||'-')}</td>
@@ -3921,8 +3962,9 @@ function renderCollectContest(){
       <td>${r.phone}</td>
       <td class="muted">${r.address||'-'}</td>
       <td>${(r.evidenceFiles&&r.evidenceFiles.length>0) ? r.evidenceFiles.map((f,i)=>`<a href="${f.dataUrl}" target="_blank" rel="noopener">사진${i+1}</a>`).join(' ') : '-'}</td>
-      <td>${SESSION.role==='admin' ? `<button class="btn btn-sm" onclick="deleteContestGift('${r.id}')">삭제</button>` : ''}</td>
-    </tr>`).join('') || `<tr><td colspan="12" class="muted">등록된 내역이 없습니다.</td></tr>`;
+      <td style="white-space:nowrap;">${isAdmin ? `<button class="btn btn-sm" onclick="startEditContestGift('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteContestGift('${r.id}')">삭제</button>` : ''}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="12" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">컨테스트 사은품 취합</div>
@@ -4065,10 +4107,59 @@ function submitContestGift(){
   }
 }
 function deleteContestGift(id){
+  if(SESSION.role!=='admin') return;
   if(!confirm('삭제하시겠습니까?')) return;
   DB.contestGifts = DB.contestGifts.filter(r=>r.id!==id);
   saveDB();
   renderTab('collectContest');
+}
+function startEditContestGift(id){
+  if(SESSION.role!=='admin') return;
+  state.cgEditId = id;
+  renderTab('collectContest');
+}
+function cancelEditContestGift(){
+  state.cgEditId = null;
+  renderTab('collectContest');
+}
+function saveEditContestGift(id){
+  if(SESSION.role!=='admin') return;
+  const r = DB.contestGifts.find(x=>x.id===id);
+  if(!r) return;
+  const contestType = document.getElementById(`cge_${id}_contestType`).value.trim();
+  const giftName = document.getElementById(`cge_${id}_giftName`).value.trim();
+  const branchId = document.getElementById(`cge_${id}_branch`).value;
+  const saleDate = document.getElementById(`cge_${id}_saleDate`).value;
+  const deliveryDate = document.getElementById(`cge_${id}_deliveryDate`).value;
+  const model = document.getElementById(`cge_${id}_model`).value.trim();
+  const qty = Number(document.getElementById(`cge_${id}_qty`).value)||0;
+  const customerName = document.getElementById(`cge_${id}_customerName`).value.trim();
+  const phone = document.getElementById(`cge_${id}_phone`).value.trim();
+  const address = document.getElementById(`cge_${id}_address`).value.trim();
+  const evidenceInput = document.getElementById(`cge_${id}_evidence`);
+  const newFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
+
+  if(!contestType || !model || qty<=0 || !customerName || !phone){ alert('컨테스트 구분, 모델명, 판매 건수, 고객명, 연락처를 입력해 주세요.'); return; }
+  if(!isValidGiftcardModelList(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR) · 여러 모델은 "/"로 구분해 주세요.'); return; }
+  const oversized = newFiles.find(f=>f.size > 3*1024*1024);
+  if(oversized){ alert(`"${oversized.name}" 파일이 3MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
+
+  function finalize(evidence){
+    r.contestType = contestType||null; r.giftName = giftName||null; r.branchId = branchId;
+    r.saleDate = saleDate; r.deliveryDate = deliveryDate; r.model = model; r.qty = qty;
+    r.customerName = customerName; r.phone = phone; r.address = address||null;
+    if(evidence) r.evidenceFiles = evidence;
+    state.cgEditId = null;
+    saveDB();
+    renderTab('collectContest');
+  }
+  if(newFiles.length>0){
+    Promise.all(newFiles.map(readFileAsDataUrl))
+      .then(results=>finalize(results))
+      .catch(()=>{ alert('증빙자료 파일을 읽는 중 오류가 발생했습니다. 대용량 이슈일 수 있으니 담당관리자에게 연락 바랍니다.'); });
+  } else {
+    finalize(null);
+  }
 }
 let addressSearchTargetId = null;
 function openAddressSearch(inputId){
@@ -5685,131 +5776,4 @@ function saveEditProspect(id){
   const customerName = document.getElementById('pgeName_'+id).value.trim();
   const phone = document.getElementById('pgePhone_'+id).value.trim();
   if(!customerName || !phone){ alert('고객명과 연락처를 입력해 주세요.'); return; }
-  p.customerName = customerName;
-  p.phone = phone;
-  p.desiredItem = document.getElementById('pgeItem_'+id).value.trim() || null;
-  p.desiredDate = document.getElementById('pgeDate_'+id).value || null;
-  p.consultProduct = document.getElementById('pgeProduct_'+id).value.trim() || null;
-  p.expectedAmountWon = Number(document.getElementById('pgeAmount_'+id).value) || 0;
-  p.happyCall = document.getElementById('pgeHappy_'+id).value;
-  p.saleStatus = document.getElementById('pgeSale_'+id).value;
-  state.prospectEditId = null;
-  saveDB();
-  renderTab('prospects');
-}
-function deleteProspect(id){
-  if(!confirm('삭제하시겠습니까?')) return;
-  DB.prospects = DB.prospects.filter(x=> !(x.id===id && x.empId===SESSION.empId));
-  saveDB();
-  renderTab('prospects');
-}
-
-/* =========================================================================
-   9j. EXPORT: 엑셀 / PDF 다운로드 (모든 화면 공통, 우측 상단 고정 버튼)
-   ========================================================================= */
-function currentPageTitle(){
-  const el = document.querySelector('#mainContent .page-title');
-  return (el && el.textContent) ? el.textContent.trim() : (state.tab || 'page');
-}
-function sanitizeExportFileName(s){
-  const cleaned = String(s||'').replace(/[\\\/:*?"<>|]/g,'').replace(/\s+/g,'_').trim();
-  return cleaned ? cleaned.slice(0,60) : 'export';
-}
-function exportSheetName(table, idx){
-  let name = null;
-  try{
-    const card = table.closest ? table.closest('.card') : null;
-    const h3 = card ? card.querySelector('h3') : null;
-    if(h3 && h3.textContent) name = h3.textContent.trim();
-  }catch(e){}
-  if(!name) name = `표${idx+1}`;
-  name = name.replace(/[\\\/:*?\[\]]/g,'').slice(0,31);
-  return name || `표${idx+1}`;
-}
-function exportCurrentPageExcel(){
-  const tables = Array.from(document.querySelectorAll('#mainContent table'));
-  if(tables.length===0){ alert('현재 화면에는 엑셀로 내보낼 표가 없습니다.'); return; }
-  try{
-    const wb = XLSX.utils.book_new();
-    const used = new Set();
-    tables.forEach((t,i)=>{
-      let name = exportSheetName(t,i);
-      let base = name, n = 2;
-      while(used.has(name)){ name = base.slice(0,28) + '_' + n; n++; }
-      used.add(name);
-      const ws = XLSX.utils.table_to_sheet(t);
-      XLSX.utils.book_append_sheet(wb, ws, name);
-    });
-    const filename = sanitizeExportFileName(currentPageTitle()) + '_' + todayStr() + '.xlsx';
-    XLSX.writeFile(wb, filename);
-  }catch(e){
-    alert('엑셀 파일 생성 중 오류가 발생했습니다.');
-  }
-}
-function exportCurrentPagePDF(){
-  const tables = Array.from(document.querySelectorAll('#mainContent table'));
-  if(tables.length===0){ alert('현재 화면에는 PDF로 내보낼 내용이 없습니다.'); return; }
-  if(typeof html2canvas==='undefined' || typeof window.jspdf==='undefined'){
-    alert('PDF 생성 모듈을 불러오지 못했습니다. 인터넷 연결 상태를 확인한 뒤 다시 시도해 주세요.');
-    return;
-  }
-  const target = document.getElementById('mainContent');
-  const pageTitle = currentPageTitle();
-  html2canvas(target, {scale:2, backgroundColor:'#ffffff', useCORS:true}).then(canvas=>{
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({orientation:'p', unit:'pt', format:'a4'});
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 24;
-    const titleH = 26;
-    const imgWidth = pageWidth - margin*2;
-    const imgHeight = canvas.height * (imgWidth / canvas.width);
-    const imgData = canvas.toDataURL('image/png');
-    const firstPageImgSpace = pageHeight - margin - titleH - margin;
-
-    doc.setFontSize(12);
-    doc.text(`${pageTitle} (${todayStr()} 기준)`, margin, margin + 12);
-
-    if(imgHeight <= firstPageImgSpace){
-      doc.addImage(imgData, 'PNG', margin, margin + titleH, imgWidth, imgHeight);
-    } else {
-      // 표준 html2canvas+jsPDF 다중 페이지 분할 패턴: 같은 이미지를 매 페이지마다 위로 이동시켜 그려서 자연스럽게 이어붙임
-      let heightLeft = imgHeight;
-      doc.addImage(imgData, 'PNG', margin, margin + titleH, imgWidth, imgHeight);
-      heightLeft -= firstPageImgSpace;
-      while(heightLeft > 0){
-        doc.addPage();
-        const offset = imgHeight - heightLeft;
-        doc.addImage(imgData, 'PNG', margin, margin - offset, imgWidth, imgHeight);
-        heightLeft -= (pageHeight - margin*2);
-      }
-    }
-    const filename = sanitizeExportFileName(pageTitle) + '_' + todayStr() + '.pdf';
-    doc.save(filename);
-  }).catch(()=>{
-    alert('PDF 파일 생성 중 오류가 발생했습니다.');
-  });
-}
-
-/* =========================================================================
-   10. INIT
-   ========================================================================= */
-function afterRenderHooks(tab){
-  if(tab==='home') startNoticeRotation();
-  updateInventoryNavLabel();
-}
-function updateInventoryNavLabel(){
-  const el = document.getElementById('navInventoryDate');
-  if(el) el.textContent = todayStr() + ' 기준';
-}
-
-(async function initApp(){
-  await loadDB();
-  updateInventoryNavLabel();
-  const overlay = document.getElementById('loginLoadingOverlay');
-  if(overlay) overlay.style.display = 'none';
-})();
-document.getElementById('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') handleLogin(); });
-</script>
-</body>
-</html>
+  p.customerName = 
