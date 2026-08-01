@@ -2440,7 +2440,7 @@ function setSubscriptionPeriod(period){
   state.subscriptionPeriod = period;
   renderTab('subscription');
 }
-function applySubscriptionFile(json){
+function applySubscriptionFile(json, overridePeriod){
   if(!json || json.length===0) return {error:'파일에 데이터가 없습니다.'};
   const sample = json[0];
   const branchCol = findCol(sample, ['지점','매장']);
@@ -2471,7 +2471,7 @@ function applySubscriptionFile(json){
   const branchIds = Object.keys(byBranch);
   if(branchIds.length===0) return {error:'지점명을 인식하지 못했습니다. 등록된 지점명과 일치하는지 확인해 주세요.'};
 
-  const period = currentGoalsPeriod();
+  const period = overridePeriod || currentGoalsPeriod();
   const d = getSubscriptionData(period);
   branchIds.forEach(branchId=>{
     const manager = BRANCH_MANAGER_MAP[branchId] || '미지정';
@@ -2489,6 +2489,58 @@ function applySubscriptionFile(json){
   d.asOf = todayStr();
   return { period, branchCount: branchIds.length, repCount: Object.values(byBranch).reduce((s,x)=>s+x.reps.length,0) };
 }
+// "26년7월 구독 총판 수기취합" 형식(관리자 손으로 취합한 실제 리포트) 지원:
+// - 헤더가 1행이 아니라 중간 어딘가(보통 4행)에 있고, 지점명/관리자 셀이 병합되어
+//   같은 그룹의 두 번째 줄부터는 빈 칸으로 내려오는 구조 → forward-fill로 복원한다.
+// - "計"(관리자별 소계)/"合計"(전체 합계) 행은 실제 담당자 데이터가 아니므로 건너뛴다.
+// - 이마트/홈플러스 두 블록이 나란히 있는 경우가 있는데, 이 앱은 이마트만 관리하므로
+//   B~K 열(채널/관리자/지점명/매니저/개인별수량/지점누적수량/목표/개인별금액) 블록만 사용한다.
+function tryParseSubscriptionReportFormat(rawRows){
+  let headerRowIdx = -1;
+  for(let i=0;i<rawRows.length;i++){
+    const row = rawRows[i]||[];
+    if(String(row[1]||'').trim()==='채널' && String(row[2]||'').trim()==='관리자' && String(row[3]||'').trim()==='지점명'){
+      headerRowIdx = i;
+      break;
+    }
+  }
+  if(headerRowIdx===-1) return null;
+  const out = [];
+  let lastBranch = null, lastTarget = null;
+  for(let i=headerRowIdx+1;i<rawRows.length;i++){
+    const row = rawRows[i]||[];
+    const channel = row[1];
+    const branchNameRaw = row[3];
+    const repName = row[4];
+    const repQty = row[5];
+    const target = row[7];
+    const repAmt = row[8];
+    if(String(channel||'').trim()==='合計') break;
+    const branchNameTrim = String(branchNameRaw||'').trim();
+    if(branchNameTrim==='計') continue;
+    if(branchNameTrim){ lastBranch = branchNameTrim; lastTarget = target; }
+    const repNameTrim = String(repName||'').trim();
+    if(repNameTrim && lastBranch){
+      out.push({ '지점': lastBranch, '담당자': repNameTrim, '수량': repQty||0, '실적': repAmt||0, '목표': lastTarget });
+    }
+  }
+  return out.length>0 ? out : null;
+}
+function detectSubscriptionReportPeriod(rawRows){
+  for(let i=0;i<Math.min(rawRows.length,6);i++){
+    for(const cell of (rawRows[i]||[])){
+      if(typeof cell === 'string'){
+        const m = cell.match(/(\d{2,4})년\s*(\d{1,2})월/);
+        if(m){
+          const y = m[1].length===2 ? '20'+m[1] : m[1];
+          const mo = m[2].padStart(2,'0');
+          return `${y}-${mo}`;
+        }
+      }
+    }
+  }
+  return null;
+}
 function handleSubscriptionFile(evt){
   const file = evt.target.files[0];
   if(!file) return;
@@ -2499,8 +2551,16 @@ function handleSubscriptionFile(evt){
       const raw = new Uint8Array(e.target.result);
       const wb = XLSX.read(raw, {type:'array'});
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet, {defval:''});
-      const result = applySubscriptionFile(json);
+      const rawRows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:null});
+      const reportRows = tryParseSubscriptionReportFormat(rawRows);
+      let result;
+      if(reportRows){
+        const detectedPeriod = detectSubscriptionReportPeriod(rawRows);
+        result = applySubscriptionFile(reportRows, detectedPeriod);
+      } else {
+        const json = XLSX.utils.sheet_to_json(sheet, {defval:''});
+        result = applySubscriptionFile(json);
+      }
       if(result.error){ msgEl.textContent = result.error; return; }
       saveDB();
       msgEl.innerHTML = `<span style="color:var(--good);">${result.period} 구독 실적 반영 완료: ${result.branchCount}개 지점 · ${result.repCount}명</span>`;
