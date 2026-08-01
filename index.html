@@ -1380,6 +1380,7 @@ function renderTab(tab){
   if(tab!=='systemAdmin') loginStatsCache = null;
   if(tab!=='notices') state.noticeBoardEditId = null;
   if(tab!=='infoReports') state.infoReportEditId = null;
+  if(tab!=='subB2bSales') state.b2bEditId = null;
   afterRenderHooks(tab);
 }
 
@@ -3405,6 +3406,9 @@ function rateBadgeKK(rate){
    8c. RENDER: 구독 소상공인 판매건 등록 (지점별/월별/등록자별 자동 집계)
    ========================================================================= */
 function subB2bMonthKey(dateStr){ return String(dateStr||'').slice(0,7); }
+function canEditSubB2bSale(r){
+  return !!(r && (SESSION.role==='admin' || r.empId===SESSION.empId));
+}
 function renderSubB2bSales(){
   const isAdmin = SESSION.role==='admin';
   const myBranch = collectScopeBranch();
@@ -3426,7 +3430,25 @@ function renderSubB2bSales(){
   scoped.forEach(r=>{ const mk = subB2bMonthKey(r.saleDate); byMonth[mk] = byMonth[mk] || {qty:0, amt:0}; byMonth[mk].qty+=r.qty; byMonth[mk].amt+=r.amountWon; });
   const byMonthRows = Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([mk,v])=>`<tr><td>${mk}</td><td>${fmtNum(v.qty)}건</td><td>${fmtWon(v.amt)}</td></tr>`).join('') || `<tr><td colspan="3" class="muted">데이터가 없습니다.</td></tr>`;
 
-  const rows = sorted.map(r=>`
+  const rows = sorted.map(r=>{
+    const canEdit = canEditSubB2bSale(r);
+    if(state.b2bEditId === r.id){
+      return `
+    <tr>
+      <td><input id="b2be_${r.id}_saleDate" type="date" value="${r.saleDate||''}" style="width:135px"></td>
+      <td><select id="b2be_${r.id}_branch" style="width:150px">${branchOptionsHtml(r.branchId)}</select></td>
+      <td><input id="b2be_${r.id}_company" value="${escapeHtml(r.companyName||'')}" style="width:130px"></td>
+      <td><input id="b2be_${r.id}_model" value="${escapeHtml(r.model||'')}" style="width:150px"></td>
+      <td><input id="b2be_${r.id}_amount" type="number" value="${r.amountWon!=null?r.amountWon:''}" style="width:110px"></td>
+      <td><input id="b2be_${r.id}_qty" type="number" value="${r.qty!=null?r.qty:''}" style="width:80px"></td>
+      <td>${escapeHtml(r.empName)}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-primary" onclick="saveEditSubB2bSale('${r.id}')">저장</button>
+        <button class="btn btn-sm" onclick="cancelEditSubB2bSale()">취소</button>
+      </td>
+    </tr>`;
+    }
+    return `
     <tr>
       <td>${r.saleDate}</td>
       <td>${branchName(r.branchId)}</td>
@@ -3435,8 +3457,9 @@ function renderSubB2bSales(){
       <td>${fmtWon(r.amountWon)}</td>
       <td>${fmtNum(r.qty)}건</td>
       <td>${escapeHtml(r.empName)}</td>
-      <td>${isAdmin ? `<button class="btn btn-sm" onclick="deleteSubB2bSale('${r.id}')">삭제</button>` : ''}</td>
-    </tr>`).join('') || `<tr><td colspan="8" class="muted">등록된 내역이 없습니다.</td></tr>`;
+      <td style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditSubB2bSale('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubB2bSale('${r.id}')">삭제</button>` : ''}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="8" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">구독 소상공인 판매건 등록</div>
@@ -3505,9 +3528,43 @@ function addSubB2bSale(){
   renderTab('subB2bSales');
 }
 function deleteSubB2bSale(id){
-  if(SESSION.role!=='admin') return;
+  const r = DB.subB2bSales.find(x=>x.id===id);
+  if(!canEditSubB2bSale(r)){ alert('본인이 등록한 건 또는 관리자만 삭제할 수 있습니다.'); return; }
   if(!confirm('삭제하시겠습니까?')) return;
   DB.subB2bSales = DB.subB2bSales.filter(x=>x.id!==id);
+  saveDB();
+  renderTab('subB2bSales');
+}
+function startEditSubB2bSale(id){
+  const r = DB.subB2bSales.find(x=>x.id===id);
+  if(!canEditSubB2bSale(r)){ alert('본인이 등록한 건 또는 관리자만 수정할 수 있습니다.'); return; }
+  state.b2bEditId = id;
+  renderTab('subB2bSales');
+}
+function cancelEditSubB2bSale(){
+  state.b2bEditId = null;
+  renderTab('subB2bSales');
+}
+function saveEditSubB2bSale(id){
+  const r = DB.subB2bSales.find(x=>x.id===id);
+  if(!canEditSubB2bSale(r)){ alert('본인이 등록한 건 또는 관리자만 수정할 수 있습니다.'); return; }
+  const saleDate = document.getElementById(`b2be_${id}_saleDate`).value;
+  const branchId = document.getElementById(`b2be_${id}_branch`).value;
+  const companyName = document.getElementById(`b2be_${id}_company`).value.trim();
+  const model = document.getElementById(`b2be_${id}_model`).value.trim();
+  const amountWon = Number(document.getElementById(`b2be_${id}_amount`).value)||0;
+  const qty = Number(document.getElementById(`b2be_${id}_qty`).value)||0;
+  if(!saleDate || !branchId || !companyName || !model || amountWon<=0 || qty<=0){
+    alert('판매일자, 지점, 업체명, 판매모델명, 판매금액, 판매건수를 모두 입력해 주세요.');
+    return;
+  }
+  r.saleDate = saleDate;
+  r.branchId = branchId;
+  r.companyName = companyName;
+  r.model = model;
+  r.amountWon = amountWon;
+  r.qty = qty;
+  state.b2bEditId = null;
   saveDB();
   renderTab('subB2bSales');
 }
