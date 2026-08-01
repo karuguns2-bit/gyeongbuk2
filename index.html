@@ -990,6 +990,78 @@ async function pollDbForRemoteChanges(){
     }
   }catch(e){ console.error('원격 변경사항 확인 실패:', e); }
 }
+
+/* =========================================================================
+   1a3. 접속 현황 / 알림 (activity_log 테이블 — presence + 알림 + 로그인 기록)
+   heartbeat(접속 유지 신호) / login(로그인 기록) / post(게시글 등록 알림) /
+   update(관리자 자료 갱신 알림) 4가지 kind를 하나의 activity_log 테이블에
+   기록한다. kpi_db 본체와 완전히 분리된 별도 테이블이라, 잦은 접속 신호를
+   보내도 kpi_db 저장 시 발생하는 "다른 사용자가 먼저 저장했습니다" 버전
+   충돌 알림과는 무관하게 동작한다.
+   ========================================================================= */
+let heartbeatTimer = null;
+function startHeartbeat(){
+  stopHeartbeat();
+  sendHeartbeat();
+  heartbeatTimer = setInterval(sendHeartbeat, 60000);
+}
+function stopHeartbeat(){
+  if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer = null; }
+}
+async function sendHeartbeat(){
+  if(!sbClient || !SESSION) return;
+  try{
+    await sbClient.from('activity_log').insert({ emp_id: SESSION.empId, name: SESSION.name, kind: 'heartbeat' });
+    const cutoff = new Date(Date.now() - 10*60*1000).toISOString();
+    await sbClient.from('activity_log').delete().eq('kind','heartbeat').lt('created_at', cutoff);
+  }catch(e){ /* 접속 신호 실패는 조용히 무시 (핵심 기능 아님) */ }
+}
+async function fetchOnlineCount(){
+  if(!sbClient) return null;
+  try{
+    const cutoff = new Date(Date.now() - 2*60*1000).toISOString();
+    const { data, error } = await sbClient.from('activity_log').select('emp_id').eq('kind','heartbeat').gt('created_at', cutoff);
+    if(error) throw error;
+    return new Set((data||[]).map(r=>r.emp_id)).size;
+  }catch(e){ return null; }
+}
+async function logActivity(kind, message){
+  if(!sbClient || !SESSION) return;
+  try{
+    await sbClient.from('activity_log').insert({ emp_id: SESSION.empId, name: SESSION.name, kind, message: message || null });
+  }catch(e){ /* 알림 기록 실패는 조용히 무시 (핵심 기능 아님) */ }
+}
+async function fetchRecentActivity(limit){
+  if(!sbClient) return [];
+  try{
+    const { data, error } = await sbClient.from('activity_log').select('*').in('kind',['post','update']).order('created_at',{ascending:false}).limit(limit||20);
+    if(error) throw error;
+    return data || [];
+  }catch(e){ return []; }
+}
+let loginStatsCache = null;
+async function fetchLoginStats(){
+  if(!sbClient) return {};
+  try{
+    const { data, error } = await sbClient.from('activity_log').select('emp_id,created_at').eq('kind','login').order('created_at',{ascending:false}).limit(5000);
+    if(error) throw error;
+    const stats = {};
+    (data||[]).forEach(r=>{
+      if(!stats[r.emp_id]) stats[r.emp_id] = { count:0, last:null };
+      stats[r.emp_id].count++;
+      if(!stats[r.emp_id].last || r.created_at > stats[r.emp_id].last) stats[r.emp_id].last = r.created_at;
+    });
+    return stats;
+  }catch(e){ return {}; }
+}
+function loadLoginStatsIfNeeded(){
+  if(loginStatsCache || !sbClient) return;
+  fetchLoginStats().then(stats=>{
+    loginStatsCache = stats;
+    if(SESSION && state.tab==='systemAdmin') renderTab('systemAdmin');
+  });
+}
+
 function migrateDB(){
   // fills in fields for DBs saved before a feature was added.
   // (여러 사용자가 거의 동시에 로그인할 때마다 실제 변경사항이 없는데도
@@ -1138,10 +1210,14 @@ function handleLogin(){
   state.eduReminders = computeEduReminders();
   renderTab('home');
   startDbPolling();
+  startHeartbeat();
+  logActivity('login');
 }
 function handleLogout(){
   SESSION = null;
   stopDbPolling();
+  stopHeartbeat();
+  stopHomeStatusWidget();
   document.getElementById('app').classList.remove('active');
   document.getElementById('loginScreen').style.display='flex';
   document.getElementById('loginId').value=''; document.getElementById('loginPw').value='';
@@ -1238,6 +1314,7 @@ function renderTab(tab){
   if(!['eduHq','eduInhouse','eduEtc'].includes(tab)) state.eduScheduleEditId = null;
   if(tab!=='collectContest') state.cgEditId = null;
   if(tab!=='bestPractice') state.bpEditId = null;
+  if(tab!=='systemAdmin') loginStatsCache = null;
   afterRenderHooks(tab);
 }
 
@@ -1468,7 +1545,80 @@ function renderHome(){
         </div>
       </div>
     </div>
+
+    <div id="homeStatusWidget" style="position:fixed;bottom:20px;right:20px;z-index:60;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:14px 16px;width:230px;">
+      <div style="font-weight:700;font-size:12.5px;color:var(--text-sub);" id="homeClockDate">-</div>
+      <div style="font-size:21px;font-weight:800;color:var(--primary);margin-bottom:10px;letter-spacing:.5px;" id="homeClockTime">-</div>
+      <div class="flex-between" style="padding-top:9px;border-top:1px solid var(--border);font-size:12.5px;">
+        <span class="muted">현재 접속 인원</span>
+        <b id="homeOnlineCount">-</b>
+      </div>
+      <div style="padding-top:9px;margin-top:9px;border-top:1px solid var(--border);">
+        <div class="flex-between" style="cursor:pointer;font-size:12.5px;" onclick="toggleHomeNotifList()">
+          <span class="muted">🔔 알림 <span id="homeNotifBadge" style="display:none;background:var(--bad);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:2px;"></span></span>
+          <span id="homeNotifToggleIcon" class="muted">▾</span>
+        </div>
+        <div id="homeNotifList" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto;"></div>
+      </div>
+    </div>
   `;
+}
+let homeClockTimer = null;
+let homeWidgetPollTimer = null;
+let homeNotifOpen = false;
+function startHomeStatusWidget(){
+  stopHomeStatusWidget();
+  updateHomeClock();
+  refreshHomeOnlineCount();
+  refreshHomeNotifications();
+  homeClockTimer = setInterval(updateHomeClock, 1000);
+  homeWidgetPollTimer = setInterval(()=>{ refreshHomeOnlineCount(); refreshHomeNotifications(); }, 30000);
+}
+function stopHomeStatusWidget(){
+  if(homeClockTimer){ clearInterval(homeClockTimer); homeClockTimer = null; }
+  if(homeWidgetPollTimer){ clearInterval(homeWidgetPollTimer); homeWidgetPollTimer = null; }
+}
+function updateHomeClock(){
+  const d1 = document.getElementById('homeClockDate');
+  const d2 = document.getElementById('homeClockTime');
+  if(!d1 || !d2) return;
+  const now = new Date();
+  const days = ['일','월','화','수','목','금','토'];
+  d1.textContent = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')} (${days[now.getDay()]})`;
+  d2.textContent = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+}
+async function refreshHomeOnlineCount(){
+  const el = document.getElementById('homeOnlineCount');
+  if(!el) return;
+  const count = await fetchOnlineCount();
+  el.textContent = count==null ? '-' : (count + '명');
+}
+async function refreshHomeNotifications(){
+  const listEl = document.getElementById('homeNotifList');
+  const badgeEl = document.getElementById('homeNotifBadge');
+  if(!listEl) return;
+  const items = await fetchRecentActivity(20);
+  const seenAt = localStorage.getItem('lg_kpi_notif_seen') || '';
+  const unread = items.filter(it=>it.created_at > seenAt).length;
+  if(badgeEl){
+    if(unread > 0){ badgeEl.style.display='inline-block'; badgeEl.textContent = String(unread); }
+    else badgeEl.style.display='none';
+  }
+  listEl.innerHTML = items.length>0
+    ? items.map(it=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:11.5px;line-height:1.4;"><div>${escapeHtml(it.message||'')}</div><div class="muted" style="font-size:10px;margin-top:2px;">${String(it.created_at||'').slice(0,16).replace('T',' ')}</div></div>`).join('')
+    : `<div class="muted" style="padding:6px 0;font-size:11.5px;">새 알림이 없습니다.</div>`;
+}
+function toggleHomeNotifList(){
+  homeNotifOpen = !homeNotifOpen;
+  const listEl = document.getElementById('homeNotifList');
+  const iconEl = document.getElementById('homeNotifToggleIcon');
+  if(listEl) listEl.style.display = homeNotifOpen ? 'block' : 'none';
+  if(iconEl) iconEl.textContent = homeNotifOpen ? '▴' : '▾';
+  if(homeNotifOpen){
+    localStorage.setItem('lg_kpi_notif_seen', new Date().toISOString());
+    const badgeEl = document.getElementById('homeNotifBadge');
+    if(badgeEl) badgeEl.style.display = 'none';
+  }
 }
 function statusBadge(status){
   if(status==='출근' || status==='근무') return `<span class="badge good">${status}</span>`;
@@ -1526,6 +1676,13 @@ function renameEmpIdEverywhere(oldId, newId){
   }
   if(SESSION && SESSION.empId===oldId) SESSION.empId = newId;
 }
+function loginHistoryLabel(empId){
+  if(!sbClient) return '-';
+  if(!loginStatsCache) return '불러오는 중...';
+  const s = loginStatsCache[empId];
+  if(!s) return '기록 없음';
+  return `${s.count}회 · 최근 ${String(s.last||'').slice(0,16).replace('T',' ')}`;
+}
 function renderSystemAdmin(){
   if(!isSystemAdmin()){
     return `<div class="page-title">시스템 관리</div><div class="page-desc">관리자만 접근할 수 있는 화면입니다.</div>`;
@@ -1544,6 +1701,7 @@ function renderSystemAdmin(){
         <td>${u.empId==='admin' ? '본사(전체)' : `<select id="sueBranch_${u.empId}" style="width:130px" ${u.role==='admin'?'disabled':''}>${branchOptionsHtml(u.role==='admin'?'':u.branchId, true)}</select>`}</td>
         <td><select id="sueRole_${u.empId}" style="width:90px" ${u.empId==='admin'?'disabled':''} onchange="syncEditUserBranchByRole('${u.empId}')">${roleOptionsHtml(u.role)}</select></td>
         <td><input id="suePw_${u.empId}" type="text" placeholder="변경 시에만 입력" style="width:110px"></td>
+        <td class="muted" style="font-size:11px;">${loginHistoryLabel(u.empId)}</td>
         <td style="white-space:nowrap;">
           <button class="btn btn-sm btn-primary" onclick="saveEditSystemUser('${u.empId}')">저장</button>
           <button class="btn btn-sm" onclick="cancelEditSystemUser()">취소</button>
@@ -1557,6 +1715,7 @@ function renderSystemAdmin(){
         <td>${u.empId==='admin' ? '본사(전체)' : branchName(u.branchId)}</td>
         <td><span class="badge ${u.role==='admin'?'good':(u.role==='manager'?'warn':'')}">${ROLE_LABELS[u.role]||u.role}</span></td>
         <td class="muted">${u.pw}</td>
+        <td class="muted" style="font-size:11px;">${loginHistoryLabel(u.empId)}</td>
         <td style="white-space:nowrap;">
           <button class="btn btn-sm" onclick="startEditSystemUser('${u.empId}')">수정</button>
           <button class="btn btn-sm" onclick="resetSystemUserPw('${u.empId}')">비번 초기화</button>
@@ -1585,7 +1744,7 @@ function renderSystemAdmin(){
       <h3>계정 관리 <small>(현재 등록된 매니저/사원 명단)</small></h3>
       <div class="muted" style="margin-bottom:8px;font-size:12.5px;">사번·이름·지점명·직책을 직접 수정할 수 있고, 비밀번호는 초기화(1234)하거나 "수정"에서 새 비밀번호를 지정할 수 있습니다.</div>
       <table>
-        <thead><tr><th>사번</th><th>이름</th><th>지점명</th><th>직책</th><th>비밀번호</th><th></th></tr></thead>
+        <thead><tr><th>사번</th><th>이름</th><th>지점명</th><th>직책</th><th>비밀번호</th><th>접속 기록</th><th></th></tr></thead>
         <tbody>${userRows}</tbody>
       </table>
     </div>
@@ -2564,6 +2723,7 @@ function handleSubscriptionFile(evt){
       }
       if(result.error){ msgEl.textContent = result.error; return; }
       saveDB();
+      logActivity('update', `${SESSION.name}님(관리자)이 [구독 실적] 데이터를 갱신했습니다 (${result.period})`);
       msgEl.innerHTML = `<span style="color:var(--good);">${result.period} 구독 실적 반영 완료: ${result.branchCount}개 지점 · ${result.repCount}명</span>`;
       renderTab('systemAdmin');
     }catch(err){
@@ -2994,6 +3154,7 @@ function handleSalesFile(evt){
       }
       DB.salesData = DB.salesData.concat(result.rows);
       saveDB();
+      logActivity('update', `${SESSION.name}님(관리자)이 [실적/제품 분석] 데이터를 갱신했습니다 (${result.rows.length}건 추가)`);
       let msg = `${result.rows.length}건의 실적 데이터를 추가했습니다.`;
       if(result.newBranches.length>0) msg += ` 신규 지점 생성: ${result.newBranches.join(', ')}.`;
       if(result.newUsers.length>0) msg += ` 신규 계정 생성(초기 비밀번호 1234): ${result.newUsers.map(u=>`${u.name}(${u.empId})`).join(', ')}.`;
@@ -3362,6 +3523,7 @@ function handleIntegratedBoardFile(evt){
       if(result.newUserCount) msg += ` 신규 계정 ${result.newUserCount}명(초기 비밀번호 1234).`;
       if(result.warnings.length) msg += ' ⚠ ' + result.warnings.join(' ');
       msgEl.innerHTML = msg;
+      logActivity('update', `${SESSION.name}님(관리자)이 [통합 보드] 데이터를 갱신했습니다 (목표/경쟁력/실적/스케줄/재고)`);
       renderTab(state.tab);
     }catch(err){
       msgEl.textContent = '파일 처리 중 오류: ' + err.message;
@@ -3662,6 +3824,7 @@ function submitExecPhoto(){
       uploaderEmpId: SESSION.empId, uploaderName: SESSION.name, createdAt: new Date().toISOString()
     });
     saveDB();
+    logActivity('post', `${SESSION.name}님이 [실행력 점검 사진]을 등록했습니다 (${branchName(branchId)})`);
     renderTab('collectPhoto');
   };
   reader.readAsDataURL(file);
@@ -3884,6 +4047,7 @@ function submitGiftcardRequest(){
       requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
     });
     saveDB();
+    logActivity('post', `${SESSION.name}님이 [모바일 상품권]을 등록했습니다`);
     renderTab('collectGiftcard');
   }
   const file = fileInput.files && fileInput.files[0];
@@ -4158,6 +4322,7 @@ function submitContestGift(){
       requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
     });
     saveDB();
+    logActivity('post', `${SESSION.name}님이 [컨테스트 사은품]을 등록했습니다`);
     renderTab('collectContest');
   }
   if(evidenceFiles.length>0){
@@ -4556,6 +4721,7 @@ function submitBestPractice(){
       authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString()
     });
     saveDB();
+    logActivity('post', `${SESSION.name}님이 [우수 활동 사례]를 등록했습니다`);
     renderTab('bestPractice');
   }
   if(files.length===0){ finalize([]); return; }
@@ -5538,6 +5704,7 @@ function handleKakaoFriendsFile(evt){
       const newKeys = new Set(parsed.map(keyOf));
       DB.kakaoFriends = (DB.kakaoFriends||[]).filter(r=> !newKeys.has(keyOf(r))).concat(parsed);
       saveDB();
+      logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 관리] 데이터를 갱신했습니다`);
       renderTab('kakaoFriends');
       alert(`${parsed.length}건의 플친 데이터가 반영되었습니다.`);
     } catch(err){
@@ -6099,6 +6266,8 @@ function exportCurrentPagePDF(){
    ========================================================================= */
 function afterRenderHooks(tab){
   if(tab==='home') startNoticeRotation();
+  if(tab==='home') startHomeStatusWidget(); else stopHomeStatusWidget();
+  if(tab==='systemAdmin') loadLoginStatsIfNeeded();
   updateInventoryNavLabel();
 }
 function updateInventoryNavLabel(){
