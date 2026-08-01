@@ -1612,14 +1612,14 @@ function renderHome(){
       <div style="font-size:21px;font-weight:800;color:var(--primary);margin-bottom:10px;letter-spacing:.5px;" id="homeClockTime">-</div>
       <div class="flex-between" style="padding-top:9px;border-top:1px solid var(--border);font-size:12.5px;">
         <span class="muted">현재 접속 인원</span>
-        <b id="homeOnlineCount">-</b>
+        <b id="homeOnlineCount">${cachedOnlineCount!=null ? cachedOnlineCount+'명' : '-'}</b>
       </div>
       <div style="padding-top:9px;margin-top:9px;border-top:1px solid var(--border);">
         <div class="flex-between" style="cursor:pointer;font-size:12.5px;" onclick="toggleHomeNotifList()">
-          <span class="muted">🔔 알림 <span id="homeNotifBadge" style="display:none;background:var(--bad);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:2px;"></span></span>
+          <span class="muted">🔔 알림 <span id="homeNotifBadge" style="${homeNotifBadgeStyle(cachedNotifItems)}">${homeNotifUnreadCount(cachedNotifItems)}</span></span>
           <span id="homeNotifToggleIcon" class="muted">▾</span>
         </div>
-        <div id="homeNotifList" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto;"></div>
+        <div id="homeNotifList" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto;">${homeNotifListHtml(cachedNotifItems)}</div>
       </div>
     </div>
   `;
@@ -1627,6 +1627,26 @@ function renderHome(){
 let homeClockTimer = null;
 let homeWidgetPollTimer = null;
 let homeNotifOpen = false;
+// 홈 탭을 벗어났다 다시 들어와도 "-"로 리셋되지 않도록, 마지막으로 불러온 접속 인원/알림
+// 값을 메모리에 캐시해두고 재진입 시 즉시 그 값으로 그려준다 (백그라운드로 최신값 재요청).
+let cachedOnlineCount = null;
+let cachedNotifItems = null;
+function homeNotifUnreadCount(items){
+  if(!items) return '';
+  const seenAt = localStorage.getItem('lg_kpi_notif_seen') || '';
+  const unread = items.filter(it=>it.created_at > seenAt).length;
+  return unread > 0 ? String(unread) : '';
+}
+function homeNotifBadgeStyle(items){
+  const has = items && homeNotifUnreadCount(items) !== '';
+  return `display:${has?'inline-block':'none'};background:var(--bad);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;margin-left:2px;`;
+}
+function homeNotifListHtml(items){
+  if(!items) return '';
+  return items.length>0
+    ? items.map(it=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:11.5px;line-height:1.4;"><div>${escapeHtml(it.message||'')}</div><div class="muted" style="font-size:10px;margin-top:2px;">${String(it.created_at||'').slice(0,16).replace('T',' ')}</div></div>`).join('')
+    : `<div class="muted" style="padding:6px 0;font-size:11.5px;">새 알림이 없습니다.</div>`;
+}
 function startHomeStatusWidget(){
   stopHomeStatusWidget();
   updateHomeClock();
@@ -1649,25 +1669,25 @@ function updateHomeClock(){
   d2.textContent = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
 }
 async function refreshHomeOnlineCount(){
+  const count = await fetchOnlineCount();
+  cachedOnlineCount = count;
   const el = document.getElementById('homeOnlineCount');
   if(!el) return;
-  const count = await fetchOnlineCount();
   el.textContent = count==null ? '-' : (count + '명');
 }
 async function refreshHomeNotifications(){
+  const items = await fetchRecentActivity(20);
+  cachedNotifItems = items;
   const listEl = document.getElementById('homeNotifList');
   const badgeEl = document.getElementById('homeNotifBadge');
   if(!listEl) return;
-  const items = await fetchRecentActivity(20);
   const seenAt = localStorage.getItem('lg_kpi_notif_seen') || '';
   const unread = items.filter(it=>it.created_at > seenAt).length;
   if(badgeEl){
     if(unread > 0){ badgeEl.style.display='inline-block'; badgeEl.textContent = String(unread); }
     else badgeEl.style.display='none';
   }
-  listEl.innerHTML = items.length>0
-    ? items.map(it=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:11.5px;line-height:1.4;"><div>${escapeHtml(it.message||'')}</div><div class="muted" style="font-size:10px;margin-top:2px;">${String(it.created_at||'').slice(0,16).replace('T',' ')}</div></div>`).join('')
-    : `<div class="muted" style="padding:6px 0;font-size:11.5px;">새 알림이 없습니다.</div>`;
+  listEl.innerHTML = homeNotifListHtml(items);
 }
 function toggleHomeNotifList(){
   homeNotifOpen = !homeNotifOpen;
@@ -6782,28 +6802,4 @@ function exportCurrentPagePDF(){
   });
 }
 
-/* =========================================================================
-   10. INIT
-   ========================================================================= */
-function afterRenderHooks(tab){
-  if(tab==='home') startNoticeRotation();
-  if(tab==='home') startHomeStatusWidget(); else stopHomeStatusWidget();
-  if(tab==='systemAdmin') loadLoginStatsIfNeeded();
-  updateInventoryNavLabel();
-  enableDragDropForFileInputs();
-}
-function updateInventoryNavLabel(){
-  const el = document.getElementById('navInventoryDate');
-  if(el) el.textContent = todayStr() + ' 기준';
-}
-
-(async function initApp(){
-  await loadDB();
-  updateInventoryNavLabel();
-  const overlay = document.getElementById('loginLoadingOverlay');
-  if(overlay) overlay.style.display = 'none';
-})();
-document.getElementById('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') handleLogin(); });
-</script>
-</body>
-</html>
+/* ===========================
