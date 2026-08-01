@@ -2111,7 +2111,11 @@ function renderNoticeBanner(){
   `;
 }
 function isImageAttachment(f){
-  return /^data:image\//i.test((f && f.dataUrl) || '');
+  const v = (f && f.dataUrl) || '';
+  if(/^data:image\//i.test(v)) return true;
+  // Storage로 옮겨진 사진은 base64가 아니라 URL로 저장되므로 확장자로 판별한다.
+  if(/^https?:\/\//i.test(v) && /\.(png|jpe?g|gif|webp|bmp|avif)(\?|#|$)/i.test(v)) return true;
+  return false;
 }
 function noticeAttachmentHtml(f, size, removeOnClick){
   const removeBtn = removeOnClick ? `<span onclick="${removeOnClick}" title="삭제" style="position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;border-radius:50%;width:16px;height:16px;font-size:11px;line-height:16px;text-align:center;cursor:pointer;">×</span>` : '';
@@ -2332,7 +2336,9 @@ function cancelEditNoticeBoard(){
 function deleteNoticeBoard(id){
   if(!canEditNotice()) return;
   if(!confirm('이 공지를 삭제하시겠습니까?')) return;
+  const target = DB.notices.find(x=>x.id===id);
   DB.notices = DB.notices.filter(x=>x.id!==id);
+  if(target) (target.attachments||[]).forEach(f=>deleteFromStorage(f.dataUrl));
   state.noticeIndex = 0;
   saveDB();
   renderTab('notices');
@@ -2341,7 +2347,9 @@ function removeNoticeAttachment(id, idx){
   if(!canEditNotice()) return;
   const n = DB.notices.find(x=>x.id===id);
   if(!n || !n.attachments) return;
+  const removed = n.attachments[idx];
   n.attachments.splice(idx, 1);
+  if(removed) deleteFromStorage(removed.dataUrl);
   saveDB();
   renderTab('notices');
 }
@@ -2496,13 +2504,16 @@ function deleteInfoReport(id){
   if(!canEditInfoReport(r)){ alert('본인이 작성한 글 또는 관리자만 삭제할 수 있습니다.'); return; }
   if(!confirm('이 정보보고를 삭제하시겠습니까?')) return;
   DB.infoReports = DB.infoReports.filter(x=>x.id!==id);
+  (r.attachments||[]).forEach(f=>deleteFromStorage(f.dataUrl));
   saveDB();
   renderTab('infoReports');
 }
 function removeInfoReportAttachment(id, idx){
   const r = DB.infoReports.find(x=>x.id===id);
   if(!canEditInfoReport(r) || !r.attachments) return;
+  const removed = r.attachments[idx];
   r.attachments.splice(idx, 1);
+  if(removed) deleteFromStorage(removed.dataUrl);
   saveDB();
   renderTab('infoReports');
 }
@@ -4346,7 +4357,9 @@ function submitExecPhoto(){
 }
 function deleteExecPhoto(id){
   if(!confirm('삭제하시겠습니까?')) return;
+  const target = DB.execPhotos.find(r=>r.id===id);
   DB.execPhotos = DB.execPhotos.filter(r=>r.id!==id);
+  if(target) deleteFromStorage(target.photoDataUrl);
   saveDB();
   renderTab('collectPhoto');
 }
@@ -4578,6 +4591,7 @@ function deleteGiftcardRequest(id){
   if(!canEditGiftcardRequest(r)){ alert('본인이 등록한 건 또는 관리자만 삭제할 수 있습니다.'); return; }
   if(!confirm('삭제하시겠습니까?')) return;
   DB.giftcardRequests = DB.giftcardRequests.filter(x=>x.id!==id);
+  if(r) deleteFromStorage(r.receiptDataUrl);
   saveDB();
   renderTab('collectGiftcard');
 }
@@ -4834,18 +4848,61 @@ function compressImageDataUrl(dataUrl, maxDim, quality){
     }catch(e){ resolve(dataUrl); }
   });
 }
+// 압축된 파일을 Supabase Storage(attachments 버킷)에 올리고 공개 URL을 돌려준다.
+// 실패하거나 sbClient가 없으면 null을 반환하며, 호출부는 base64로 폴백한다.
+// (사진을 DB jsonb에 직접 embedding하지 않고 별도 저장소로 옮겨서 DB가 계속 커지는 문제를
+//  근본적으로 막기 위한 조치 - 2026.08)
+async function uploadBlobToStorage(blob, filename, contentType){
+  if(!sbClient) return null;
+  try{
+    let ext = 'bin';
+    if(contentType === 'image/jpeg') ext = 'jpg';
+    else if(filename && filename.includes('.')) ext = (filename.split('.').pop().replace(/[^a-zA-Z0-9]/g,'').slice(0,10)) || 'bin';
+    const path = `${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+    const { error } = await sbClient.storage.from('attachments').upload(path, blob, { contentType: contentType || blob.type || 'application/octet-stream', upsert:false });
+    if(error) throw error;
+    const { data } = sbClient.storage.from('attachments').getPublicUrl(path);
+    return (data && data.publicUrl) || null;
+  }catch(e){
+    console.error('Storage 업로드 실패:', e);
+    return null;
+  }
+}
+// Storage의 공개 URL에서 버킷 내부 경로만 추출한다 (삭제 시 사용).
+function storagePathFromUrl(url){
+  if(!url || typeof url !== 'string') return null;
+  const marker = '/storage/v1/object/public/attachments/';
+  const idx = url.indexOf(marker);
+  if(idx===-1) return null;
+  return url.slice(idx + marker.length);
+}
+// 첨부가 삭제될 때 Storage에 남은 실제 파일도 함께 정리한다 (best-effort, 실패해도 무시).
+function deleteFromStorage(url){
+  const path = storagePathFromUrl(url);
+  if(!path || !sbClient) return;
+  try{ sbClient.storage.from('attachments').remove([path]).catch(()=>{}); }catch(e){ /* 무시 */ }
+}
 function readFileAsDataUrl(file){
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onload = async e=>{
       let dataUrl = e.target.result;
+      let contentType = file.type || 'application/octet-stream';
       // gif는 애니메이션이 깨질 수 있어 압축 대상에서 제외. 이미지가 아니면(PDF 등) 그대로 통과.
       if(file.type && file.type.startsWith('image/') && file.type !== 'image/gif'){
         try{
           const compressed = await compressImageDataUrl(dataUrl, 1600, 0.72);
-          if(compressed && compressed.length < dataUrl.length) dataUrl = compressed;
+          if(compressed && compressed.length < dataUrl.length){ dataUrl = compressed; contentType = 'image/jpeg'; }
         }catch(err){ /* 압축 실패 시 원본 사용 */ }
       }
+      // 가능하면 base64로 DB에 직접 넣지 않고 Storage에 올려서 주소만 저장한다.
+      try{
+        if(sbClient){
+          const blob = await (await fetch(dataUrl)).blob();
+          const url = await uploadBlobToStorage(blob, file.name, contentType);
+          if(url){ resolve({dataUrl:url, name:file.name}); return; }
+        }
+      }catch(err){ /* 업로드 실패 시 아래에서 base64로 폴백 */ }
       resolve({dataUrl, name:file.name});
     };
     reader.onerror = reject;
@@ -4897,6 +4954,7 @@ function deleteContestGift(id){
   if(!canEditContestGift(r)){ alert('본인이 등록한 건 또는 관리자만 삭제할 수 있습니다.'); return; }
   if(!confirm('삭제하시겠습니까?')) return;
   DB.contestGifts = DB.contestGifts.filter(r=>r.id!==id);
+  (r.evidenceFiles||[]).forEach(f=>deleteFromStorage(f.dataUrl));
   saveDB();
   renderTab('collectContest');
 }
@@ -5096,6 +5154,7 @@ function deleteSubTierContest(id){
   if(!canEditSubTierContest(r)){ alert('본인이 등록한 건 또는 관리자만 삭제할 수 있습니다.'); return; }
   if(!confirm('삭제하시겠습니까?')) return;
   DB.subTierContestGifts = DB.subTierContestGifts.filter(x=>x.id!==id);
+  (r.evidenceFiles||[]).forEach(f=>deleteFromStorage(f.dataUrl));
   saveDB();
   renderTab('subTierContest');
 }
@@ -5508,6 +5567,7 @@ function deleteBestPractice(id){
   if(!(SESSION.role==='admin' || p.authorEmpId===SESSION.empId)) return;
   if(!confirm('삭제하시겠습니까?')) return;
   DB.bestPractices = DB.bestPractices.filter(x=>x.id!==id);
+  (p.attachments||[]).forEach(f=>deleteFromStorage(f.dataUrl));
   saveDB();
   renderTab('bestPractice');
 }
@@ -5916,7 +5976,9 @@ function submitSuggestion(){
 function deleteSuggestion(id){
   if(SESSION.role!=='admin') return;
   if(!confirm('삭제하시겠습니까?')) return;
+  const target = DB.suggestions.find(x=>x.id===id);
   DB.suggestions = DB.suggestions.filter(x=>x.id!==id);
+  if(target) deleteFromStorage(target.attachmentDataUrl);
   saveDB();
   renderTab('suggestions');
 }
