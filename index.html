@@ -6992,4 +6992,89 @@ function exportCurrentPageExcel(){
   const hasPhotos = tables.some(t=>t.querySelector('img.xlsx-photo'));
   if(hasPhotos){ exportTablesWithPhotosExcel(tables); return; }
   try{
-    const wb = XLSX.utils.book_new(
+    const wb = XLSX.utils.book_new();
+    const used = new Set();
+    tables.forEach((t,i)=>{
+      let name = exportSheetName(t,i);
+      let base = name, n = 2;
+      while(used.has(name)){ name = base.slice(0,28) + '_' + n; n++; }
+      used.add(name);
+      const ws = XLSX.utils.table_to_sheet(t);
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    });
+    const filename = sanitizeExportFileName(currentPageTitle()) + '_' + todayStr() + '.xlsx';
+    XLSX.writeFile(wb, filename);
+  }catch(e){
+    alert('엑셀 파일 생성 중 오류가 발생했습니다.');
+  }
+}
+function exportCurrentPagePDF(){
+  const tables = Array.from(document.querySelectorAll('#mainContent table'));
+  if(tables.length===0){ alert('현재 화면에는 PDF로 내보낼 내용이 없습니다.'); return; }
+  if(typeof html2canvas==='undefined' || typeof window.jspdf==='undefined'){
+    alert('PDF 생성 모듈을 불러오지 못했습니다. 인터넷 연결 상태를 확인한 뒤 다시 시도해 주세요.');
+    return;
+  }
+  const target = document.getElementById('mainContent');
+  const pageTitle = currentPageTitle();
+  html2canvas(target, {scale:2, backgroundColor:'#ffffff', useCORS:true}).then(canvas=>{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({orientation:'p', unit:'pt', format:'a4'});
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 24;
+    const titleH = 26;
+    const imgWidth = pageWidth - margin*2;
+    const imgHeight = canvas.height * (imgWidth / canvas.width);
+    const imgData = canvas.toDataURL('image/png');
+    const firstPageImgSpace = pageHeight - margin - titleH - margin;
+
+    doc.setFontSize(12);
+    doc.text(`${pageTitle} (${todayStr()} 기준)`, margin, margin + 12);
+
+    if(imgHeight <= firstPageImgSpace){
+      doc.addImage(imgData, 'PNG', margin, margin + titleH, imgWidth, imgHeight);
+    } else {
+      // 표준 html2canvas+jsPDF 다중 페이지 분할 패턴: 같은 이미지를 매 페이지마다 위로 이동시켜 그려서 자연스럽게 이어붙임
+      let heightLeft = imgHeight;
+      doc.addImage(imgData, 'PNG', margin, margin + titleH, imgWidth, imgHeight);
+      heightLeft -= firstPageImgSpace;
+      while(heightLeft > 0){
+        doc.addPage();
+        const offset = imgHeight - heightLeft;
+        doc.addImage(imgData, 'PNG', margin, margin - offset, imgWidth, imgHeight);
+        heightLeft -= (pageHeight - margin*2);
+      }
+    }
+    const filename = sanitizeExportFileName(pageTitle) + '_' + todayStr() + '.pdf';
+    doc.save(filename);
+  }).catch(()=>{
+    alert('PDF 파일 생성 중 오류가 발생했습니다.');
+  });
+}
+
+/* =========================================================================
+   10. INIT
+   ========================================================================= */
+function afterRenderHooks(tab){
+  if(tab==='home') startNoticeRotation();
+  if(tab==='home') startHomeStatusWidget(); else stopHomeStatusWidget();
+  if(tab==='systemAdmin') loadLoginStatsIfNeeded();
+  updateInventoryNavLabel();
+  enableDragDropForFileInputs();
+}
+function updateInventoryNavLabel(){
+  const el = document.getElementById('navInventoryDate');
+  if(el) el.textContent = todayStr() + ' 기준';
+}
+
+(async function initApp(){
+  await loadDB();
+  updateInventoryNavLabel();
+  const overlay = document.getElementById('loginLoadingOverlay');
+  if(overlay) overlay.style.display = 'none';
+})();
+document.getElementById('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') handleLogin(); });
+</script>
+</body>
+</html>
