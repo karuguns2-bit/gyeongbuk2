@@ -1814,6 +1814,13 @@ function renderSystemAdmin(){
     <div class="page-desc">관리자 전용 화면입니다. 계정(매니저/사원) 관리, 신규 계정 생성, 각종 데이터 업로드를 이 화면에서 한 번에 처리할 수 있습니다.</div>
 
     <div class="card" style="margin-bottom:16px;">
+      <h3>DB 용량 최적화</h3>
+      <div class="muted" style="margin-bottom:8px;font-size:12.5px;">그동안 등록된 사진 첨부가 많아지면 전체 저장/불러오기 속도가 느려지거나 오류가 발생할 수 있습니다. 아래 버튼을 누르면 기존에 저장된 사진들을 화질 손상 없이 용량만 압축합니다. (새로 올리는 사진은 자동으로 압축되어 저장됩니다)</div>
+      <button class="btn btn-primary" onclick="optimizeDbImages()">기존 사진 압축 실행</button>
+      <div id="dbOptStatus" class="small-note" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
       <h3>신규 계정 생성</h3>
       <div class="muted" style="margin-bottom:8px;font-size:12.5px;">이름과 사번만 입력해도 계정이 생성됩니다 (초기 비밀번호 1234). 지점명과 직책도 함께 지정할 수 있습니다.</div>
       <div class="form-row">
@@ -1918,6 +1925,51 @@ function deleteSystemUser(empId){
   });
   saveDB();
   renderTab('systemAdmin');
+}
+// 공유 DB에 이미 저장되어 있는 사진들을 화질은 유지한 채 용량만 줄여서 재저장한다.
+// (사진 첨부가 누적되어 DB가 커지면서 저장/불러오기가 느려지거나 실패하는 문제 대응 - 2026.08)
+function collectDbImageTargets(){
+  const targets = [];
+  (DB.execPhotos||[]).forEach(r=>{ if(r.photoDataUrl) targets.push({get:()=>r.photoDataUrl, set:v=>{r.photoDataUrl=v;}}); });
+  (DB.giftcardRequests||[]).forEach(r=>{ if(r.receiptDataUrl) targets.push({get:()=>r.receiptDataUrl, set:v=>{r.receiptDataUrl=v;}}); });
+  (DB.notices||[]).forEach(n=>(n.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
+  (DB.infoReports||[]).forEach(r=>(r.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
+  (DB.bestPractices||[]).forEach(p=>(p.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
+  (DB.suggestions||[]).forEach(s=>{ if(s.attachmentDataUrl) targets.push({get:()=>s.attachmentDataUrl, set:v=>{s.attachmentDataUrl=v;}}); });
+  (DB.contestGifts||[]).forEach(r=>(r.evidenceFiles||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
+  (DB.subTierContestGifts||[]).forEach(r=>(r.evidenceFiles||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
+  return targets;
+}
+async function optimizeDbImages(){
+  if(!isSystemAdmin()) return;
+  const statusEl = document.getElementById('dbOptStatus');
+  function setStatus(msg){ if(statusEl) statusEl.textContent = msg; }
+  const targets = collectDbImageTargets().filter(t=>{
+    const v = t.get();
+    return v && /^data:image\//i.test(v) && !/^data:image\/gif/i.test(v);
+  });
+  if(targets.length===0){ setStatus('압축할 사진이 없습니다.'); return; }
+  if(!confirm(`저장된 사진 ${targets.length}장을 압축합니다. 사진이 많으면 1~2분 정도 걸릴 수 있습니다. 진행하시겠습니까?`)) return;
+  let done=0, shrunk=0, before=0, after=0;
+  for(const t of targets){
+    const orig = t.get();
+    before += orig.length;
+    try{
+      const compressed = await compressImageDataUrl(orig, 1600, 0.72);
+      if(compressed && compressed.length < orig.length){ t.set(compressed); shrunk++; after += compressed.length; }
+      else { after += orig.length; }
+    }catch(e){ after += orig.length; }
+    done++;
+    if(done % 5 === 0 || done===targets.length) setStatus(`압축 중... (${done}/${targets.length})`);
+  }
+  setStatus('저장 중...');
+  try{
+    await pushDBToServer();
+    const savedKB = Math.max(0, Math.round((before-after)/1024));
+    setStatus(`완료: 사진 ${shrunk}/${targets.length}장을 압축해 약 ${savedKB.toLocaleString()}KB 절약했습니다.`);
+  }catch(e){
+    setStatus('사진 압축은 완료했지만 저장 중 오류가 발생했습니다. 다시 시도해 주세요.');
+  }
 }
 function syncNewUserBranchByRole(){
   const roleSel = document.getElementById('suNewRole');
@@ -2291,17 +2343,7 @@ function submitNoticeBoard(){
     renderTab('notices');
   }
   if(files.length===0){ finalize([]); return; }
-  const attachments = [];
-  let remaining = files.length;
-  files.forEach(file=>{
-    const reader = new FileReader();
-    reader.onload = e=>{
-      attachments.push({dataUrl: e.target.result, name: file.name});
-      remaining--;
-      if(remaining===0) finalize(attachments);
-    };
-    reader.readAsDataURL(file);
-  });
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>{ if(msgEl) msgEl.textContent = '파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'; });
 }
 function saveEditNoticeBoard(id){
   if(!canEditNotice()) return;
@@ -2323,17 +2365,7 @@ function saveEditNoticeBoard(id){
     renderTab('notices');
   }
   if(files.length===0){ finalize([]); return; }
-  const newAttachments = [];
-  let remaining = files.length;
-  files.forEach(file=>{
-    const reader = new FileReader();
-    reader.onload = e=>{
-      newAttachments.push({dataUrl: e.target.result, name: file.name});
-      remaining--;
-      if(remaining===0) finalize(newAttachments);
-    };
-    reader.readAsDataURL(file);
-  });
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
 }
 
 /* =========================================================================
@@ -2475,17 +2507,7 @@ function submitInfoReport(){
     renderTab('infoReports');
   }
   if(files.length===0){ finalize([]); return; }
-  const attachments = [];
-  let remaining = files.length;
-  files.forEach(file=>{
-    const reader = new FileReader();
-    reader.onload = e=>{
-      attachments.push({dataUrl: e.target.result, name: file.name});
-      remaining--;
-      if(remaining===0) finalize(attachments);
-    };
-    reader.readAsDataURL(file);
-  });
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>{ if(msgEl) msgEl.textContent = '파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'; });
 }
 function saveEditInfoReport(id){
   const r = DB.infoReports.find(x=>x.id===id);
@@ -2506,17 +2528,7 @@ function saveEditInfoReport(id){
     renderTab('infoReports');
   }
   if(files.length===0){ finalize([]); return; }
-  const newAttachments = [];
-  let remaining = files.length;
-  files.forEach(file=>{
-    const reader = new FileReader();
-    reader.onload = e=>{
-      newAttachments.push({dataUrl: e.target.result, name: file.name});
-      remaining--;
-      if(remaining===0) finalize(newAttachments);
-    };
-    reader.readAsDataURL(file);
-  });
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
 }
 
 /* =========================================================================
@@ -4301,18 +4313,16 @@ function submitExecPhoto(){
   const file = fileInput.files && fileInput.files[0];
   if(!file){ alert('사진을 선택해 주세요.'); return; }
   if(file.size > 5*1024*1024){ alert('사진은 5MB 이하로 업로드해 주세요.'); return; }
-  const reader = new FileReader();
-  reader.onload = e=>{
+  readFileAsDataUrl(file).then(({dataUrl})=>{
     DB.execPhotos.push({
       id: 'ep_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      branchId, photoDataUrl: e.target.result, photoName: file.name,
+      branchId, photoDataUrl: dataUrl, photoName: file.name,
       uploaderEmpId: SESSION.empId, uploaderName: SESSION.name, createdAt: new Date().toISOString()
     });
     saveDB();
     logActivity('post', `${SESSION.name}님이 [실행력 점검 사진]을 등록했습니다 (${branchName(branchId)})`);
     renderTab('collectPhoto');
-  };
-  reader.readAsDataURL(file);
+  }).catch(()=>alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
 }
 function deleteExecPhoto(id){
   if(!confirm('삭제하시겠습니까?')) return;
@@ -4538,9 +4548,7 @@ function submitGiftcardRequest(){
   const file = fileInput.files && fileInput.files[0];
   if(file){
     if(file.size > 3*1024*1024){ alert('영수증 이미지는 3MB 이하로 업로드해 주세요.'); return; }
-    const reader = new FileReader();
-    reader.onload = e=>finalize(e.target.result, file.name);
-    reader.readAsDataURL(file);
+    readFileAsDataUrl(file).then(({dataUrl})=>finalize(dataUrl, file.name)).catch(()=>alert('영수증 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
     finalize(null, null);
   }
@@ -4596,9 +4604,7 @@ function saveEditGiftcardRequest(id){
   const file = fileInput.files && fileInput.files[0];
   if(file){
     if(file.size > 3*1024*1024){ alert('영수증 이미지는 3MB 이하로 업로드해 주세요.'); return; }
-    const reader = new FileReader();
-    reader.onload = e=>finalize(e.target.result, file.name);
-    reader.readAsDataURL(file);
+    readFileAsDataUrl(file).then(({dataUrl})=>finalize(dataUrl, file.name)).catch(()=>alert('영수증 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
     finalize(null, null);
   }
@@ -4781,10 +4787,47 @@ function isValidGiftcardModelList(modelStr){
   if(parts.length===0) return false;
   return parts.every(p=>isValidGiftcardModel(p));
 }
+// 이미지 dataUrl을 캔버스로 리사이즈+재압축해서 용량을 줄인다.
+// (공유 DB가 사진 첨부로 계속 커지는 것을 막기 위한 조치 - 2026.08)
+// 실패하거나 원본보다 커지면 원본을 그대로 사용한다.
+function compressImageDataUrl(dataUrl, maxDim, quality){
+  return new Promise(resolve=>{
+    try{
+      const img = new Image();
+      img.onload = ()=>{
+        try{
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          const out = canvas.toDataURL('image/jpeg', quality);
+          resolve(out);
+        }catch(e){ resolve(dataUrl); }
+      };
+      img.onerror = ()=>resolve(dataUrl);
+      img.src = dataUrl;
+    }catch(e){ resolve(dataUrl); }
+  });
+}
 function readFileAsDataUrl(file){
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
-    reader.onload = e=>resolve({dataUrl:e.target.result, name:file.name});
+    reader.onload = async e=>{
+      let dataUrl = e.target.result;
+      // gif는 애니메이션이 깨질 수 있어 압축 대상에서 제외. 이미지가 아니면(PDF 등) 그대로 통과.
+      if(file.type && file.type.startsWith('image/') && file.type !== 'image/gif'){
+        try{
+          const compressed = await compressImageDataUrl(dataUrl, 1600, 0.72);
+          if(compressed && compressed.length < dataUrl.length) dataUrl = compressed;
+        }catch(err){ /* 압축 실패 시 원본 사용 */ }
+      }
+      resolve({dataUrl, name:file.name});
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
@@ -5437,17 +5480,7 @@ function submitBestPractice(){
   if(files.length===0){ finalize([]); return; }
   const oversized = files.find(f=>f.size > 5*1024*1024);
   if(oversized){ alert('첨부파일은 각 5MB 이하로 업로드해 주세요.'); return; }
-  const attachments = [];
-  let remaining = files.length;
-  files.forEach(file=>{
-    const reader = new FileReader();
-    reader.onload = e=>{
-      attachments.push({dataUrl: e.target.result, name: file.name});
-      remaining--;
-      if(remaining===0) finalize(attachments);
-    };
-    reader.readAsDataURL(file);
-  });
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
 }
 function deleteBestPractice(id){
   const p = DB.bestPractices.find(x=>x.id===id);
@@ -5495,17 +5528,7 @@ function saveEditBestPractice(id){
   if(files.length===0){ finalize([]); return; }
   const oversized = files.find(f=>f.size > 5*1024*1024);
   if(oversized){ alert('첨부파일은 각 5MB 이하로 업로드해 주세요.'); return; }
-  const newAttachments = [];
-  let remaining = files.length;
-  files.forEach(file=>{
-    const reader = new FileReader();
-    reader.onload = e=>{
-      newAttachments.push({dataUrl: e.target.result, name: file.name});
-      remaining--;
-      if(remaining===0) finalize(newAttachments);
-    };
-    reader.readAsDataURL(file);
-  });
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
 }
 
 /* =========================================================================
@@ -5865,9 +5888,7 @@ function submitSuggestion(){
   const file = fileInput.files && fileInput.files[0];
   if(file){
     if(file.size > 3*1024*1024){ alert('첨부파일은 3MB 이하로 업로드해 주세요.'); return; }
-    const reader = new FileReader();
-    reader.onload = e=>finalize(e.target.result, file.name);
-    reader.readAsDataURL(file);
+    readFileAsDataUrl(file).then(({dataUrl})=>finalize(dataUrl, file.name)).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
     finalize(null, null);
   }
@@ -6971,89 +6992,4 @@ function exportCurrentPageExcel(){
   const hasPhotos = tables.some(t=>t.querySelector('img.xlsx-photo'));
   if(hasPhotos){ exportTablesWithPhotosExcel(tables); return; }
   try{
-    const wb = XLSX.utils.book_new();
-    const used = new Set();
-    tables.forEach((t,i)=>{
-      let name = exportSheetName(t,i);
-      let base = name, n = 2;
-      while(used.has(name)){ name = base.slice(0,28) + '_' + n; n++; }
-      used.add(name);
-      const ws = XLSX.utils.table_to_sheet(t);
-      XLSX.utils.book_append_sheet(wb, ws, name);
-    });
-    const filename = sanitizeExportFileName(currentPageTitle()) + '_' + todayStr() + '.xlsx';
-    XLSX.writeFile(wb, filename);
-  }catch(e){
-    alert('엑셀 파일 생성 중 오류가 발생했습니다.');
-  }
-}
-function exportCurrentPagePDF(){
-  const tables = Array.from(document.querySelectorAll('#mainContent table'));
-  if(tables.length===0){ alert('현재 화면에는 PDF로 내보낼 내용이 없습니다.'); return; }
-  if(typeof html2canvas==='undefined' || typeof window.jspdf==='undefined'){
-    alert('PDF 생성 모듈을 불러오지 못했습니다. 인터넷 연결 상태를 확인한 뒤 다시 시도해 주세요.');
-    return;
-  }
-  const target = document.getElementById('mainContent');
-  const pageTitle = currentPageTitle();
-  html2canvas(target, {scale:2, backgroundColor:'#ffffff', useCORS:true}).then(canvas=>{
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({orientation:'p', unit:'pt', format:'a4'});
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 24;
-    const titleH = 26;
-    const imgWidth = pageWidth - margin*2;
-    const imgHeight = canvas.height * (imgWidth / canvas.width);
-    const imgData = canvas.toDataURL('image/png');
-    const firstPageImgSpace = pageHeight - margin - titleH - margin;
-
-    doc.setFontSize(12);
-    doc.text(`${pageTitle} (${todayStr()} 기준)`, margin, margin + 12);
-
-    if(imgHeight <= firstPageImgSpace){
-      doc.addImage(imgData, 'PNG', margin, margin + titleH, imgWidth, imgHeight);
-    } else {
-      // 표준 html2canvas+jsPDF 다중 페이지 분할 패턴: 같은 이미지를 매 페이지마다 위로 이동시켜 그려서 자연스럽게 이어붙임
-      let heightLeft = imgHeight;
-      doc.addImage(imgData, 'PNG', margin, margin + titleH, imgWidth, imgHeight);
-      heightLeft -= firstPageImgSpace;
-      while(heightLeft > 0){
-        doc.addPage();
-        const offset = imgHeight - heightLeft;
-        doc.addImage(imgData, 'PNG', margin, margin - offset, imgWidth, imgHeight);
-        heightLeft -= (pageHeight - margin*2);
-      }
-    }
-    const filename = sanitizeExportFileName(pageTitle) + '_' + todayStr() + '.pdf';
-    doc.save(filename);
-  }).catch(()=>{
-    alert('PDF 파일 생성 중 오류가 발생했습니다.');
-  });
-}
-
-/* =========================================================================
-   10. INIT
-   ========================================================================= */
-function afterRenderHooks(tab){
-  if(tab==='home') startNoticeRotation();
-  if(tab==='home') startHomeStatusWidget(); else stopHomeStatusWidget();
-  if(tab==='systemAdmin') loadLoginStatsIfNeeded();
-  updateInventoryNavLabel();
-  enableDragDropForFileInputs();
-}
-function updateInventoryNavLabel(){
-  const el = document.getElementById('navInventoryDate');
-  if(el) el.textContent = todayStr() + ' 기준';
-}
-
-(async function initApp(){
-  await loadDB();
-  updateInventoryNavLabel();
-  const overlay = document.getElementById('loginLoadingOverlay');
-  if(overlay) overlay.style.display = 'none';
-})();
-document.getElementById('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') handleLogin(); });
-</script>
-</body>
-</html>
+    const wb = XLSX.utils.book_new(
