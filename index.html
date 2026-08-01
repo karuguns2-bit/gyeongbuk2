@@ -1815,7 +1815,8 @@ function renderSystemAdmin(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>DB 용량 최적화</h3>
-      <div class="muted" style="margin-bottom:8px;font-size:12.5px;">그동안 등록된 사진 첨부가 많아지면 전체 저장/불러오기 속도가 느려지거나 오류가 발생할 수 있습니다. 아래 버튼을 누르면 기존에 저장된 사진들을 화질 손상 없이 용량만 압축합니다. (새로 올리는 사진은 자동으로 압축되어 저장됩니다)</div>
+      <div id="dbCapacityGauge">${dbCapacityGaugeHtml()}</div>
+      <div class="muted" style="margin:8px 0;font-size:12.5px;">그동안 등록된 사진 첨부가 많아지면 전체 저장/불러오기 속도가 느려지거나 오류가 발생할 수 있습니다. 아래 버튼을 누르면 기존에 저장된 사진들을 화질 손상 없이 용량만 압축합니다. (새로 올리는 사진은 자동으로 압축되어 저장됩니다)</div>
       <button class="btn btn-primary" onclick="optimizeDbImages()">기존 사진 압축 실행</button>
       <div id="dbOptStatus" class="small-note" style="margin-top:6px;"></div>
     </div>
@@ -1926,6 +1927,23 @@ function deleteSystemUser(empId){
   saveDB();
   renderTab('systemAdmin');
 }
+// 공유 DB 전체 용량을 가늠해 관리자에게 미리 경고를 보여준다.
+// (사진 첨부 누적으로 DB가 커지면서 저장/불러오기가 느려지거나 실패했던 문제 재발 방지 - 2026.08)
+function dbCapacityGaugeHtml(){
+  let sizeKB = 0;
+  try{ sizeKB = Math.round(JSON.stringify(DB).length / 1024); }catch(e){ return ''; }
+  const sizeLabel = sizeKB >= 1024 ? `${(sizeKB/1024).toFixed(1)}MB` : `${sizeKB}KB`;
+  let level, color, msg;
+  if(sizeKB < 5000){ level='good'; color='var(--good, #2e8b57)'; msg='정상'; }
+  else if(sizeKB < 8000){ level='warn'; color='var(--warn, #c98a00)'; msg='주의 - 용량이 늘고 있습니다. 압축을 권장합니다.'; }
+  else { level='bad'; color='var(--bad, #c0392b)'; msg='위험 - 저장/불러오기 오류가 발생할 수 있습니다. 지금 압축을 실행해 주세요.'; }
+  return `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">
+      <span class="muted" style="font-size:12.5px;">현재 DB 용량</span>
+      <b style="font-size:13.5px;color:${color};">${sizeLabel}</b>
+      <span style="font-size:11.5px;color:${color};">· ${msg}</span>
+    </div>`;
+}
 // 공유 DB에 이미 저장되어 있는 사진들을 화질은 유지한 채 용량만 줄여서 재저장한다.
 // (사진 첨부가 누적되어 DB가 커지면서 저장/불러오기가 느려지거나 실패하는 문제 대응 - 2026.08)
 function collectDbImageTargets(){
@@ -1967,6 +1985,8 @@ async function optimizeDbImages(){
     await pushDBToServer();
     const savedKB = Math.max(0, Math.round((before-after)/1024));
     setStatus(`완료: 사진 ${shrunk}/${targets.length}장을 압축해 약 ${savedKB.toLocaleString()}KB 절약했습니다.`);
+    const gaugeEl = document.getElementById('dbCapacityGauge');
+    if(gaugeEl) gaugeEl.innerHTML = dbCapacityGaugeHtml();
   }catch(e){
     setStatus('사진 압축은 완료했지만 저장 중 오류가 발생했습니다. 다시 시도해 주세요.');
   }
