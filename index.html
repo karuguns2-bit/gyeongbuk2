@@ -161,6 +161,10 @@
   .flex-between{display:flex;justify-content:space-between;align-items:center;}
   .small-note{font-size:11.5px;color:var(--text-sub);margin-top:8px;}
 
+  /* ---------- Drag & drop file upload ---------- */
+  .dropzone{border:1px dashed var(--border);border-radius:8px;padding:8px;transition:background .15s, border-color .15s;}
+  .dropzone-active{background:#fff5f8 !important;border-color:var(--primary) !important;}
+
   /* ---------- Notice banner ---------- */
   .notice-banner{
     background:linear-gradient(120deg,var(--primary) 0%,#7d0027 100%);
@@ -1283,6 +1287,50 @@ document.querySelectorAll('.nav-item').forEach(el=>{
     renderTab(el.dataset.tab);
   });
 });
+
+// 화면 어디에 파일을 놓아도 브라우저가 그 파일을 열어버리며 페이지를 벗어나는 것을 방지
+// (실제 첨부 처리는 각 업로드 영역의 dropzone 리스너에서 stopPropagation으로 가로챈다)
+['dragover','drop'].forEach(evt=>{
+  document.addEventListener(evt, e=>{ e.preventDefault(); }, false);
+});
+// 화면이 새로 렌더링될 때마다 그 안의 모든 파일 업로드 칸(<input type="file">)에
+// 드래그 앤 드롭 기능을 자동으로 붙여준다. 개별 업로드 폼을 일일이 수정할 필요 없이
+// 새로 추가되는 업로드 칸에도 그대로 적용된다.
+function enableDragDropForFileInputs(){
+  const main = document.getElementById('mainContent');
+  if(!main) return;
+  main.querySelectorAll('input[type="file"]').forEach(input=>{
+    const zone = input.closest('.field') || input.parentElement;
+    if(!zone) return;
+    const isCard = zone.classList.contains('card');
+    if(!isCard){
+      zone.classList.add('dropzone');
+      if(!zone.querySelector('.dropzone-hint')){
+        const hint = document.createElement('div');
+        hint.className = 'dropzone-hint muted';
+        hint.style.cssText = 'font-size:10.5px;margin-top:3px;';
+        hint.textContent = '파일을 이 위로 끌어다 놓아도 첨부됩니다.';
+        zone.appendChild(hint);
+      }
+    }
+    zone.addEventListener('dragover', e=>{ e.preventDefault(); e.stopPropagation(); zone.classList.add('dropzone-active'); });
+    zone.addEventListener('dragleave', e=>{ e.preventDefault(); e.stopPropagation(); zone.classList.remove('dropzone-active'); });
+    zone.addEventListener('drop', e=>{
+      e.preventDefault(); e.stopPropagation();
+      zone.classList.remove('dropzone-active');
+      const dt = e.dataTransfer;
+      if(!dt || !dt.files || dt.files.length===0) return;
+      if(input.multiple){
+        input.files = dt.files;
+      } else {
+        const dtNew = new DataTransfer();
+        dtNew.items.add(dt.files[0]);
+        input.files = dtNew.files;
+      }
+      input.dispatchEvent(new Event('change', {bubbles:true}));
+    });
+  });
+}
 
 function renderTab(tab){
   state.tab = tab;
@@ -6739,6 +6787,7 @@ function afterRenderHooks(tab){
   if(tab==='home') startHomeStatusWidget(); else stopHomeStatusWidget();
   if(tab==='systemAdmin') loadLoginStatsIfNeeded();
   updateInventoryNavLabel();
+  enableDragDropForFileInputs();
 }
 function updateInventoryNavLabel(){
   const el = document.getElementById('navInventoryDate');
