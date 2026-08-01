@@ -6246,4 +6246,316 @@ function renderProspects(){
       <td><input id="pgeProduct_${p.id}" value="${escapeHtml(p.consultProduct||'')}" style="width:140px"></td>
       <td><select id="pgePurchaseType_${p.id}" style="width:90px"><option value="">미선택</option>${PROSPECT_PURCHASE_TYPE_OPTIONS.map(o=>`<option value="${o}" ${p.purchaseType===o?'selected':''}>${o}</option>`).join('')}</select></td>
       <td><input id="pgeAmount_${p.id}" type="number" value="${p.expectedAmountWon!=null?p.expectedAmountWon:''}" style="width:100px"></td>
-      <td><select id="pgeHappy_${p.id}">${PROSPECT_HAPPY_CALL_OPTIONS.map(o=>`<option value="${o}" ${p.happyCall===o?'selected':''}>${o}</option>`).join('
+      <td><select id="pgeHappy_${p.id}">${PROSPECT_HAPPY_CALL_OPTIONS.map(o=>`<option value="${o}" ${p.happyCall===o?'selected':''}>${o}</option>`).join('')}</select></td>
+      <td><select id="pgeSale_${p.id}">${PROSPECT_SALE_STATUS_OPTIONS.map(o=>`<option value="${o}" ${p.saleStatus===o?'selected':''}>${o}</option>`).join('')}</select></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-primary" onclick="saveEditProspect('${p.id}')">저장</button>
+        <button class="btn btn-sm" onclick="cancelEditProspect()">취소</button>
+      </td>
+    </tr>`;
+    }
+    return `
+    <tr>
+      ${repCellsHtml}
+      <td>${escapeHtml(p.customerName)}</td>
+      <td>${escapeHtml(p.phone)}</td>
+      <td>${escapeHtml(p.desiredItem||'-')}</td>
+      <td>${p.desiredDate||'-'}</td>
+      <td>${escapeHtml(p.consultProduct||'-')}</td>
+      <td>${p.purchaseType ? `<span class="badge ${p.purchaseType==='구독'?'warn':''}">${p.purchaseType}</span>` : '-'}</td>
+      <td>${p.expectedAmountWon!=null ? fmtWon(p.expectedAmountWon) : '-'}</td>
+      <td>
+        <span class="badge ${p.happyCall==='실행'?'good':'bad'}">${p.happyCall}</span>
+        ${canManage ? `<button class="btn btn-sm" style="margin-left:4px;" onclick="updateProspectField('${p.id}','happyCall','${p.happyCall==='실행'?'미실행':'실행'}')">${p.happyCall==='실행'?'미실행으로 변경':'실행으로 변경'}</button>` : ''}
+      </td>
+      <td>
+        <span class="badge ${p.saleStatus==='판매'?'good':(p.saleStatus==='미판매'?'bad':'warn')}">${p.saleStatus}</span>
+        ${canManage ? `
+        <div style="margin-top:4px;display:flex;gap:3px;">
+          ${PROSPECT_SALE_STATUS_OPTIONS.map(o=>`<button class="btn btn-sm" style="padding:2px 7px;font-size:11px;${p.saleStatus===o?'opacity:.4;pointer-events:none;':''}" onclick="updateProspectField('${p.id}','saleStatus','${o}')">${o}</button>`).join('')}
+        </div>` : ''}
+      </td>
+      <td style="white-space:nowrap;">
+        ${canManage ? `<button class="btn btn-sm" onclick="startEditProspect('${p.id}')">수정</button> <button class="btn btn-sm" onclick="deleteProspect('${p.id}')">삭제</button>` : '<span class="muted" style="font-size:11px;">-</span>'}
+      </td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="${isAdmin?11:9}" class="muted">등록된 가망고객이 없습니다.</td></tr>`;
+
+  return `
+    <div class="page-title">개별 가망고객 관리현황</div>
+    <div class="page-desc">${isAdmin ? '관리자는 전체 지점/담당자의 가망고객 현황을 지점별·개인별로 조회할 수 있습니다. 다른 담당자가 등록한 건은 조회만 가능하며 수정·삭제는 본인 등록 건만 할 수 있습니다.' : '개인정보 보호를 위해 본인 사번으로 로그인한 경우 본인이 등록한 가망고객만 조회·등록·관리할 수 있습니다. (다른 직원의 가망고객 정보는 조회되지 않습니다)'}</div>
+
+    ${adminFilterHtml}
+
+    <div class="card ai-box" style="margin-bottom:16px;">
+      <div class="ai-title">📋 이번 달 가망고객 관리 현황 및 피드백</div>
+      ${feedback.map(l=>`<div style="margin-bottom:6px;">${l}</div>`).join('')}
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>가망고객 등록</h3>
+      <div class="form-row">
+        <div class="field"><label>고객명</label><input id="pgCustomerName" placeholder="예: 홍길동" style="width:120px"></div>
+        <div class="field"><label>연락처</label><input id="pgPhone" placeholder="예: 010-1234-5678" style="width:150px"></div>
+        <div class="field"><label>구매 희망 품목</label><input id="pgDesiredItem" placeholder="예: 냉장고" style="width:140px"></div>
+        <div class="field"><label>구매희망날짜</label><input id="pgDesiredDate" type="date"></div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:200px;"><label>상담 제품</label><input id="pgConsultProduct" style="width:100%" placeholder="예: 상냉장 냉장고 A모델"></div>
+        <div class="field"><label>구매 유형</label>
+          <select id="pgPurchaseType"><option value="">선택 안함</option>${PROSPECT_PURCHASE_TYPE_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>판매 예상금액</label>
+          <div style="display:flex;align-items:center;gap:4px;">
+            <input id="pgExpectedAmount" type="number" placeholder="예: 2000000" style="width:130px">
+            <span class="muted">원</span>
+          </div>
+        </div>
+        <div class="field"><label>해피콜 여부</label>
+          <select id="pgHappyCall">${PROSPECT_HAPPY_CALL_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>판매 완료 여부</label>
+          <select id="pgSaleStatus">${PROSPECT_SALE_STATUS_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+        </div>
+        <button class="btn btn-primary" onclick="addProspect()">등록</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead><tr>${isAdmin?'<th>담당자</th><th>지점</th>':''}<th>고객명</th><th>연락처</th><th>구매희망품목</th><th>구매희망일</th><th>상담제품</th><th>구매유형</th><th>예상금액</th><th>해피콜</th><th>판매여부</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+function addProspect(){
+  const customerName = document.getElementById('pgCustomerName').value.trim();
+  const phone = document.getElementById('pgPhone').value.trim();
+  const desiredItem = document.getElementById('pgDesiredItem').value.trim();
+  const desiredDate = document.getElementById('pgDesiredDate').value;
+  const consultProduct = document.getElementById('pgConsultProduct').value.trim();
+  const purchaseType = document.getElementById('pgPurchaseType').value || null;
+  const expectedAmountWon = Number(document.getElementById('pgExpectedAmount').value)||0;
+  const happyCall = document.getElementById('pgHappyCall').value;
+  const saleStatus = document.getElementById('pgSaleStatus').value;
+  if(!customerName || !phone){ alert('고객명과 연락처를 입력해 주세요.'); return; }
+  DB.prospects.push({
+    id: 'pg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    empId: SESSION.empId, branchId: SESSION.branchId,
+    customerName, phone, desiredItem: desiredItem||null, desiredDate: desiredDate||null,
+    consultProduct: consultProduct||null, purchaseType, expectedAmountWon,
+    happyCall, saleStatus, createdAt: new Date().toISOString()
+  });
+  saveDB();
+  renderTab('prospects');
+}
+function updateProspectField(id, field, val){
+  const p = DB.prospects.find(x=>x.id===id && x.empId===SESSION.empId);
+  if(!p) return;
+  p[field] = val;
+  saveDB();
+  renderTab('prospects');
+}
+function startEditProspect(id){
+  state.prospectEditId = id;
+  renderTab('prospects');
+}
+function cancelEditProspect(){
+  state.prospectEditId = null;
+  renderTab('prospects');
+}
+function saveEditProspect(id){
+  const p = DB.prospects.find(x=>x.id===id && x.empId===SESSION.empId);
+  if(!p) return;
+  const customerName = document.getElementById('pgeName_'+id).value.trim();
+  const phone = document.getElementById('pgePhone_'+id).value.trim();
+  if(!customerName || !phone){ alert('고객명과 연락처를 입력해 주세요.'); return; }
+  p.customerName = customerName;
+  p.phone = phone;
+  p.desiredItem = document.getElementById('pgeItem_'+id).value.trim() || null;
+  p.desiredDate = document.getElementById('pgeDate_'+id).value || null;
+  p.consultProduct = document.getElementById('pgeProduct_'+id).value.trim() || null;
+  p.purchaseType = document.getElementById('pgePurchaseType_'+id).value || null;
+  p.expectedAmountWon = Number(document.getElementById('pgeAmount_'+id).value) || 0;
+  p.happyCall = document.getElementById('pgeHappy_'+id).value;
+  p.saleStatus = document.getElementById('pgeSale_'+id).value;
+  state.prospectEditId = null;
+  saveDB();
+  renderTab('prospects');
+}
+function deleteProspect(id){
+  if(!confirm('삭제하시겠습니까?')) return;
+  DB.prospects = DB.prospects.filter(x=> !(x.id===id && x.empId===SESSION.empId));
+  saveDB();
+  renderTab('prospects');
+}
+
+/* =========================================================================
+   9j. EXPORT: 엑셀 / PDF 다운로드 (모든 화면 공통, 우측 상단 고정 버튼)
+   ========================================================================= */
+function currentPageTitle(){
+  const el = document.querySelector('#mainContent .page-title');
+  return (el && el.textContent) ? el.textContent.trim() : (state.tab || 'page');
+}
+function sanitizeExportFileName(s){
+  const cleaned = String(s||'').replace(/[\\\/:*?"<>|]/g,'').replace(/\s+/g,'_').trim();
+  return cleaned ? cleaned.slice(0,60) : 'export';
+}
+function exportSheetName(table, idx){
+  let name = null;
+  try{
+    const card = table.closest ? table.closest('.card') : null;
+    const h3 = card ? card.querySelector('h3') : null;
+    if(h3 && h3.textContent) name = h3.textContent.trim();
+  }catch(e){}
+  if(!name) name = `표${idx+1}`;
+  name = name.replace(/[\\\/:*?\[\]]/g,'').slice(0,31);
+  return name || `표${idx+1}`;
+}
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+}
+async function exportTablesWithPhotosExcel(tables){
+  if(typeof ExcelJS === 'undefined'){
+    alert('사진 포함 엑셀 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
+    return;
+  }
+  try{
+    const wb = new ExcelJS.Workbook();
+    const used = new Set();
+    tables.forEach((t,i)=>{
+      let name = exportSheetName(t,i);
+      let base = name, n = 2;
+      while(used.has(name)){ name = base.slice(0,28) + '_' + n; n++; }
+      used.add(name);
+      const ws = wb.addWorksheet(name);
+      const rows = Array.from(t.rows);
+      let maxCols = 0;
+      rows.forEach((tr, rIdx)=>{
+        const cells = Array.from(tr.cells);
+        maxCols = Math.max(maxCols, cells.length);
+        let rowHasPhoto = false;
+        cells.forEach((td, cIdx)=>{
+          const imgs = Array.from(td.querySelectorAll('img.xlsx-photo'));
+          if(imgs.length>0){
+            rowHasPhoto = true;
+            imgs.forEach((img,k)=>{
+              const m = /^data:image\/(png|jpe?g|gif);base64,/.exec(img.src||'');
+              if(m){
+                const ext = m[1]==='jpg' ? 'jpeg' : m[1];
+                const imgId = wb.addImage({ base64: img.src, extension: ext });
+                ws.addImage(imgId, { tl:{col:cIdx + k*0.85, row:rIdx}, ext:{width:52,height:52} });
+              }
+            });
+          } else {
+            const text = (td.innerText||td.textContent||'').trim();
+            if(text) ws.getCell(rIdx+1, cIdx+1).value = text;
+          }
+        });
+        if(rowHasPhoto) ws.getRow(rIdx+1).height = 42;
+      });
+      for(let c=1;c<=maxCols;c++){ ws.getColumn(c).width = 18; }
+    });
+    const filename = sanitizeExportFileName(currentPageTitle()) + '_' + todayStr() + '.xlsx';
+    const buffer = await wb.xlsx.writeBuffer();
+    downloadBlob(new Blob([buffer], {type:'application/octet-stream'}), filename);
+  }catch(e){
+    alert('사진 포함 엑셀 파일 생성 중 오류가 발생했습니다: ' + e.message);
+  }
+}
+function exportCurrentPageExcel(){
+  const tables = Array.from(document.querySelectorAll('#mainContent table'));
+  if(tables.length===0){ alert('현재 화면에는 엑셀로 내보낼 표가 없습니다.'); return; }
+  const hasPhotos = tables.some(t=>t.querySelector('img.xlsx-photo'));
+  if(hasPhotos){ exportTablesWithPhotosExcel(tables); return; }
+  try{
+    const wb = XLSX.utils.book_new();
+    const used = new Set();
+    tables.forEach((t,i)=>{
+      let name = exportSheetName(t,i);
+      let base = name, n = 2;
+      while(used.has(name)){ name = base.slice(0,28) + '_' + n; n++; }
+      used.add(name);
+      const ws = XLSX.utils.table_to_sheet(t);
+      XLSX.utils.book_append_sheet(wb, ws, name);
+    });
+    const filename = sanitizeExportFileName(currentPageTitle()) + '_' + todayStr() + '.xlsx';
+    XLSX.writeFile(wb, filename);
+  }catch(e){
+    alert('엑셀 파일 생성 중 오류가 발생했습니다.');
+  }
+}
+function exportCurrentPagePDF(){
+  const tables = Array.from(document.querySelectorAll('#mainContent table'));
+  if(tables.length===0){ alert('현재 화면에는 PDF로 내보낼 내용이 없습니다.'); return; }
+  if(typeof html2canvas==='undefined' || typeof window.jspdf==='undefined'){
+    alert('PDF 생성 모듈을 불러오지 못했습니다. 인터넷 연결 상태를 확인한 뒤 다시 시도해 주세요.');
+    return;
+  }
+  const target = document.getElementById('mainContent');
+  const pageTitle = currentPageTitle();
+  html2canvas(target, {scale:2, backgroundColor:'#ffffff', useCORS:true}).then(canvas=>{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({orientation:'p', unit:'pt', format:'a4'});
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 24;
+    const titleH = 26;
+    const imgWidth = pageWidth - margin*2;
+    const imgHeight = canvas.height * (imgWidth / canvas.width);
+    const imgData = canvas.toDataURL('image/png');
+    const firstPageImgSpace = pageHeight - margin - titleH - margin;
+
+    doc.setFontSize(12);
+    doc.text(`${pageTitle} (${todayStr()} 기준)`, margin, margin + 12);
+
+    if(imgHeight <= firstPageImgSpace){
+      doc.addImage(imgData, 'PNG', margin, margin + titleH, imgWidth, imgHeight);
+    } else {
+      // 표준 html2canvas+jsPDF 다중 페이지 분할 패턴: 같은 이미지를 매 페이지마다 위로 이동시켜 그려서 자연스럽게 이어붙임
+      let heightLeft = imgHeight;
+      doc.addImage(imgData, 'PNG', margin, margin + titleH, imgWidth, imgHeight);
+      heightLeft -= firstPageImgSpace;
+      while(heightLeft > 0){
+        doc.addPage();
+        const offset = imgHeight - heightLeft;
+        doc.addImage(imgData, 'PNG', margin, margin - offset, imgWidth, imgHeight);
+        heightLeft -= (pageHeight - margin*2);
+      }
+    }
+    const filename = sanitizeExportFileName(pageTitle) + '_' + todayStr() + '.pdf';
+    doc.save(filename);
+  }).catch(()=>{
+    alert('PDF 파일 생성 중 오류가 발생했습니다.');
+  });
+}
+
+/* =========================================================================
+   10. INIT
+   ========================================================================= */
+function afterRenderHooks(tab){
+  if(tab==='home') startNoticeRotation();
+  if(tab==='home') startHomeStatusWidget(); else stopHomeStatusWidget();
+  if(tab==='systemAdmin') loadLoginStatsIfNeeded();
+  updateInventoryNavLabel();
+}
+function updateInventoryNavLabel(){
+  const el = document.getElementById('navInventoryDate');
+  if(el) el.textContent = todayStr() + ' 기준';
+}
+
+(async function initApp(){
+  await loadDB();
+  updateInventoryNavLabel();
+  const overlay = document.getElementById('loginLoadingOverlay');
+  if(overlay) overlay.style.display = 'none';
+})();
+document.getElementById('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') handleLogin(); });
+</script>
+</body>
+</html>
