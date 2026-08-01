@@ -3911,8 +3911,9 @@ function renderCollectContest(){
       <td>${r.customerName}</td>
       <td>${r.phone}</td>
       <td class="muted">${r.address||'-'}</td>
+      <td>${(r.evidenceFiles&&r.evidenceFiles.length>0) ? r.evidenceFiles.map((f,i)=>`<a href="${f.dataUrl}" target="_blank" rel="noopener">사진${i+1}</a>`).join(' ') : '-'}</td>
       <td>${SESSION.role==='admin' ? `<button class="btn btn-sm" onclick="deleteContestGift('${r.id}')">삭제</button>` : ''}</td>
-    </tr>`).join('') || `<tr><td colspan="11" class="muted">등록된 내역이 없습니다.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="12" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">컨테스트 사은품 취합</div>
@@ -3964,7 +3965,11 @@ function renderCollectContest(){
           <input id="cgPhone" placeholder="예: 010-1234-5678" style="width:150px">
         </div>
       </div>
-      <div class="small-note" style="margin-top:-8px;">※ 모델명은 반드시 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)</div>
+      <div class="small-note" style="margin-top:-8px;">
+        ※ 모델명은 반드시 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)<br>
+        ※ 여러 모델 입력 시 &quot;/&quot;표기후 다음 모델 입력<br>
+        &nbsp;&nbsp;&nbsp;&nbsp;예)H876GBB111.CKOR / Z484GBB152.AKOR
+      </div>
       <div class="form-row">
         <div class="field" style="min-width:260px;">
           <label>주소</label>
@@ -3977,19 +3982,39 @@ function renderCollectContest(){
           <label>상세주소</label>
           <input id="cgAddressDetail" placeholder="예: 101동 202호" style="width:160px">
         </div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="min-width:260px;">
+          <label>증빙자료 첨부</label>
+          <input id="cgEvidenceFiles" type="file" accept="image/*" multiple>
+        </div>
         <button class="btn btn-primary" onclick="submitContestGift()">등록</button>
       </div>
+      <div class="small-note" style="margin-top:-8px;">※ 촬영한 사진을 첨부 할 시 대용량 이슈로 인하여 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
     </div>
 
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th></th></tr></thead>
+        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th>증빙자료</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
     </div>
   `;
+}
+function isValidGiftcardModelList(modelStr){
+  const parts = String(modelStr||'').split('/').map(s=>s.trim()).filter(Boolean);
+  if(parts.length===0) return false;
+  return parts.every(p=>isValidGiftcardModel(p));
+}
+function readFileAsDataUrl(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = e=>resolve({dataUrl:e.target.result, name:file.name});
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 function submitContestGift(){
   const contestType = document.getElementById('cgContestType').value.trim();
@@ -4004,18 +4029,31 @@ function submitContestGift(){
   const addressBase = document.getElementById('cgAddress').value.trim();
   const addressDetail = document.getElementById('cgAddressDetail').value.trim();
   const address = [addressBase, addressDetail].filter(Boolean).join(' ');
+  const evidenceInput = document.getElementById('cgEvidenceFiles');
+  const evidenceFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
 
   if(!contestType || !model || qty<=0 || !customerName || !phone){ alert('컨테스트 구분, 모델명, 판매 건수, 고객명, 연락처를 입력해 주세요.'); return; }
-  if(!isValidGiftcardModel(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)'); return; }
+  if(!isValidGiftcardModelList(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR) · 여러 모델은 "/"로 구분해 주세요.'); return; }
+  const oversized = evidenceFiles.find(f=>f.size > 3*1024*1024);
+  if(oversized){ alert(`"${oversized.name}" 파일이 3MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
 
-  DB.contestGifts.push({
-    id: 'cg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    contestType: contestType||null, giftName: giftName||null, branchId, saleDate, deliveryDate, model, qty,
-    customerName, phone, address: address||null,
-    requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
-  });
-  saveDB();
-  renderTab('collectContest');
+  function finalize(evidence){
+    DB.contestGifts.push({
+      id: 'cg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      contestType: contestType||null, giftName: giftName||null, branchId, saleDate, deliveryDate, model, qty,
+      customerName, phone, address: address||null, evidenceFiles: evidence,
+      requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
+    });
+    saveDB();
+    renderTab('collectContest');
+  }
+  if(evidenceFiles.length>0){
+    Promise.all(evidenceFiles.map(readFileAsDataUrl))
+      .then(results=>finalize(results))
+      .catch(()=>{ alert('증빙자료 파일을 읽는 중 오류가 발생했습니다. 대용량 이슈일 수 있으니 담당관리자에게 연락 바랍니다.'); });
+  } else {
+    finalize([]);
+  }
 }
 function deleteContestGift(id){
   if(!confirm('삭제하시겠습니까?')) return;
