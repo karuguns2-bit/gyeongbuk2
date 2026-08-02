@@ -5509,11 +5509,10 @@ function renderBestPractice(){
   const editId = state.bpEditId;
   const posts = sorted.map(p=>{
     const canEdit = canEditBestPractice(p);
-    const attachmentsHtml = (p.attachments||[]).map(a=>
-      /^data:image\//.test(a.dataUrl)
-        ? `<img class="xlsx-photo" src="${a.dataUrl}" onclick="openImgLightbox(this.src)" style="width:90px;height:90px;object-fit:cover;border-radius:6px;margin:4px 4px 0 0;cursor:zoom-in;">`
-        : `<a href="${a.dataUrl}" target="_blank" rel="noopener" style="display:inline-block;margin:4px 4px 0 0;">${a.name||'첨부'}</a>`
-    ).join('');
+    // 공통 헬퍼(noticeAttachmentHtml/isImageAttachment)를 사용해 Storage URL로 저장된 사진도
+    // 파일명 링크가 아니라 썸네일로 정상 표시되도록 한다. (이전에는 이 게시판만 자체 로직을 써서
+    // data: base64 이미지만 썸네일로 표시하고 Storage URL은 전부 파일 링크로만 나왔음)
+    const attachmentsHtml = (p.attachments||[]).map(a=>noticeAttachmentHtml(a, 90, null)).join('');
 
     if(canEdit && editId===p.id){
       return `
@@ -5999,7 +5998,7 @@ function renderSuggestions(){
           <button class="btn btn-sm" onclick="deleteSuggestion('${s.id}')">삭제</button>
         </div>
         <div style="white-space:pre-wrap;line-height:1.6;">${escapeHtml(s.content)}</div>
-        ${s.attachmentDataUrl ? `<div style="margin-top:8px;">${/^data:image\//.test(s.attachmentDataUrl) ? `<img class="xlsx-photo" src="${s.attachmentDataUrl}" onclick="openImgLightbox(this.src)" style="width:60px;height:60px;object-fit:cover;border-radius:6px;cursor:zoom-in;">` : `<a href="${s.attachmentDataUrl}" target="_blank" rel="noopener">${s.attachmentName||'첨부파일'}</a>`}</div>` : ''}
+        ${s.attachmentDataUrl ? `<div style="margin-top:8px;">${noticeAttachmentHtml({dataUrl:s.attachmentDataUrl, name:s.attachmentName}, 60, null)}</div>` : ''}
         <div class="muted" style="font-size:11.5px;margin-top:8px;">${s.createdAt.slice(0,16).replace('T',' ')}</div>
       </div>`).join('') || `<div class="muted">등록된 건의사항이 없습니다.</div>`;
 
