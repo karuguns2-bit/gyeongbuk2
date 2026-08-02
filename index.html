@@ -1106,7 +1106,7 @@ function loadLoginStatsIfNeeded(){
   if(loginStatsCache || !sbClient) return;
   fetchLoginStats().then(stats=>{
     loginStatsCache = stats;
-    if(SESSION && state.tab==='systemAdmin') renderTab('systemAdmin');
+    if(SESSION && state.tab==='accountManagement') renderTab('accountManagement');
   });
 }
 
@@ -1381,6 +1381,7 @@ function renderTab(tab){
   const main = document.getElementById('mainContent');
   if(tab==='home') main.innerHTML = renderHome();
   if(tab==='systemAdmin') main.innerHTML = renderSystemAdmin();
+  if(tab==='accountManagement') main.innerHTML = renderAccountManagement();
   if(tab==='goals') main.innerHTML = renderGoals();
   if(tab==='branches') main.innerHTML = renderBranches();
   if(tab==='notices') main.innerHTML = renderNoticesBoard();
@@ -1415,7 +1416,8 @@ function renderTab(tab){
   if(tab!=='collectContest') state.cgEditId = null;
   if(tab!=='subTierContest') state.stcEditId = null;
   if(tab!=='bestPractice') state.bpEditId = null;
-  if(tab!=='systemAdmin') loginStatsCache = null;
+  if(tab!=='systemAdmin' && tab!=='accountManagement') loginStatsCache = null;
+  if(tab!=='accountManagement') state.sysUserEditId = null;
   if(tab!=='notices') state.noticeBoardEditId = null;
   if(tab!=='infoReports') state.infoReportEditId = null;
   if(tab!=='subB2bSales') state.b2bEditId = null;
@@ -1811,43 +1813,6 @@ function renderSystemAdmin(){
   if(!isSystemAdmin()){
     return `<div class="page-title">시스템 관리</div><div class="page-desc">관리자만 접근할 수 있는 화면입니다.</div>`;
   }
-  const editId = state.sysUserEditId || null;
-  const sortedUsers = [...DB.users].sort((a,b)=>{
-    if(a.role!==b.role){ const order={admin:0,manager:1,staff:2}; return order[a.role]-order[b.role]; }
-    return branchName(a.branchId).localeCompare(branchName(b.branchId)) || String(a.name).localeCompare(String(b.name));
-  });
-  const userRows = sortedUsers.map(u=>{
-    if(editId === u.empId){
-      return `
-      <tr>
-        <td><input id="sueEmpId_${u.empId}" value="${escapeHtml(u.empId)}" style="width:100px"></td>
-        <td><input id="sueName_${u.empId}" value="${escapeHtml(u.name)}" style="width:90px"></td>
-        <td>${u.empId==='admin' ? '본사(전체)' : `<select id="sueBranch_${u.empId}" style="width:130px" ${u.role==='admin'?'disabled':''}>${branchOptionsHtml(u.role==='admin'?'':u.branchId, true)}</select>`}</td>
-        <td><select id="sueRole_${u.empId}" style="width:90px" ${u.empId==='admin'?'disabled':''} onchange="syncEditUserBranchByRole('${u.empId}')">${roleOptionsHtml(u.role)}</select></td>
-        <td><input id="suePw_${u.empId}" type="text" placeholder="변경 시에만 입력" style="width:110px"></td>
-        <td class="muted" style="font-size:11px;">${loginHistoryLabel(u.empId)}</td>
-        <td style="white-space:nowrap;">
-          <button class="btn btn-sm btn-primary" onclick="saveEditSystemUser('${u.empId}')">저장</button>
-          <button class="btn btn-sm" onclick="cancelEditSystemUser()">취소</button>
-        </td>
-      </tr>`;
-    }
-    return `
-      <tr>
-        <td class="muted">${escapeHtml(u.empId)}</td>
-        <td>${escapeHtml(u.name)}</td>
-        <td>${u.empId==='admin' ? '본사(전체)' : branchName(u.branchId)}</td>
-        <td><span class="badge ${u.role==='admin'?'good':(u.role==='manager'?'warn':'')}">${ROLE_LABELS[u.role]||u.role}</span></td>
-        <td class="muted">${u.pw}</td>
-        <td class="muted" style="font-size:11px;">${loginHistoryLabel(u.empId)}</td>
-        <td style="white-space:nowrap;">
-          <button class="btn btn-sm" onclick="startEditSystemUser('${u.empId}')">수정</button>
-          <button class="btn btn-sm" onclick="resetSystemUserPw('${u.empId}')">비번 초기화</button>
-          ${(u.empId==='admin' || u.empId===SESSION.empId) ? '' : `<button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="deleteSystemUser('${u.empId}')">삭제</button>`}
-        </td>
-      </tr>`;
-  }).join('');
-
   return `
     <div class="page-title">시스템 관리</div>
     <div class="page-desc">관리자 전용 화면입니다. 계정(매니저/사원) 관리, 신규 계정 생성, 각종 데이터 업로드를 이 화면에서 한 번에 처리할 수 있습니다.</div>
@@ -1875,11 +1840,8 @@ function renderSystemAdmin(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>계정 관리 <small>(현재 등록된 매니저/사원 명단)</small></h3>
-      <div class="muted" style="margin-bottom:8px;font-size:12.5px;">사번·이름·지점명·직책을 직접 수정할 수 있고, 비밀번호는 초기화(1234)하거나 "수정"에서 새 비밀번호를 지정할 수 있습니다.</div>
-      <table>
-        <thead><tr><th>사번</th><th>이름</th><th>지점명</th><th>직책</th><th>비밀번호</th><th>접속 기록</th><th></th></tr></thead>
-        <tbody>${userRows}</tbody>
-      </table>
+      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">전체 계정 목록 조회, 사번·이름·지점명·직책 수정, 비밀번호 초기화·변경, 접속 기록 확인은 별도 화면에서 처리합니다. 계정 수가 많아지면 이 화면이 길어져 다른 관리 항목을 찾기 어려워지는 것을 막기 위함입니다.</div>
+      <button class="btn btn-primary" onclick="renderTab('accountManagement')">계정관리 상세</button>
     </div>
 
     <div class="card" style="margin-bottom:16px;background:#fff7f9;border-color:#f0c7d4;">
@@ -1929,14 +1891,73 @@ function renderSystemAdmin(){
     </div>
   `;
 }
+// 계정 수가 늘어날수록 시스템 관리 화면이 길어지는 것을 막기 위해, 계정 목록/수정/
+// 비밀번호 관리/접속 기록은 "계정관리 상세" 버튼을 눌러야만 여는 별도 화면으로 분리했다.
+// (시스템 관리 화면에는 DB 용량 최적화/신규 계정 생성/각종 업로드만 항상 보이도록 유지) - 2026.08
+function renderAccountManagement(){
+  if(!isSystemAdmin()){
+    return `<div class="page-title">계정관리 상세</div><div class="page-desc">관리자만 접근할 수 있는 화면입니다.</div>`;
+  }
+  const editId = state.sysUserEditId || null;
+  const sortedUsers = [...DB.users].sort((a,b)=>{
+    if(a.role!==b.role){ const order={admin:0,manager:1,staff:2}; return order[a.role]-order[b.role]; }
+    return branchName(a.branchId).localeCompare(branchName(b.branchId)) || String(a.name).localeCompare(String(b.name));
+  });
+  const userRows = sortedUsers.map(u=>{
+    if(editId === u.empId){
+      return `
+      <tr>
+        <td><input id="sueEmpId_${u.empId}" value="${escapeHtml(u.empId)}" style="width:100px"></td>
+        <td><input id="sueName_${u.empId}" value="${escapeHtml(u.name)}" style="width:90px"></td>
+        <td>${u.empId==='admin' ? '본사(전체)' : `<select id="sueBranch_${u.empId}" style="width:130px" ${u.role==='admin'?'disabled':''}>${branchOptionsHtml(u.role==='admin'?'':u.branchId, true)}</select>`}</td>
+        <td><select id="sueRole_${u.empId}" style="width:90px" ${u.empId==='admin'?'disabled':''} onchange="syncEditUserBranchByRole('${u.empId}')">${roleOptionsHtml(u.role)}</select></td>
+        <td><input id="suePw_${u.empId}" type="text" placeholder="변경 시에만 입력" style="width:110px"></td>
+        <td class="muted" style="font-size:11px;">${loginHistoryLabel(u.empId)}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-primary" onclick="saveEditSystemUser('${u.empId}')">저장</button>
+          <button class="btn btn-sm" onclick="cancelEditSystemUser()">취소</button>
+        </td>
+      </tr>`;
+    }
+    return `
+      <tr>
+        <td class="muted">${escapeHtml(u.empId)}</td>
+        <td>${escapeHtml(u.name)}</td>
+        <td>${u.empId==='admin' ? '본사(전체)' : branchName(u.branchId)}</td>
+        <td><span class="badge ${u.role==='admin'?'good':(u.role==='manager'?'warn':'')}">${ROLE_LABELS[u.role]||u.role}</span></td>
+        <td class="muted">${u.pw}</td>
+        <td class="muted" style="font-size:11px;">${loginHistoryLabel(u.empId)}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm" onclick="startEditSystemUser('${u.empId}')">수정</button>
+          <button class="btn btn-sm" onclick="resetSystemUserPw('${u.empId}')">비번 초기화</button>
+          ${(u.empId==='admin' || u.empId===SESSION.empId) ? '' : `<button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="deleteSystemUser('${u.empId}')">삭제</button>`}
+        </td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="flex-between" style="margin-bottom:4px;">
+      <div class="page-title" style="margin-bottom:0;">계정관리 상세</div>
+      <button class="btn btn-sm" onclick="renderTab('systemAdmin')">← 시스템 관리로 돌아가기</button>
+    </div>
+    <div class="page-desc">현재 등록된 매니저/사원 전체 명단입니다. 사번·이름·지점명·직책을 직접 수정할 수 있고, 비밀번호는 초기화(1234)하거나 "수정"에서 새 비밀번호를 지정할 수 있습니다.</div>
+
+    <div class="card">
+      <table>
+        <thead><tr><th>사번</th><th>이름</th><th>지점명</th><th>직책</th><th>비밀번호</th><th>접속 기록</th><th></th></tr></thead>
+        <tbody>${userRows}</tbody>
+      </table>
+    </div>
+  `;
+}
 function startEditSystemUser(empId){
   if(!isSystemAdmin()) return;
   state.sysUserEditId = empId;
-  renderTab('systemAdmin');
+  renderTab('accountManagement');
 }
 function cancelEditSystemUser(){
   state.sysUserEditId = null;
-  renderTab('systemAdmin');
+  renderTab('accountManagement');
 }
 function resetSystemUserPw(empId){
   if(!isSystemAdmin()) return;
@@ -1945,7 +1966,7 @@ function resetSystemUserPw(empId){
   if(!confirm(`${u.name}(${u.empId}) 계정의 비밀번호를 1234로 초기화하시겠습니까?`)) return;
   u.pw = '1234';
   saveDB();
-  renderTab('systemAdmin');
+  renderTab('accountManagement');
 }
 function deleteSystemUser(empId){
   if(!isSystemAdmin()) return;
@@ -1964,7 +1985,7 @@ function deleteSystemUser(empId){
     if(a && a.records) a.records = a.records.filter(r=>r.empId!==empId);
   });
   saveDB();
-  renderTab('systemAdmin');
+  renderTab('accountManagement');
 }
 // 공유 DB 전체 용량을 가늠해 관리자에게 미리 경고를 보여준다.
 // (사진 첨부 누적으로 DB가 커지면서 저장/불러오기가 느려지거나 실패했던 문제 재발 방지 - 2026.08)
@@ -2099,7 +2120,7 @@ function saveEditSystemUser(oldEmpId){
 
   state.sysUserEditId = null;
   saveDB();
-  renderTab('systemAdmin');
+  renderTab('accountManagement');
 }
 
 /* =========================================================================
@@ -7250,7 +7271,7 @@ function exportCurrentPagePDF(){
 function afterRenderHooks(tab){
   if(tab==='home') startNoticeRotation();
   if(tab==='home') startHomeStatusWidget(); else stopHomeStatusWidget();
-  if(tab==='systemAdmin') loadLoginStatsIfNeeded();
+  if(tab==='accountManagement') loadLoginStatsIfNeeded();
   updateInventoryNavLabel();
   enableDragDropForFileInputs();
 }
