@@ -2116,6 +2116,10 @@ function isImageAttachment(f){
   if(/^data:image\//i.test(v)) return true;
   // Storage로 옮겨진 사진은 base64가 아니라 URL로 저장되므로 확장자로 판별한다.
   if(/^https?:\/\//i.test(v) && /\.(png|jpe?g|gif|webp|bmp|avif)(\?|#|$)/i.test(v)) return true;
+  // 업로드 당시 휴대폰 등에서 MIME 정보가 유실되어 URL 확장자가 .bin 등으로 저장된 경우를 대비해
+  // 원본 파일명 확장자로도 한 번 더 확인한다 (예: KakaoTalk_2026...jpg).
+  const name = (f && f.name) || '';
+  if(/\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(name)) return true;
   return false;
 }
 function noticeAttachmentHtml(f, size, removeOnClick){
@@ -4913,8 +4917,12 @@ async function uploadBlobToStorage(blob, filename, contentType){
   if(!sbClient) return null;
   try{
     let ext = 'bin';
+    // 압축된 이미지(jpeg로 재인코딩됨)는 .jpg로, 그 외에는 원본 파일명 확장자를 우선 사용한다.
+    // (일부 기기/브라우저에서 MIME 타입이 application/octet-stream 등으로 유실되어
+    //  확장자 판별이 실패하면 화면에서 사진이 아닌 파일 링크로 표시되는 문제를 방지)
+    const nameExt = (filename && filename.includes('.')) ? (filename.split('.').pop().replace(/[^a-zA-Z0-9]/g,'').slice(0,10)) : '';
     if(contentType === 'image/jpeg') ext = 'jpg';
-    else if(filename && filename.includes('.')) ext = (filename.split('.').pop().replace(/[^a-zA-Z0-9]/g,'').slice(0,10)) || 'bin';
+    else if(nameExt) ext = nameExt;
     const path = `${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
     const { error } = await sbClient.storage.from('attachments').upload(path, blob, { contentType: contentType || blob.type || 'application/octet-stream', upsert:false });
     if(error) throw error;
@@ -4945,8 +4953,13 @@ function readFileAsDataUrl(file){
     reader.onload = async e=>{
       let dataUrl = e.target.result;
       let contentType = file.type || 'application/octet-stream';
+      // 일부 기기/브라우저는 이미지 파일도 MIME 타입을 비워서 넘기는 경우가 있어,
+      // 그런 경우 파일명 확장자로도 이미지 여부를 한 번 더 판별한다.
+      const looksLikeImageByName = /\.(png|jpe?g|webp|bmp|avif)$/i.test(file.name || '');
+      const looksLikeGifByName = /\.gif$/i.test(file.name || '');
+      const isImageFile = (file.type && file.type.startsWith('image/')) || (!file.type && (looksLikeImageByName || looksLikeGifByName));
       // gif는 애니메이션이 깨질 수 있어 압축 대상에서 제외. 이미지가 아니면(PDF 등) 그대로 통과.
-      if(file.type && file.type.startsWith('image/') && file.type !== 'image/gif'){
+      if(isImageFile && file.type !== 'image/gif' && !looksLikeGifByName){
         try{
           const compressed = await compressImageDataUrl(dataUrl, 1600, 0.72);
           if(compressed && compressed.length < dataUrl.length){ dataUrl = compressed; contentType = 'image/jpeg'; }
