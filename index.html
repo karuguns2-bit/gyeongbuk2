@@ -122,7 +122,10 @@
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);}
-  th{color:var(--text-sub);font-weight:600;font-size:12px;background:#fafafa;}
+  /* 등록건수가 많아 스크롤이 길어져도 표 머리글이 항상 보이도록 고정(틀고정)한다.
+     .main이 화면 전체의 세로 스크롤 컨테이너이므로 top:0 기준으로 sticky 처리하면
+     모든 취합/목록 표에 공통 적용된다. (2026.08) */
+  th{color:var(--text-sub);font-weight:600;font-size:12px;background:#fafafa;position:sticky;top:0;z-index:3;box-shadow:0 1px 0 var(--border);}
   tr:last-child td{border-bottom:none;}
 
   .table-scroll{overflow-x:auto;}
@@ -4609,7 +4612,9 @@ function renderCollectGiftcard(){
   `;
 }
 function isValidGiftcardModel(model){
-  return /^\S+\.[A-Za-z]{3,6}$/.test(String(model||'').trim());
+  // 접미사에 AKOR2 처럼 숫자가 섞이는 경우도 있어 문자+숫자 모두 허용한다.
+  // (예: .AKOR, .AKOR2, .CKOR, .AKRG, *****-KV.AKOR 등)
+  return /^\S+\.[A-Za-z][A-Za-z0-9]{1,7}$/.test(String(model||'').trim());
 }
 function submitGiftcardRequest(){
   const branchId = document.getElementById('gcBranch').value;
