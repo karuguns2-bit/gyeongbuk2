@@ -1936,10 +1936,8 @@ function renderAccountManagement(){
   }).join('');
 
   return `
-    <div class="flex-between" style="margin-bottom:4px;">
-      <div class="page-title" style="margin-bottom:0;">계정관리 상세</div>
-      <button class="btn btn-sm" onclick="renderTab('systemAdmin')">← 시스템 관리로 돌아가기</button>
-    </div>
+    <button class="btn btn-sm" style="margin-bottom:10px;" onclick="renderTab('systemAdmin')">← 시스템 관리로 돌아가기</button>
+    <div class="page-title">계정관리 상세</div>
     <div class="page-desc">현재 등록된 매니저/사원 전체 명단입니다. 사번·이름·지점명·직책을 직접 수정할 수 있고, 비밀번호는 초기화(1234)하거나 "수정"에서 새 비밀번호를 지정할 수 있습니다.</div>
 
     <div class="card">
