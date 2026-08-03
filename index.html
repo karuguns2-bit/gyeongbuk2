@@ -5629,10 +5629,18 @@ function deleteMistakeNote(id){
 /* =========================================================================
    9e. RENDER: 우수 활동 사례 공유 (게시판)
    ========================================================================= */
+// 지점명 선택지: 일반 지점 목록 + "기타(타영업팀 등)" — 우리 팀 소속이 아닌 인원의 사례를 공유할 때 사용.
+function bpBranchOptionsHtml(selectedId){
+  return branchOptionsHtml(selectedId) + `<option value="OTHER" ${selectedId==='OTHER'?'selected':''}>기타(타영업팀 등)</option>`;
+}
 function bpManagerOptionsHtml(branchId, selectedEmpId){
   const staff = DB.users.filter(u=>u.role==='staff' && u.branchId===branchId);
-  return staff.map(u=>`<option value="${u.empId}" ${u.empId===selectedEmpId?'selected':''}>${u.name}</option>`).join('')
-    || `<option value="">(해당 지점 직원 없음)</option>`;
+  const staffOpts = staff.map(u=>`<option value="${u.empId}" ${u.empId===selectedEmpId?'selected':''}>${u.name}</option>`).join('');
+  const otherOpt = `<option value="OTHER" ${selectedEmpId==='OTHER'?'selected':''}>기타(타영업팀 등)</option>`;
+  return staffOpts + otherOpt;
+}
+function bpBranchDisplayName(branchId){
+  return branchId==='OTHER' ? '기타(타영업팀 등)' : branchName(branchId);
 }
 function updateBpManagerOptions(){
   const branchId = document.getElementById('bpBranch').value;
@@ -5662,7 +5670,7 @@ function renderBestPractice(){
         <div class="form-row">
           <div class="field">
             <label>지점명</label>
-            <select id="bpe_${p.id}_branch" style="width:150px" onchange="updateBpEditManagerOptions('${p.id}')">${branchOptionsHtml(p.branchId)}</select>
+            <select id="bpe_${p.id}_branch" style="width:150px" onchange="updateBpEditManagerOptions('${p.id}')">${bpBranchOptionsHtml(p.branchId)}</select>
           </div>
           <div class="field">
             <label>매니저명</label>
@@ -5676,7 +5684,13 @@ function renderBestPractice(){
         <div class="form-row">
           <div class="field" style="flex:1;min-width:320px;">
             <label>활동 내용</label>
-            <textarea id="bpe_${p.id}_content" rows="5" style="width:100%;">${escapeHtml(p.content||'')}</textarea>
+            <textarea id="bpe_${p.id}_content" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다.">${escapeHtml(p.content||'')}</textarea>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="flex:1;min-width:320px;">
+            <label>활동 결과</label>
+            <textarea id="bpe_${p.id}_result" rows="2" style="width:100%;" placeholder="n건 판매/n명 가망고객 확보 등 결과치 작성">${escapeHtml(p.activityResult||'')}</textarea>
           </div>
         </div>
         ${attachmentsHtml ? `<div style="margin-bottom:8px;">기존 첨부: ${attachmentsHtml}</div>` : ''}
@@ -5694,10 +5708,11 @@ function renderBestPractice(){
     return `
       <div class="card" style="margin-bottom:14px;">
         <div class="flex-between" style="margin-bottom:6px;">
-          <div><b>${branchName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>
+          <div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>
           <div>${canEdit ? `<button class="btn btn-sm" onclick="startEditBestPractice('${p.id}')">수정</button> <button class="btn btn-sm" onclick="deleteBestPractice('${p.id}')">삭제</button>` : ''}</div>
         </div>
         <div style="white-space:pre-wrap;line-height:1.6;margin-bottom:8px;">${escapeHtml(p.content)}</div>
+        ${p.activityResult ? `<div style="background:#fff7f9;border:1px solid #f0c7d4;border-radius:8px;padding:8px 12px;margin-bottom:8px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
         ${attachmentsHtml ? `<div>${attachmentsHtml}</div>` : ''}
         <div class="muted" style="font-size:11.5px;margin-top:8px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
       </div>`;
@@ -5715,7 +5730,7 @@ function renderBestPractice(){
       <div class="form-row">
         <div class="field">
           <label>지점명</label>
-          <select id="bpBranch" style="width:150px" onchange="updateBpManagerOptions()">${branchOptionsHtml(myBranch)}</select>
+          <select id="bpBranch" style="width:150px" onchange="updateBpManagerOptions()">${bpBranchOptionsHtml(myBranch)}</select>
         </div>
         <div class="field">
           <label>매니저명</label>
@@ -5729,8 +5744,15 @@ function renderBestPractice(){
       <div class="form-row">
         <div class="field" style="flex:1;min-width:320px;">
           <label>활동 내용</label>
-          <textarea id="bpContent" rows="5" style="width:100%;"></textarea>
-          <div class="small-note">※ 활동 내용 작성란엔 자유롭게 기술해주시기 바랍니다.</div>
+          <textarea id="bpContent" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다."></textarea>
+          <div class="small-note">※ 상세하게 작성 부탁드립니다.</div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:320px;">
+          <label>활동 결과</label>
+          <textarea id="bpResult" rows="2" style="width:100%;" placeholder="n건 판매/n명 가망고객 확보 등 결과치 작성"></textarea>
+          <div class="small-note">※ n건 판매/n명 가망고객 확보 등 결과치 작성</div>
         </div>
       </div>
       <div class="form-row">
@@ -5753,6 +5775,7 @@ function submitBestPractice(){
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById('bpActivityDate').value;
   const content = document.getElementById('bpContent').value.trim();
+  const activityResult = document.getElementById('bpResult').value.trim();
   const fileInput = document.getElementById('bpFiles');
   if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
 
@@ -5760,7 +5783,7 @@ function submitBestPractice(){
   function finalize(attachments){
     DB.bestPractices.push({
       id: 'bp_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      branchId, managerEmpId, managerName, activityDate, content, attachments,
+      branchId, managerEmpId, managerName, activityDate, content, activityResult, attachments,
       authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString()
     });
     saveDB();
@@ -5802,13 +5825,14 @@ function saveEditBestPractice(id){
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById(`bpe_${id}_date`).value;
   const content = document.getElementById(`bpe_${id}_content`).value.trim();
+  const activityResult = document.getElementById(`bpe_${id}_result`).value.trim();
   const fileInput = document.getElementById(`bpe_${id}_files`);
   if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
 
   const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
   function finalize(newAttachments){
     p.branchId = branchId; p.managerEmpId = managerEmpId; p.managerName = managerName;
-    p.activityDate = activityDate; p.content = content;
+    p.activityDate = activityDate; p.content = content; p.activityResult = activityResult;
     if(newAttachments && newAttachments.length>0){
       p.attachments = (p.attachments||[]).concat(newAttachments);
     }
