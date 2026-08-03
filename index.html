@@ -202,6 +202,12 @@
   .muted{color:var(--text-sub);font-size:12px;}
   .flex-between{display:flex;justify-content:space-between;align-items:center;}
   .small-note{font-size:11.5px;color:var(--text-sub);margin-top:8px;}
+  /* 가로 스크롤이 긴 취합/등록 표에서 수정·삭제 버튼이 화면 밖으로 밀려나 안 보인다는
+     문의가 반복되어, 해당 열을 오른쪽에 고정해 스크롤 위치와 무관하게 항상 보이도록 한다. */
+  .table-scroll table td.act-col, .table-scroll table th.act-col{
+    position:sticky;right:0;background:#fff;box-shadow:-6px 0 8px -6px rgba(0,0,0,.18);
+  }
+  .table-scroll table th.act-col{background:#fafafa;}
 
   /* ---------- Drag & drop file upload ---------- */
   .dropzone{border:1px dashed var(--border);border-radius:8px;padding:8px;transition:background .15s, border-color .15s;}
@@ -3539,7 +3545,7 @@ function renderSubB2bSales(){
       <td><input id="b2be_${r.id}_amount" type="number" value="${r.amountWon!=null?r.amountWon:''}" style="width:110px"></td>
       <td><input id="b2be_${r.id}_qty" type="number" value="${r.qty!=null?r.qty:''}" style="width:80px"></td>
       <td>${escapeHtml(r.empName)}</td>
-      <td style="white-space:nowrap;">
+      <td class="act-col" style="white-space:nowrap;">
         <button class="btn btn-sm btn-primary" onclick="saveEditSubB2bSale('${r.id}')">저장</button>
         <button class="btn btn-sm" onclick="cancelEditSubB2bSale()">취소</button>
       </td>
@@ -3554,7 +3560,7 @@ function renderSubB2bSales(){
       <td>${fmtWon(r.amountWon)}</td>
       <td>${fmtNum(r.qty)}건</td>
       <td>${escapeHtml(r.empName)}</td>
-      <td style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditSubB2bSale('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubB2bSale('${r.id}')">삭제</button>` : ''}</td>
+      <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditSubB2bSale('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubB2bSale('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="8" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
@@ -3598,7 +3604,7 @@ function renderSubB2bSales(){
 
     <div class="card">
       <table>
-        <thead><tr><th>판매일자</th><th>지점</th><th>업체명</th><th>판매모델명</th><th>판매금액</th><th>판매건수</th><th>등록자</th><th></th></tr></thead>
+        <thead><tr><th>판매일자</th><th>지점</th><th>업체명</th><th>판매모델명</th><th>판매금액</th><th>판매건수</th><th>등록자</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -4622,7 +4628,7 @@ function renderCollectGiftcard(){
         <input id="gceReceipt_${r.id}" type="file" accept="image/*" style="width:120px;font-size:11px;">
       </td>
       <td>${r.requesterName}</td>
-      <td style="white-space:nowrap;">
+      <td class="act-col" style="white-space:nowrap;">
         <button class="btn btn-sm btn-primary" onclick="saveEditGiftcardRequest('${r.id}')">저장</button>
         <button class="btn btn-sm" onclick="cancelEditGiftcardRequest()">취소</button>
       </td>
@@ -4642,7 +4648,7 @@ function renderCollectGiftcard(){
       <td>${r.phone}</td>
       <td>${r.receiptDataUrl ? `<img class="xlsx-photo" src="${r.receiptDataUrl}" onclick="openImgLightbox(this.src)" style="width:40px;height:40px;object-fit:cover;border-radius:5px;cursor:zoom-in;">` : '-'}</td>
       <td>${r.requesterName}</td>
-      <td style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditGiftcardRequest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteGiftcardRequest('${r.id}')">삭제</button>` : ''}</td>
+      <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditGiftcardRequest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteGiftcardRequest('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="13" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
@@ -4745,7 +4751,7 @@ function renderCollectGiftcard(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr><th>지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>판매 유형</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th></th></tr></thead>
+        <thead><tr><th>지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>판매 유형</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -4912,7 +4918,7 @@ function renderCollectContest(){
         <input id="cge_${r.id}_evidence" type="file" accept="image/*" multiple style="width:130px;font-size:11px;">
         <div class="small-note" style="margin:2px 0 0;">새로 첨부 시 기존 사진을 대체합니다.</div>
       </td>
-      <td style="white-space:nowrap;">
+      <td class="act-col" style="white-space:nowrap;">
         <button class="btn btn-sm btn-primary" onclick="saveEditContestGift('${r.id}')">저장</button>
         <button class="btn btn-sm" onclick="cancelEditContestGift()">취소</button>
       </td>
@@ -4931,7 +4937,7 @@ function renderCollectContest(){
       <td>${r.phone}</td>
       <td class="muted">${r.address||'-'}</td>
       <td>${(r.evidenceFiles&&r.evidenceFiles.length>0) ? r.evidenceFiles.map(f=>`<img class="xlsx-photo" src="${f.dataUrl}" onclick="openImgLightbox(this.src)" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:zoom-in;margin:0 3px 3px 0;">`).join('') : '-'}</td>
-      <td style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditContestGift('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteContestGift('${r.id}')">삭제</button>` : ''}</td>
+      <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditContestGift('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteContestGift('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="12" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
@@ -5016,7 +5022,7 @@ function renderCollectContest(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th>증빙자료</th><th></th></tr></thead>
+        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th>증빙자료</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -5285,7 +5291,7 @@ function renderSubTierContest(){
         <input id="stce_${r.id}_evidence" type="file" multiple style="width:150px;font-size:11px;">
         <div class="small-note" style="margin:2px 0 0;">새로 첨부 시 기존 파일을 대체합니다.</div>
       </td>
-      <td style="white-space:nowrap;">
+      <td class="act-col" style="white-space:nowrap;">
         <button class="btn btn-sm btn-primary" onclick="saveEditSubTierContest('${r.id}')">저장</button>
         <button class="btn btn-sm" onclick="cancelEditSubTierContest()">취소</button>
       </td>
@@ -5299,7 +5305,7 @@ function renderSubTierContest(){
       <td>${r.saleDate||'-'}</td>
       <td>${(r.evidenceFiles&&r.evidenceFiles.length>0) ? r.evidenceFiles.map(f=>noticeAttachmentHtml(f,36,null)).join('') : '-'}</td>
       <td class="muted">${escapeHtml(r.requesterName)}</td>
-      <td style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditSubTierContest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubTierContest('${r.id}')">삭제</button>` : ''}</td>
+      <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditSubTierContest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubTierContest('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="7" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
@@ -5348,7 +5354,7 @@ function renderSubTierContest(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>영수증 증빙</th><th>등록자</th><th></th></tr></thead>
+        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>영수증 증빙</th><th>등록자</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -6695,10 +6701,12 @@ function kakaoFriendsBranchTrend(branchId){
     return { week: r.weekStart, total: r.count, diff, rate };
   });
 }
-// 조회할 지점을 고른다 — 매니저/사원은 기본으로 본인 지점이 선택되고, 관리자는 마지막으로 고른 지점(없으면 첫 지점)이 선택된다.
+// 조회할 지점을 고른다 — 처음 진입 시에는 매니저/사원은 본인 지점, 관리자는 첫 지점이 기본 선택되지만,
+// 드롭다운으로 다른 지점을 선택하면(state.kfTrendBranchId) 매니저도 다른 모든 지점의 추이를 조회할 수 있다.
 function defaultKakaoTrendBranchId(){
+  if(state.kfTrendBranchId) return state.kfTrendBranchId;
   if(SESSION.role!=='admin' && SESSION.branchId) return SESSION.branchId;
-  return state.kfTrendBranchId || (DB.branches[0] && DB.branches[0].id);
+  return DB.branches[0] && DB.branches[0].id;
 }
 function setKakaoTrendBranch(branchId){
   state.kfTrendBranchId = branchId;
@@ -7323,7 +7331,7 @@ function renderProspects(){
       <td><input id="pgeAmount_${p.id}" type="number" value="${p.expectedAmountWon!=null?p.expectedAmountWon:''}" style="width:100px"></td>
       <td><select id="pgeHappy_${p.id}">${PROSPECT_HAPPY_CALL_OPTIONS.map(o=>`<option value="${o}" ${p.happyCall===o?'selected':''}>${o}</option>`).join('')}</select></td>
       <td><select id="pgeSale_${p.id}">${PROSPECT_SALE_STATUS_OPTIONS.map(o=>`<option value="${o}" ${p.saleStatus===o?'selected':''}>${o}</option>`).join('')}</select></td>
-      <td style="white-space:nowrap;">
+      <td class="act-col" style="white-space:nowrap;">
         <button class="btn btn-sm btn-primary" onclick="saveEditProspect('${p.id}')">저장</button>
         <button class="btn btn-sm" onclick="cancelEditProspect()">취소</button>
       </td>
@@ -7350,7 +7358,7 @@ function renderProspects(){
           ${PROSPECT_SALE_STATUS_OPTIONS.map(o=>`<button class="btn btn-sm" style="padding:2px 7px;font-size:11px;${p.saleStatus===o?'opacity:.4;pointer-events:none;':''}" onclick="updateProspectField('${p.id}','saleStatus','${o}')">${o}</button>`).join('')}
         </div>` : ''}
       </td>
-      <td style="white-space:nowrap;">
+      <td class="act-col" style="white-space:nowrap;">
         ${canManage ? `<button class="btn btn-sm" onclick="startEditProspect('${p.id}')">수정</button> <button class="btn btn-sm" onclick="deleteProspect('${p.id}')">삭제</button>` : '<span class="muted" style="font-size:11px;">-</span>'}
       </td>
     </tr>`;
@@ -7398,7 +7406,7 @@ function renderProspects(){
 
     <div class="card">
       <table>
-        <thead><tr>${isAdmin?'<th>담당자</th><th>지점</th>':''}<th>고객명</th><th>연락처</th><th>구매희망품목</th><th>구매희망일</th><th>상담제품</th><th>구매유형</th><th>예상금액</th><th>해피콜</th><th>판매여부</th><th></th></tr></thead>
+        <thead><tr>${isAdmin?'<th>담당자</th><th>지점</th>':''}<th>고객명</th><th>연락처</th><th>구매희망품목</th><th>구매희망일</th><th>상담제품</th><th>구매유형</th><th>예상금액</th><th>해피콜</th><th>판매여부</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
