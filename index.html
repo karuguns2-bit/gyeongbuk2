@@ -7680,12 +7680,62 @@ function downloadBlob(blob, filename){
   document.body.appendChild(a); a.click();
   setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
 }
+// 사진 한 장을 엑셀에 embedding 가능한 형태(base64 + 확장자)로 가져온다.
+// - 화면에 표시된 <img class="xlsx-photo">의 src가 이미 data:image/...;base64, 형태면 그대로 사용.
+// - 최근에는 DB 용량 절감을 위해 사진을 Supabase Storage 공개 URL로 저장하므로(2026.08~),
+//   화면에는 잘 보이지만 그 상태로는 엑셀에 이미지로 넣을 수 없다 - fetch로 내려받아 base64로 변환한다.
+// - 실패하거나(네트워크 오류 등) ExcelJS가 지원하지 않는 형식(webp 등)이면 null을 반환하고,
+//   호출부에서 최소한 원본 사진 링크라도 셀에 남긴다.
+async function fetchXlsxPhotoAsBase64(src){
+  const dataUrlMatch = /^data:image\/(png|jpe?g|gif);base64,/i.exec(src||'');
+  if(dataUrlMatch){
+    const ext = dataUrlMatch[1].toLowerCase()==='jpg' ? 'jpeg' : dataUrlMatch[1].toLowerCase();
+    return { base64: src, ext };
+  }
+  if(!/^https?:\/\//i.test(src||'')) return null;
+  try{
+    const res = await fetch(src);
+    if(!res.ok) return null;
+    const blob = await res.blob();
+    let ext = null;
+    if(/jpeg|jpg/i.test(blob.type)) ext = 'jpeg';
+    else if(/png/i.test(blob.type)) ext = 'png';
+    else if(/gif/i.test(blob.type)) ext = 'gif';
+    else{
+      const m = /\.(png|jpe?g|gif)(?:\?|$)/i.exec(src);
+      if(m) ext = m[1].toLowerCase()==='jpg' ? 'jpeg' : m[1].toLowerCase();
+    }
+    if(!ext) return null; // ExcelJS는 png/jpeg/gif만 지원 (webp/bmp 등은 링크로 대체)
+    const base64 = await new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=>resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    return { base64, ext };
+  }catch(e){
+    return null;
+  }
+}
 async function exportTablesWithPhotosExcel(tables){
   if(typeof ExcelJS === 'undefined'){
     alert('사진 포함 엑셀 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
     return;
   }
+  const btn = document.querySelector('.export-btn.excel');
+  const btnOrigHtml = btn ? btn.innerHTML : null;
+  if(btn){ btn.disabled = true; btn.innerHTML = '사진 준비 중...'; }
   try{
+    // 표에 들어있는 사진들을 먼저 전부 내려받아 base64로 변환해 둔다 (사진이 많으면 다소 시간이 걸릴 수 있음).
+    const allSrcs = new Set();
+    tables.forEach(t=> Array.from(t.querySelectorAll('img.xlsx-photo')).forEach(img=> allSrcs.add(img.src)));
+    const imgDataMap = {};
+    await Promise.all([...allSrcs].map(async src=>{
+      const data = await fetchXlsxPhotoAsBase64(src);
+      if(data) imgDataMap[src] = data;
+    }));
+    if(btn) btn.innerHTML = '엑셀 생성 중...';
+
     const wb = new ExcelJS.Workbook();
     const used = new Set();
     tables.forEach((t,i)=>{
@@ -7704,14 +7754,19 @@ async function exportTablesWithPhotosExcel(tables){
           const imgs = Array.from(td.querySelectorAll('img.xlsx-photo'));
           if(imgs.length>0){
             rowHasPhoto = true;
-            imgs.forEach((img,k)=>{
-              const m = /^data:image\/(png|jpe?g|gif);base64,/.exec(img.src||'');
-              if(m){
-                const ext = m[1]==='jpg' ? 'jpeg' : m[1];
-                const imgId = wb.addImage({ base64: img.src, extension: ext });
-                ws.addImage(imgId, { tl:{col:cIdx + k*0.85, row:rIdx}, ext:{width:52,height:52} });
+            let placed = 0;
+            imgs.forEach((img)=>{
+              const data = imgDataMap[img.src];
+              if(data){
+                const imgId = wb.addImage({ base64: data.base64, extension: data.ext });
+                ws.addImage(imgId, { tl:{col:cIdx + placed*0.85, row:rIdx}, ext:{width:52,height:52} });
+                placed++;
               }
             });
+            if(placed===0){
+              // 사진을 하나도 가져오지 못한 경우(형식 미지원/네트워크 오류) 최소한 원본 링크는 남긴다.
+              ws.getCell(rIdx+1, cIdx+1).value = { text: '사진 링크', hyperlink: imgs[0].src };
+            }
           } else {
             const text = (td.innerText||td.textContent||'').trim();
             if(text) ws.getCell(rIdx+1, cIdx+1).value = text;
@@ -7726,6 +7781,8 @@ async function exportTablesWithPhotosExcel(tables){
     downloadBlob(new Blob([buffer], {type:'application/octet-stream'}), filename);
   }catch(e){
     alert('사진 포함 엑셀 파일 생성 중 오류가 발생했습니다: ' + e.message);
+  }finally{
+    if(btn){ btn.disabled = false; btn.innerHTML = btnOrigHtml; }
   }
 }
 function exportCurrentPageExcel(){
