@@ -3451,89 +3451,14 @@ function subscriptionExternalDashboardHtml(){
       <iframe src="https://lg-subscription-dashboard.muddy-eel-2899.chatgpt.site/" style="width:100%;height:1400px;border:none;display:block;" loading="lazy" title="구독 실적 대시보드"></iframe>
     </div>`;
 }
+// 이 페이지에서 예전에 쓰던 관리자별 요약/채널 요약/상세표(computeSubscriptionView 기반 자체 표)는
+// 사용자 요청으로 모두 제거하고, 아래 외부 대시보드 임베드 하나만 남긴다.
+// (computeSubscriptionView/getSubscriptionData 등 데이터 함수 자체는 "목표 관리" 페이지의 추천 목표
+//  계산 등 다른 화면에서 계속 쓰이므로 그대로 둔다 — 이 페이지의 표시 방식만 바뀐 것.)
 function renderSubscription(){
-  const period = state.subscriptionPeriod || currentGoalsPeriod();
-  const isCurrentPeriod = period === currentGoalsPeriod();
-  const d = getSubscriptionData(period);
-  const view = computeSubscriptionView(d);
-
-  const periodOptions = Array.from(new Set([
-    ...subscriptionDataPeriods(),
-    currentGoalsPeriod()
-  ])).sort();
-  const periodSelectorHtml = `<div style="margin-bottom:14px;">` +
-    periodOptions.map(p=>`<span class="branch-pill ${p===period?'active':''}" onclick="setSubscriptionPeriod('${p}')">${p}${p===currentGoalsPeriod()?' (이번달)':''}</span>`).join('') +
-    `</div>`;
-
-  const mgrSummaryRows = view.managerSummary.map(m=>`
-    <tr><td>${m.manager}</td><td>${m.headcount}</td><td>${m.target.toLocaleString('ko-KR')}</td>
-      <td>${m.qty.toLocaleString('ko-KR')}</td><td>${m.amt.toLocaleString('ko-KR')}</td>
-      <td>${rateBadgeKK(m.rate)}</td></tr>`).join('');
-
-  const channelRows = (d.channelSummary||[]).map(c=>{
-    const curAmt = view.grandTotal.amt;
-    const mom = Math.round((curAmt - (Number(c.prevAmt)||0))*10)/10;
-    return `<tr><td>${escapeHtml(c.channel)}</td><td>${c.branchCount}</td><td>${c.managerCount}</td><td>${c.perPerson}</td>
-      <td>${(Number(c.prevAmt)||0).toLocaleString('ko-KR')}${c.prevShare!=null?` (${c.prevShare}%)`:''}</td>
-      <td>${curAmt.toLocaleString('ko-KR')}</td>
-      <td style="color:${mom<0?'var(--bad)':'var(--good)'}">${mom>0?'+':''}${mom.toLocaleString('ko-KR')}</td></tr>`;
-  }).join('');
-
-  function branchBlock(branchObj){
-    const repRows = branchObj.reps.map(r=>`<tr>
-      <td></td><td style="padding-left:24px;">${escapeHtml(r.name)}</td>
-      <td>${r.qty||0}</td>
-      <td>-</td>
-      <td>${r.amt==null?'-':r.amt.toLocaleString('ko-KR')}</td></tr>`).join('');
-    const st = branchObj.computed;
-    return repRows + `<tr style="background:#fafafa;font-weight:600;">
-      <td></td><td style="padding-left:24px;">${branchObj.name} 계</td><td>${st.qty}</td>
-      <td>${st.target.toLocaleString('ko-KR')}</td>
-      <td>${st.amt.toLocaleString('ko-KR')}</td><td>${rateBadgeKK(st.rate)}</td></tr>`;
-  }
-
-  const emartGroupRows = view.groups.map(grp=>{
-    const branchRows = grp.branches.map(b=>branchBlock(b)).join('');
-    return `<tr style="background:#efe4e9;"><td colspan="6"><b>${grp.manager}</b> 담당</td></tr>` +
-      branchRows +
-      `<tr style="background:#f5eef1;font-weight:700;"><td colspan="2">${grp.manager} 합계</td><td>${grp.total.qty}</td><td>${grp.total.target.toLocaleString('ko-KR')}</td><td>${grp.total.amt.toLocaleString('ko-KR')}</td><td>${rateBadgeKK(grp.total.rate)}</td></tr>`;
-  }).join('');
-
   return `
     <div class="page-title">구독 실적</div>
-    <div class="page-desc">${d.asOf||period} 기준 · ${period} 이마트 구독(가전/IT 구독형 판매) 총판 취합 현황 (누적/월별 조회 전용) ${isCurrentPeriod?'':'<span class="badge">이번달 아님</span>'}</div>
-
-    ${periodSelectorHtml}
-
     ${subscriptionExternalDashboardHtml()}
-
-    <div class="grid grid-2" style="margin-bottom:16px;">
-      <div class="card">
-        <h3>관리자별 구독 실적 요약 <small>(수량/실적은 아래 상세표 기준 자동 합산)</small></h3>
-        <table>
-          <thead><tr><th>관리자</th><th>인원</th><th>목표(KK)</th><th>수량</th><th>실적(KK)</th><th>달성율</th></tr></thead>
-          <tbody>${mgrSummaryRows}
-            <tr style="font-weight:700;background:#fafafa;"><td>합계</td><td>${view.managerSummaryTotal.headcount}</td><td>${view.managerSummaryTotal.target.toLocaleString('ko-KR')}</td><td>${view.managerSummaryTotal.qty.toLocaleString('ko-KR')}</td><td>${view.managerSummaryTotal.amt.toLocaleString('ko-KR')}</td><td>${rateBadgeKK(view.managerSummaryTotal.rate)}</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="card">
-        <h3>채널 요약</h3>
-        <table>
-          <thead><tr><th>채널</th><th>지점수</th><th>인원</th><th>인당평균</th><th>전월마감</th><th>${period}</th><th>전월비</th></tr></thead>
-          <tbody>${channelRows}</tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:16px;">
-      <h3>이마트 구독 실적 상세 <small>(관리자 → 지점 → 매니저)</small></h3>
-      <table>
-        <thead><tr><th style="width:70px">관리자</th><th>지점/매니저</th><th>수량</th><th>목표(KK)</th><th>실적(KK)</th><th>달성율</th></tr></thead>
-        <tbody>${emartGroupRows}</tbody>
-      </table>
-      <div class="small-note">전체 합계 — 수량 ${view.grandTotal.qty} · 목표 ${view.grandTotal.target.toLocaleString('ko-KR')}KK · 실적 ${view.grandTotal.amt.toLocaleString('ko-KR')}KK · 달성율 ${view.grandTotal.rate}%</div>
-    </div>
   `;
 }
 function rateBadgeKK(rate){
