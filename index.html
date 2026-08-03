@@ -4099,7 +4099,10 @@ function parseInventorySheetRows(rows){
   for(let r=headerRowIdx+1; r<rows.length; r++){
     const row = rows[r]; if(!row || row[storeCol]==null || row[storeCol]==='') continue;
     const amtRaw = amtCol>=0 ? row[amtCol] : null;
-    const amountWon = (amtRaw!=null && amtRaw!=='') ? Math.round(Number(amtRaw)*1000) : null;
+    const qtyRaw = qtyCol>=0 ? row[qtyCol] : null;
+    // 파일의 금액/단가 컬럼은 "1개당 단가"이므로, 지점이 실제로 보유한 재고금액(=단가×수량)으로 환산해서 저장한다.
+    // (예전 코드는 수량을 곱하지 않아 지점마다 보유 수량이 달라도 재고금액이 동일하게 표시되는 문제가 있었음)
+    const amountWon = (amtRaw!=null && amtRaw!=='') ? Math.round(Number(amtRaw) * 1000 * (Number(qtyRaw) || 0)) : null;
     out.push({
       store: row[storeCol],
       product: row[productCol],
