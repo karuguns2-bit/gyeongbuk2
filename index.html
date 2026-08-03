@@ -3509,8 +3509,10 @@ function rateBadgeKK(rate){
    8c. RENDER: 구독 소상공인 판매건 등록 (지점별/월별/등록자별 자동 집계)
    ========================================================================= */
 function subB2bMonthKey(dateStr){ return String(dateStr||'').slice(0,7); }
+// 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
+// canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
 function canEditSubB2bSale(r){
-  return !!(r && (SESSION.role==='admin' || r.empId===SESSION.empId));
+  return !!(r && (SESSION.role==='admin' || r.empId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
 function renderSubB2bSales(){
   const isAdmin = SESSION.role==='admin';
@@ -4508,8 +4510,10 @@ function collectListScope(list){
 }
 
 // ---- 1) 실행력 점검 사진 취합 ----
+// 등록자 본인뿐 아니라 같은 지점 소속 매니저도 삭제할 수 있어야 한다 (지점 공동 업무이므로 -
+// canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
 function canEditExecPhoto(r){
-  return !!(r && (SESSION.role==='admin' || r.uploaderEmpId===SESSION.empId));
+  return !!(r && (SESSION.role==='admin' || r.uploaderEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
 function renderCollectPhoto(){
   const myBranch = collectScopeBranch();
@@ -4589,8 +4593,10 @@ function closeImgLightbox(){
 }
 
 // ---- 2) 모바일 상품권 취합 ----
+// 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
+// canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
 function canEditGiftcardRequest(r){
-  return SESSION.role==='admin' || (r && r.requesterEmpId===SESSION.empId);
+  return !!(r && (SESSION.role==='admin' || r.requesterEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
 function giftcardUsedWon(){
   return DB.giftcardRequests.reduce((s,r)=>s+(Number(r.amountWon)||0),0);
@@ -4883,8 +4889,10 @@ function syncContestGiftNameFor(selectId, giftId){
   const opt = CONTEST_GIFT_TYPE_OPTIONS.find(o=>o.value===sel.value);
   giftEl.value = opt ? opt.gift : '';
 }
+// 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
+// canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
 function canEditContestGift(r){
-  return !!(r && (SESSION.role==='admin' || r.requesterEmpId===SESSION.empId));
+  return !!(r && (SESSION.role==='admin' || r.requesterEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
 function renderCollectContest(){
   const myBranch = collectScopeBranch();
@@ -5241,8 +5249,10 @@ function syncSubTierGiftNameFor(selectId, giftId){
   const opt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===sel.value);
   giftInput.value = opt ? opt.gift : '';
 }
+// 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
+// canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
 function canEditSubTierContest(r){
-  return !!(r && (SESSION.role==='admin' || r.requesterEmpId===SESSION.empId));
+  return !!(r && (SESSION.role==='admin' || r.requesterEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
 function subTierContestBannerHtml(){
   return `
