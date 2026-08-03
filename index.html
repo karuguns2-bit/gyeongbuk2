@@ -5653,6 +5653,15 @@ function updateBpEditManagerOptions(id){
 function canEditBestPractice(p){
   return !!(p && (SESSION.role==='admin' || p.authorEmpId===SESSION.empId));
 }
+function removeBestPracticeAttachment(id, idx){
+  const p = DB.bestPractices.find(x=>x.id===id);
+  if(!canEditBestPractice(p) || !p.attachments) return;
+  const removed = p.attachments[idx];
+  p.attachments.splice(idx, 1);
+  if(removed) deleteFromStorage(removed.dataUrl);
+  saveDB();
+  renderTab('bestPractice');
+}
 function renderBestPractice(){
   const myBranch = SESSION.branchId || DB.branches[0].id;
   const sorted = [...DB.bestPractices].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -5663,6 +5672,9 @@ function renderBestPractice(){
     // 파일명 링크가 아니라 썸네일로 정상 표시되도록 한다. (이전에는 이 게시판만 자체 로직을 써서
     // data: base64 이미지만 썸네일로 표시하고 Storage URL은 전부 파일 링크로만 나왔음)
     const attachmentsHtml = (p.attachments||[]).map(a=>noticeAttachmentHtml(a, 90, null)).join('');
+    // 수정 화면에서는 기존 첨부 사진마다 클릭 한 번으로 바로 삭제할 수 있도록 별도로 만든다
+    // (공지사항/정보보고 게시판과 동일한 방식 — removeBestPracticeAttachment 참고).
+    const editAttachmentsHtml = (p.attachments||[]).map((a,idx)=>noticeAttachmentHtml(a, 90, `removeBestPracticeAttachment('${p.id}', ${idx})`)).join('');
 
     if(canEdit && editId===p.id){
       return `
@@ -5693,7 +5705,7 @@ function renderBestPractice(){
             <textarea id="bpe_${p.id}_result" rows="2" style="width:100%;" placeholder="n건 판매/n명 가망고객 확보 등 결과치 작성">${escapeHtml(p.activityResult||'')}</textarea>
           </div>
         </div>
-        ${attachmentsHtml ? `<div style="margin-bottom:8px;">기존 첨부: ${attachmentsHtml}</div>` : ''}
+        ${editAttachmentsHtml ? `<div style="margin-bottom:8px;"><label>기존 첨부 파일 (× 클릭 시 즉시 삭제)</label><br>${editAttachmentsHtml}</div>` : ''}
         <div class="form-row">
           <div class="field">
             <label>새 첨부파일 추가 (선택, 기존 첨부에 이어서 추가됨)</label>
@@ -7099,15 +7111,13 @@ function renderKakaoFriends(){
       data:{
         labels: trend.map(t=>t.week),
         datasets:[
-          { label:'전체 누적 플친수', data: trend.map(t=>t.total), borderColor:'#A50034', backgroundColor:'rgba(165,0,52,.08)', tension:.25, fill:true, yAxisID:'y' },
-          { label:'증감율(%)', data: trend.map(t=>t.rate==null?null:Number(t.rate.toFixed(1))), borderColor:'#f5b100', backgroundColor:'#f5b100', tension:.25, borderDash:[5,3], yAxisID:'y1' }
+          { label:'전체 누적 플친수', data: trend.map(t=>t.total), borderColor:'#A50034', backgroundColor:'rgba(165,0,52,.08)', tension:.25, fill:true, yAxisID:'y' }
         ]
       },
       options:{
         interaction:{mode:'index', intersect:false},
         scales:{
-          y:{ position:'left', title:{display:true, text:'전체 누적 플친수'} },
-          y1:{ position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'증감율(%)'} }
+          y:{ position:'left', title:{display:true, text:'전체 누적 플친수'} }
         }
       }
     });
@@ -7144,15 +7154,13 @@ function renderKakaoFriends(){
       data:{
         labels: branchTrend.map(t=>t.week),
         datasets:[
-          { label:'누적 플친수', data: branchTrend.map(t=>t.total), borderColor:'#A50034', backgroundColor:'rgba(165,0,52,.08)', tension:.25, fill:true, yAxisID:'y' },
-          { label:'증감율(%)', data: branchTrend.map(t=>t.rate==null?null:Number(t.rate.toFixed(1))), borderColor:'#f5b100', backgroundColor:'#f5b100', tension:.25, borderDash:[5,3], yAxisID:'y1' }
+          { label:'누적 플친수', data: branchTrend.map(t=>t.total), borderColor:'#A50034', backgroundColor:'rgba(165,0,52,.08)', tension:.25, fill:true, yAxisID:'y' }
         ]
       },
       options:{
         interaction:{mode:'index', intersect:false},
         scales:{
-          y:{ position:'left', title:{display:true, text:'누적 플친수'} },
-          y1:{ position:'right', grid:{drawOnChartArea:false}, title:{display:true, text:'증감율(%)'} }
+          y:{ position:'left', title:{display:true, text:'누적 플친수'} }
         }
       }
     });
