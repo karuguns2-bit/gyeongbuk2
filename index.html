@@ -208,6 +208,8 @@
     position:sticky;right:0;background:#fff;box-shadow:-6px 0 8px -6px rgba(0,0,0,.18);
   }
   .table-scroll table th.act-col{background:#fafafa;}
+/* 정보보고/우수 활동 사례 게시글의 추천(따봉) 버튼 — 내가 이미 추천했으면 눌린 상태로 강조 표시한다. */
+.like-btn-active{background:#fff3cd !important;border-color:#f5b100 !important;color:#8a6300 !important;font-weight:700;}
 
   /* ---------- Drag & drop file upload ---------- */
   .dropzone{border:1px dashed var(--border);border-radius:8px;padding:8px;transition:background .15s, border-color .15s;}
@@ -2545,6 +2547,9 @@ function renderInfoReports(){
     const dt = new Date(r.createdAt);
     const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     const filesHtml = (r.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 56, canManage ? `removeInfoReportAttachment('${r.id}', ${idx})` : null)).join('');
+    // 게시내용이 좋다고 생각하는 다른 매니저가 추천(따봉)할 수 있도록 likedBy(empId 배열)로 추천 여부/수를 관리한다.
+    const likedBy = r.likedBy || [];
+    const iLiked = likedBy.includes(SESSION.empId);
     return `
       <div class="card" style="margin-bottom:12px;">
         <div class="flex-between">
@@ -2553,7 +2558,10 @@ function renderInfoReports(){
         </div>
         <div class="nb-content" style="margin:8px 0;white-space:pre-wrap;">${escapeHtml(r.content)}</div>
         ${filesHtml ? `<div style="margin-bottom:6px;">${filesHtml}</div>` : ''}
-        <div class="nb-meta muted" style="font-size:11.5px;">${escapeHtml(r.authorName)} · ${escapeHtml(branchName(r.branchId))} · ${dtStr}</div>
+        <div class="flex-between" style="margin-top:8px;align-items:center;">
+          <button class="btn btn-sm ${iLiked?'like-btn-active':''}" onclick="toggleInfoReportLike('${r.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedBy.length>0?` ${likedBy.length}`:''}</button>
+          <div class="nb-meta muted" style="font-size:11.5px;">${escapeHtml(r.authorName)} · ${escapeHtml(branchName(r.branchId))} · ${dtStr}</div>
+        </div>
       </div>`;
   }).join('');
 
@@ -2594,6 +2602,16 @@ function removeInfoReportAttachment(id, idx){
   const removed = r.attachments[idx];
   r.attachments.splice(idx, 1);
   if(removed) deleteFromStorage(removed.dataUrl);
+  saveDB();
+  renderTab('infoReports');
+}
+// 추천(따봉) 토글 — 작성자 본인 포함 누구나 클릭 가능하며, 이미 추천했으면 다시 눌러 취소할 수 있다.
+function toggleInfoReportLike(id){
+  const r = DB.infoReports.find(x=>x.id===id);
+  if(!r) return;
+  if(!r.likedBy) r.likedBy = [];
+  const idx = r.likedBy.indexOf(SESSION.empId);
+  if(idx>=0) r.likedBy.splice(idx, 1); else r.likedBy.push(SESSION.empId);
   saveDB();
   renderTab('infoReports');
 }
@@ -5815,6 +5833,16 @@ function removeBestPracticeAttachment(id, idx){
   saveDB();
   renderTab('bestPractice');
 }
+// 추천(따봉) 토글 — 작성자 본인 포함 누구나 클릭 가능하며, 이미 추천했으면 다시 눌러 취소할 수 있다.
+function toggleBestPracticeLike(id){
+  const p = DB.bestPractices.find(x=>x.id===id);
+  if(!p) return;
+  if(!p.likedBy) p.likedBy = [];
+  const idx = p.likedBy.indexOf(SESSION.empId);
+  if(idx>=0) p.likedBy.splice(idx, 1); else p.likedBy.push(SESSION.empId);
+  saveDB();
+  renderTab('bestPractice');
+}
 function renderBestPractice(){
   const myBranch = SESSION.branchId || DB.branches[0].id;
   const sorted = [...DB.bestPractices].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -5870,6 +5898,9 @@ function renderBestPractice(){
       </div>`;
     }
 
+    // 게시내용이 좋다고 생각하는 다른 매니저가 추천(따봉)할 수 있도록 likedBy(empId 배열)로 추천 여부/수를 관리한다.
+    const likedByBp = p.likedBy || [];
+    const iLikedBp = likedByBp.includes(SESSION.empId);
     return `
       <div class="card" style="margin-bottom:14px;">
         <div class="flex-between" style="margin-bottom:6px;">
@@ -5879,7 +5910,10 @@ function renderBestPractice(){
         <div style="white-space:pre-wrap;line-height:1.6;margin-bottom:8px;">${escapeHtml(p.content)}</div>
         ${p.activityResult ? `<div style="background:#fff7f9;border:1px solid #f0c7d4;border-radius:8px;padding:8px 12px;margin-bottom:8px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
         ${attachmentsHtml ? `<div>${attachmentsHtml}</div>` : ''}
-        <div class="muted" style="font-size:11.5px;margin-top:8px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
+        <div class="flex-between" style="margin-top:8px;align-items:center;">
+          <button class="btn btn-sm ${iLikedBp?'like-btn-active':''}" onclick="toggleBestPracticeLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedByBp.length>0?` ${likedByBp.length}`:''}</button>
+          <div class="muted" style="font-size:11.5px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
+        </div>
       </div>`;
   }).join('') || `<div class="muted">등록된 활동 사례가 없습니다.</div>`;
 
