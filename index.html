@@ -737,6 +737,7 @@ function buildSeedDataFromReal(){
     kakaoFriends, prospects: [], subB2bSales: [], policyQuizAttempts: [],
     kakaoContestInfo: JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO)),
     kakaoContestResultImage: null,
+    execPhotoGuide: null,
     policyQuizBank: JSON.parse(JSON.stringify(POLICY_QUIZ_BANK)),
     subscriptionData };
 }
@@ -1174,6 +1175,7 @@ function migrateDB(){
   if(!DB.policyQuizAttempts) DB.policyQuizAttempts = [];
   if(!DB.kakaoContestInfo) DB.kakaoContestInfo = JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO));
   if(DB.kakaoContestResultImage===undefined) DB.kakaoContestResultImage = null;
+  if(DB.execPhotoGuide===undefined) DB.execPhotoGuide = null;
   if(!DB.policyQuizBank) DB.policyQuizBank = JSON.parse(JSON.stringify(POLICY_QUIZ_BANK));
   DB.branches.forEach(b=>{
     if(!DB.schedule[b.id]) DB.schedule[b.id] = {};
@@ -4518,21 +4520,105 @@ function collectListScope(list){
 function canEditExecPhoto(r){
   return !!(r && (SESSION.role==='admin' || r.uploaderEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
+// 실행력 점검 사진 등록/가이드 이미지에서 공통으로 쓰는 실행 주차 선택지.
+const EXEC_PHOTO_WEEK_OPTIONS = ['8월 1주차', '8월 2주차', '8월 3주차', '8월 4주차'];
+function execPhotoWeekOptionsHtml(selected){
+  return '<option value="">주차 선택</option>' + EXEC_PHOTO_WEEK_OPTIONS.map(w=>`<option value="${w}" ${w===selected?'selected':''}>${w}</option>`).join('');
+}
+// ---- 실행력 점검 사진 가이드 이미지 (관리자만 게시/수정/삭제, 전 직원 열람 — 카카오 컨테스트 결과 이미지와 동일 패턴) ----
+async function handleExecPhotoGuideUpload(evt){
+  if(SESSION.role!=='admin') return;
+  const file = evt.target.files && evt.target.files[0];
+  if(!file) return;
+  const weekEl = document.getElementById('epgWeek');
+  const week = weekEl ? weekEl.value : '';
+  if(!week){ alert('실행 주차를 먼저 선택해 주세요.'); evt.target.value=''; return; }
+  const msgEl = document.getElementById('epgMsg');
+  if(msgEl) msgEl.textContent = '업로드 중...';
+  try{
+    const oldUrl = DB.execPhotoGuide && DB.execPhotoGuide.dataUrl;
+    const uploaded = await readFileAsDataUrl(file);
+    DB.execPhotoGuide = { dataUrl: uploaded.dataUrl, name: uploaded.name, week, uploadedAt: todayStr(), uploadedBy: SESSION.name };
+    if(oldUrl && oldUrl!==uploaded.dataUrl) deleteFromStorage(oldUrl);
+    saveDB();
+    logActivity('update', `${SESSION.name}님(관리자)이 [실행력 점검 사진 가이드](${week})를 등록했습니다`);
+    renderTab('collectPhoto');
+  }catch(err){
+    if(msgEl) msgEl.textContent = '업로드 중 오류가 발생했습니다.';
+  }
+}
+function deleteExecPhotoGuideImage(){
+  if(SESSION.role!=='admin') return;
+  if(!confirm('실행력 점검 사진 가이드 이미지를 삭제하시겠습니까?')) return;
+  const url = DB.execPhotoGuide && DB.execPhotoGuide.dataUrl;
+  if(url) deleteFromStorage(url);
+  DB.execPhotoGuide = null;
+  saveDB();
+  renderTab('collectPhoto');
+}
+function renderExecPhotoGuide(){
+  const isAdmin = SESSION.role==='admin';
+  const img = DB.execPhotoGuide;
+  const adminControls = isAdmin ? `
+    <div style="margin-top:${img?'10px':'0'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <select id="epgWeek" style="width:140px">${execPhotoWeekOptionsHtml(img ? img.week : '')}</select>
+      <input type="file" accept="image/*" onchange="handleExecPhotoGuideUpload(event)" style="max-width:240px;">
+      ${img ? `<button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="deleteExecPhotoGuideImage()">이미지 삭제</button>` : ''}
+      <span id="epgMsg" class="small-note"></span>
+    </div>` : '';
+  if(!img && !isAdmin) return '';
+  return `
+    <div class="card" style="margin-bottom:16px;text-align:center;">
+      ${img ? `
+        <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;"><b style="color:var(--primary);">${escapeHtml(img.week||'')} 실행력 점검 사진 가이드</b> · 등록일 ${img.uploadedAt||''} · ${escapeHtml(img.uploadedBy||'')}</div>
+        <img src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:100%;max-height:640px;border-radius:10px;cursor:zoom-in;box-shadow:0 4px 16px rgba(0,0,0,.12);">
+      ` : `<div class="muted" style="padding:10px 0;">등록된 실행력 점검 사진 가이드가 없습니다. 관리자만 등록할 수 있습니다.</div>`}
+      ${adminControls}
+    </div>`;
+}
 function renderCollectPhoto(){
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.execPhotos);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
-  const cards = sorted.map(r=>`
+  const editId = state.epEditId;
+  const cards = sorted.map(r=>{
+    const canEdit = canEditExecPhoto(r);
+    if(canEdit && editId===r.id){
+      return `
+      <div class="card" style="width:220px;border:1.5px dashed var(--primary);">
+        <div class="field" style="margin-bottom:8px;">
+          <label>지점명</label>
+          <select id="epe_${r.id}_branch" style="width:100%">${branchOptionsHtml(r.branchId)}</select>
+        </div>
+        <div class="field" style="margin-bottom:8px;">
+          <label>실행 주차</label>
+          <select id="epe_${r.id}_week" style="width:100%">${execPhotoWeekOptionsHtml(r.week)}</select>
+        </div>
+        <img src="${r.photoDataUrl}" style="width:100%;border-radius:8px;margin-bottom:6px;object-fit:cover;max-height:160px;">
+        <div class="field" style="margin-bottom:8px;">
+          <label>사진 교체 (선택)</label>
+          <input id="epe_${r.id}_file" type="file" accept="image/*" style="width:100%;font-size:11px;">
+        </div>
+        <button class="btn btn-sm btn-primary" style="width:100%;margin-bottom:4px;" onclick="saveEditExecPhoto('${r.id}')">저장</button>
+        <button class="btn btn-sm" style="width:100%;" onclick="cancelEditExecPhoto()">취소</button>
+      </div>`;
+    }
+    return `
     <div class="card" style="width:220px;">
-      <div style="font-weight:600;margin-bottom:6px;">${branchName(r.branchId)}</div>
-      <img src="${r.photoDataUrl}" style="width:100%;border-radius:8px;margin-bottom:6px;object-fit:cover;max-height:160px;">
+      <div class="flex-between" style="margin-bottom:6px;">
+        <div style="font-weight:600;">${branchName(r.branchId)}</div>
+        ${r.week ? `<span class="tag">${escapeHtml(r.week)}</span>` : ''}
+      </div>
+      <img src="${r.photoDataUrl}" onclick="openImgLightbox(this.src)" style="width:100%;border-radius:8px;margin-bottom:6px;object-fit:cover;max-height:160px;cursor:zoom-in;">
       <div class="muted" style="font-size:11.5px;">${r.uploaderName} · ${r.createdAt.slice(0,16).replace('T',' ')}</div>
-      ${canEditExecPhoto(r) ? `<button class="btn btn-sm" style="margin-top:6px;width:100%;" onclick="deleteExecPhoto('${r.id}')">삭제</button>` : ''}
-    </div>`).join('') || `<div class="muted">등록된 사진이 없습니다.</div>`;
+      ${canEdit ? `<div style="display:flex;gap:4px;margin-top:6px;"><button class="btn btn-sm" style="flex:1;" onclick="startEditExecPhoto('${r.id}')">수정</button><button class="btn btn-sm" style="flex:1;" onclick="deleteExecPhoto('${r.id}')">삭제</button></div>` : ''}
+    </div>`;
+  }).join('') || `<div class="muted">등록된 사진이 없습니다.</div>`;
 
   return `
     <div class="page-title">실행력 점검 사진 취합</div>
     <div class="page-desc">지점별 실행력 점검 사진을 업로드·공유합니다.</div>
+    ${renderExecPhotoGuide()}
     ${collectBranchPills('collectPhoto')}
 
     <div class="card" style="margin-bottom:16px;">
@@ -4541,6 +4627,10 @@ function renderCollectPhoto(){
         <div class="field">
           <label>지점명</label>
           <select id="epBranch" style="width:180px">${branchOptionsHtml(myBranch)}</select>
+        </div>
+        <div class="field">
+          <label>실행 주차</label>
+          <select id="epWeek" style="width:140px">${execPhotoWeekOptionsHtml('')}</select>
         </div>
         <div class="field">
           <label>사진 업로드</label>
@@ -4557,20 +4647,60 @@ function renderCollectPhoto(){
 }
 function submitExecPhoto(){
   const branchId = document.getElementById('epBranch').value;
+  const week = document.getElementById('epWeek').value;
   const fileInput = document.getElementById('epFile');
   const file = fileInput.files && fileInput.files[0];
+  if(!week){ alert('실행 주차를 선택해 주세요.'); return; }
   if(!file){ alert('사진을 선택해 주세요.'); return; }
   if(file.size > 5*1024*1024){ alert('사진은 5MB 이하로 업로드해 주세요.'); return; }
   readFileAsDataUrl(file).then(({dataUrl})=>{
     DB.execPhotos.push({
       id: 'ep_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      branchId, photoDataUrl: dataUrl, photoName: file.name,
+      branchId, week, photoDataUrl: dataUrl, photoName: file.name,
       uploaderEmpId: SESSION.empId, uploaderName: SESSION.name, createdAt: new Date().toISOString()
     });
     saveDB();
-    logActivity('post', `${SESSION.name}님이 [실행력 점검 사진]을 등록했습니다 (${branchName(branchId)})`);
+    logActivity('post', `${SESSION.name}님이 [실행력 점검 사진]을 등록했습니다 (${branchName(branchId)} · ${week})`);
     renderTab('collectPhoto');
   }).catch(()=>alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+}
+function startEditExecPhoto(id){
+  const r = DB.execPhotos.find(x=>x.id===id);
+  if(!canEditExecPhoto(r)){ alert('본인이 등록한 사진 또는 같은 지점 매니저, 관리자만 수정할 수 있습니다.'); return; }
+  state.epEditId = id;
+  renderTab('collectPhoto');
+}
+function cancelEditExecPhoto(){
+  state.epEditId = null;
+  renderTab('collectPhoto');
+}
+function saveEditExecPhoto(id){
+  const r = DB.execPhotos.find(x=>x.id===id);
+  if(!canEditExecPhoto(r)){ alert('본인이 등록한 사진 또는 같은 지점 매니저, 관리자만 수정할 수 있습니다.'); return; }
+  const branchId = document.getElementById(`epe_${id}_branch`).value;
+  const week = document.getElementById(`epe_${id}_week`).value;
+  if(!week){ alert('실행 주차를 선택해 주세요.'); return; }
+  const fileInput = document.getElementById(`epe_${id}_file`);
+  const file = fileInput.files && fileInput.files[0];
+  function finalize(newPhoto){
+    r.branchId = branchId;
+    r.week = week;
+    if(newPhoto){
+      const oldUrl = r.photoDataUrl;
+      r.photoDataUrl = newPhoto.dataUrl;
+      r.photoName = newPhoto.name;
+      if(oldUrl && oldUrl!==newPhoto.dataUrl) deleteFromStorage(oldUrl);
+    }
+    state.epEditId = null;
+    saveDB();
+    renderTab('collectPhoto');
+  }
+  if(file){
+    if(file.size > 5*1024*1024){ alert('사진은 5MB 이하로 업로드해 주세요.'); return; }
+    readFileAsDataUrl(file).then(finalize).catch(()=>alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+  } else {
+    finalize(null);
+  }
 }
 function deleteExecPhoto(id){
   const target = DB.execPhotos.find(r=>r.id===id);
