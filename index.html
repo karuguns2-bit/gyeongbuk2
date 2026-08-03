@@ -4502,6 +4502,9 @@ function collectListScope(list){
 }
 
 // ---- 1) 실행력 점검 사진 취합 ----
+function canEditExecPhoto(r){
+  return !!(r && (SESSION.role==='admin' || r.uploaderEmpId===SESSION.empId));
+}
 function renderCollectPhoto(){
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.execPhotos);
@@ -4511,7 +4514,7 @@ function renderCollectPhoto(){
       <div style="font-weight:600;margin-bottom:6px;">${branchName(r.branchId)}</div>
       <img src="${r.photoDataUrl}" style="width:100%;border-radius:8px;margin-bottom:6px;object-fit:cover;max-height:160px;">
       <div class="muted" style="font-size:11.5px;">${r.uploaderName} · ${r.createdAt.slice(0,16).replace('T',' ')}</div>
-      ${SESSION.role==='admin' ? `<button class="btn btn-sm" style="margin-top:6px;width:100%;" onclick="deleteExecPhoto('${r.id}')">삭제</button>` : ''}
+      ${canEditExecPhoto(r) ? `<button class="btn btn-sm" style="margin-top:6px;width:100%;" onclick="deleteExecPhoto('${r.id}')">삭제</button>` : ''}
     </div>`).join('') || `<div class="muted">등록된 사진이 없습니다.</div>`;
 
   return `
@@ -4557,8 +4560,9 @@ function submitExecPhoto(){
   }).catch(()=>alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
 }
 function deleteExecPhoto(id){
-  if(!confirm('삭제하시겠습니까?')) return;
   const target = DB.execPhotos.find(r=>r.id===id);
+  if(!canEditExecPhoto(target)){ alert('본인이 등록한 사진 또는 관리자만 삭제할 수 있습니다.'); return; }
+  if(!confirm('삭제하시겠습니까?')) return;
   DB.execPhotos = DB.execPhotos.filter(r=>r.id!==id);
   if(target) deleteFromStorage(target.photoDataUrl);
   saveDB();
