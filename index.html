@@ -89,11 +89,19 @@
   .sidebar .brand{padding:0 20px 18px;font-weight:700;font-size:14px;line-height:1.4;border-bottom:1px solid #333;margin-bottom:10px;}
   .sidebar .brand span{color:var(--primary);}
   .nav-item{
+    position:relative;
     margin:2px 10px;padding:10px 12px;border-radius:8px;font-size:13.5px;color:#c7c7cc;cursor:pointer;
     transition:background .15s ease,color .15s ease;
   }
   .nav-item:hover{background:#2a2a2f;color:#fff;}
   .nav-item.active{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(165,0,52,.35);}
+  /* 게시형 메뉴에 새 글이 올라오면 표시되는 작은 New 뱃지 (2026.08) */
+  .nav-badge{
+    position:absolute;top:5px;right:7px;background:var(--primary);color:#fff;
+    font-size:9px;font-weight:700;padding:1.5px 5px;border-radius:8px;letter-spacing:.02em;
+    line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,.35);pointer-events:none;
+  }
+  .nav-item.active .nav-badge{background:#fff;color:var(--primary);}
   .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#7c7c82;text-transform:uppercase;border-top:1px solid #2c2c30;margin-top:8px;}
   .nav-item.sub{padding:8px 12px 8px 20px;font-size:13px;}
   .nav-item.sub.sub2{padding:7px 12px 7px 28px;font-size:12px;}
@@ -263,8 +271,6 @@
     width:100%;display:block;border-radius:6px;border:1px solid var(--border);cursor:zoom-in;
   }
   .guide-img-row .guide-img-caption{text-align:center;font-size:11.5px;color:#888;margin-top:5px;}
-  .cn-dropzone{transition:background-color .15s,border-color .15s;}
-  .cn-dropzone.cn-drop-active{background:#fff3f4;border-color:var(--primary);color:var(--primary);}
 </style>
 </head>
 <body>
@@ -1241,6 +1247,23 @@ function migrateDB(){
     if(!DB.progress[b.id]) DB.progress[b.id] = {period: periodStr(), entries:[]};
     if(!DB.attendance[b.id]) DB.attendance[b.id] = {date: todayStr(), records:[]};
   });
+  // 실행력 점검 사진: 건당 사진 1장(photoDataUrl)만 가능하던 구조를 여러 장(photos[])으로 바꾼다.
+  // 기존에 이미 등록되어 있던 단일 사진은 photos 배열의 첫 번째 항목으로 옮겨서 그대로 보존한다.
+  (DB.execPhotos||[]).forEach(r=>{
+    if(!r.photos){
+      r.photos = r.photoDataUrl ? [{ dataUrl: r.photoDataUrl, name: r.photoName || null }] : [];
+    }
+    delete r.photoDataUrl;
+    delete r.photoName;
+  });
+  // 모바일 상품권 영수증: 건당 영수증 1장(receiptDataUrl)만 가능하던 구조를 여러 장(receipts[])으로 바꾼다.
+  (DB.giftcardRequests||[]).forEach(r=>{
+    if(!r.receipts){
+      r.receipts = r.receiptDataUrl ? [{ dataUrl: r.receiptDataUrl, name: r.receiptName || null }] : [];
+    }
+    delete r.receiptDataUrl;
+    delete r.receiptName;
+  });
   if(JSON.stringify(DB) !== __migrateBefore) saveDB();
 }
 function saveDB(){ pushDBToServer(); }
@@ -1376,10 +1399,67 @@ function handlePwChange(){
    ========================================================================= */
 const state = { tab:'home', viewBranchId:null };
 
+// =========================================================================
+// 3a. 사이드바 "New" 뱃지 — 게시형 메뉴에 내가 아직 안 본 새 글/등록이 있으면 표시
+// DB.contentUpdatedAt[tabKey] = 해당 메뉴에 새 글이 등록될 때마다 갱신되는 타임스탬프
+// DB.lastViewed[empId][tabKey] = 그 사용자가 해당 메뉴를 마지막으로 열어본 타임스탬프
+// 두 값을 비교해서 "마지막으로 본 이후 새 글"이 있으면 뱃지를 띄운다.
+// =========================================================================
+const NEW_BADGE_TABS = [
+  'notices','infoReports','kakaoFriends',
+  'eduHq','eduInhouse','eduEtc','eduVideo','eduTest','eduAiRp',
+  'collectPhoto','collectGiftcard','collectContest','subTierContest',
+  'mistakeNote','bestPractice','policyQuiz',
+  'suggestions'
+];
+// 시각(타임스탬프) 대신 전역 일련번호(seq)로 비교한다 - 같은 밀리초 안에 "새 글 등록"과
+// "확인" 이 연달아 일어나도(자동화 테스트, 매우 빠른 클릭 등) 충돌 없이 정확히 비교된다.
+function touchTabContent(tabKey){
+  if(!DB.contentSeq) DB.contentSeq = 0;
+  DB.contentSeq += 1;
+  if(!DB.contentUpdatedAt) DB.contentUpdatedAt = {};
+  DB.contentUpdatedAt[tabKey] = DB.contentSeq;
+}
+function tabHasNewContent(tabKey){
+  if(!SESSION || !SESSION.empId) return false;
+  const updated = DB.contentUpdatedAt && DB.contentUpdatedAt[tabKey];
+  if(!updated) return false;
+  const lastViewed = DB.lastViewed && DB.lastViewed[SESSION.empId] && DB.lastViewed[SESSION.empId][tabKey];
+  if(lastViewed==null) return true;
+  return updated > lastViewed;
+}
+function markTabViewed(tabKey){
+  if(!SESSION || !SESSION.empId || !NEW_BADGE_TABS.includes(tabKey)) return;
+  const wasNew = tabHasNewContent(tabKey);
+  if(!DB.lastViewed) DB.lastViewed = {};
+  if(!DB.lastViewed[SESSION.empId]) DB.lastViewed[SESSION.empId] = {};
+  const updated = DB.contentUpdatedAt && DB.contentUpdatedAt[tabKey];
+  DB.lastViewed[SESSION.empId][tabKey] = updated || 0;
+  if(wasNew){ saveDB(); }
+  refreshNavBadges();
+}
+function refreshNavBadges(){
+  document.querySelectorAll('.nav-item[data-tab]').forEach(el=>{
+    const tab = el.dataset.tab;
+    if(!NEW_BADGE_TABS.includes(tab)) return;
+    let badge = el.querySelector('.nav-badge');
+    const isNew = tabHasNewContent(tab);
+    if(isNew && !badge){
+      badge = document.createElement('span');
+      badge.className = 'nav-badge';
+      badge.textContent = 'New';
+      el.appendChild(badge);
+    } else if(!isNew && badge){
+      badge.remove();
+    }
+  });
+}
+
 document.querySelectorAll('.nav-item').forEach(el=>{
   el.addEventListener('click', ()=>{
     document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
     el.classList.add('active');
+    markTabViewed(el.dataset.tab);
     renderTab(el.dataset.tab);
   });
 });
@@ -2067,8 +2147,8 @@ function dbCapacityGaugeHtml(){
 // (사진 첨부가 누적되어 DB가 커지면서 저장/불러오기가 느려지거나 실패하는 문제 대응 - 2026.08)
 function collectDbImageTargets(){
   const targets = [];
-  (DB.execPhotos||[]).forEach(r=>{ if(r.photoDataUrl) targets.push({get:()=>r.photoDataUrl, set:v=>{r.photoDataUrl=v;}}); });
-  (DB.giftcardRequests||[]).forEach(r=>{ if(r.receiptDataUrl) targets.push({get:()=>r.receiptDataUrl, set:v=>{r.receiptDataUrl=v;}}); });
+  (DB.execPhotos||[]).forEach(r=>(r.photos||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
+  (DB.giftcardRequests||[]).forEach(r=>(r.receipts||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
   (DB.notices||[]).forEach(n=>(n.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
   (DB.infoReports||[]).forEach(r=>(r.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
   (DB.bestPractices||[]).forEach(p=>(p.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
@@ -2358,6 +2438,7 @@ function saveNotice(){
   } else {
     DB.notices.push({id:'notice_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), title, content, author: SESSION.name, createdAt: new Date().toISOString(), attachments: []});
     state.noticeIndex = 0;
+    touchTabContent('notices');
     logActivity('update', `${SESSION.name}님(관리자)이 [공지사항]을 등록했습니다: ${title}`);
   }
   state.noticeFormOpen = false;
@@ -2489,6 +2570,7 @@ function submitNoticeBoard(){
   function finalize(attachments){
     DB.notices.push({id:'notice_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), title, content, author: SESSION.name, createdAt: new Date().toISOString(), attachments});
     state.noticeIndex = 0;
+    touchTabContent('notices');
     saveDB();
     logActivity('update', `${SESSION.name}님(관리자)이 [공지사항]을 등록했습니다: ${title}`);
     renderTab('notices');
@@ -2672,6 +2754,7 @@ function submitInfoReport(){
       authorEmpId: SESSION.empId, authorName: SESSION.name, branchId: SESSION.branchId,
       createdAt: new Date().toISOString()
     });
+    touchTabContent('infoReports');
     saveDB();
     logActivity('post', `${SESSION.name}님이 [정보보고]를 등록했습니다: ${title}`);
     renderTab('infoReports');
@@ -4587,6 +4670,11 @@ function renderCollectPhoto(){
   const cards = sorted.map(r=>{
     const canEdit = canEditExecPhoto(r);
     if(canEdit && editId===r.id){
+      const editPhotosHtml = (r.photos||[]).map((p,idx)=>`
+        <div style="position:relative;display:inline-block;margin:0 4px 4px 0;">
+          <img src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:52px;height:52px;object-fit:cover;border-radius:6px;cursor:zoom-in;">
+          <button type="button" title="사진 삭제" onclick="removeExecPhotoImage('${r.id}',${idx})" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:11px;line-height:1;">×</button>
+        </div>`).join('');
       return `
       <div class="card" style="width:220px;border:1.5px dashed var(--primary);">
         <div class="field" style="margin-bottom:8px;">
@@ -4597,22 +4685,25 @@ function renderCollectPhoto(){
           <label>실행 주차</label>
           <select id="epe_${r.id}_week" style="width:100%">${execPhotoWeekOptionsHtml(r.week)}</select>
         </div>
-        <img src="${r.photoDataUrl}" style="width:100%;border-radius:8px;margin-bottom:6px;object-fit:cover;max-height:160px;">
+        <div style="margin-bottom:6px;">${editPhotosHtml || '<div class="muted" style="font-size:11.5px;">사진 없음</div>'}</div>
         <div class="field" style="margin-bottom:8px;">
-          <label>사진 교체 (선택)</label>
-          <input id="epe_${r.id}_file" type="file" accept="image/*" style="width:100%;font-size:11px;">
+          <label>사진 추가 (선택, 여러 장 가능)</label>
+          <input id="epe_${r.id}_file" type="file" accept="image/*" multiple style="width:100%;font-size:11px;">
         </div>
         <button class="btn btn-sm btn-primary" style="width:100%;margin-bottom:4px;" onclick="saveEditExecPhoto('${r.id}')">저장</button>
         <button class="btn btn-sm" style="width:100%;" onclick="cancelEditExecPhoto()">취소</button>
       </div>`;
     }
+    const photosHtml = (r.photos||[]).length>0
+      ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">${(r.photos||[]).map(p=>`<img src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:calc(50% - 2px);height:90px;object-fit:cover;border-radius:6px;cursor:zoom-in;">`).join('')}</div>`
+      : `<div class="muted" style="margin-bottom:6px;">등록된 사진이 없습니다.</div>`;
     return `
     <div class="card" style="width:220px;">
       <div class="flex-between" style="margin-bottom:6px;">
         <div style="font-weight:600;">${branchName(r.branchId)}</div>
         ${r.week ? `<span class="tag">${escapeHtml(r.week)}</span>` : ''}
       </div>
-      <img src="${r.photoDataUrl}" onclick="openImgLightbox(this.src)" style="width:100%;border-radius:8px;margin-bottom:6px;object-fit:cover;max-height:160px;cursor:zoom-in;">
+      ${photosHtml}
       <div class="muted" style="font-size:11.5px;">${r.uploaderName} · ${r.createdAt.slice(0,16).replace('T',' ')}</div>
       ${canEdit ? `<div style="display:flex;gap:4px;margin-top:6px;"><button class="btn btn-sm" style="flex:1;" onclick="startEditExecPhoto('${r.id}')">수정</button><button class="btn btn-sm" style="flex:1;" onclick="deleteExecPhoto('${r.id}')">삭제</button></div>` : ''}
     </div>`;
@@ -4636,8 +4727,8 @@ function renderCollectPhoto(){
           <select id="epWeek" style="width:140px">${execPhotoWeekOptionsHtml('')}</select>
         </div>
         <div class="field">
-          <label>사진 업로드</label>
-          <input id="epFile" type="file" accept="image/*">
+          <label>사진 업로드 (여러 장 가능)</label>
+          <input id="epFile" type="file" accept="image/*" multiple>
         </div>
         <button class="btn btn-primary" onclick="submitExecPhoto()">등록</button>
       </div>
@@ -4652,16 +4743,18 @@ function submitExecPhoto(){
   const branchId = document.getElementById('epBranch').value;
   const week = document.getElementById('epWeek').value;
   const fileInput = document.getElementById('epFile');
-  const file = fileInput.files && fileInput.files[0];
+  const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
   if(!week){ alert('실행 주차를 선택해 주세요.'); return; }
-  if(!file){ alert('사진을 선택해 주세요.'); return; }
-  if(file.size > 5*1024*1024){ alert('사진은 5MB 이하로 업로드해 주세요.'); return; }
-  readFileAsDataUrl(file).then(({dataUrl})=>{
+  if(files.length===0){ alert('사진을 선택해 주세요.'); return; }
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ alert(`"${oversized.name}" 사진은 5MB 이하로 업로드해 주세요.`); return; }
+  Promise.all(files.map(readFileAsDataUrl)).then(uploaded=>{
     DB.execPhotos.push({
       id: 'ep_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      branchId, week, photoDataUrl: dataUrl, photoName: file.name,
+      branchId, week, photos: uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name})),
       uploaderEmpId: SESSION.empId, uploaderName: SESSION.name, createdAt: new Date().toISOString()
     });
+    touchTabContent('collectPhoto');
     saveDB();
     logActivity('post', `${SESSION.name}님이 [실행력 점검 사진]을 등록했습니다 (${branchName(branchId)} · ${week})`);
     renderTab('collectPhoto');
@@ -4684,33 +4777,41 @@ function saveEditExecPhoto(id){
   const week = document.getElementById(`epe_${id}_week`).value;
   if(!week){ alert('실행 주차를 선택해 주세요.'); return; }
   const fileInput = document.getElementById(`epe_${id}_file`);
-  const file = fileInput.files && fileInput.files[0];
-  function finalize(newPhoto){
+  const files = (fileInput && fileInput.files) ? Array.from(fileInput.files).slice(0, 10) : [];
+  function finalize(newPhotos){
     r.branchId = branchId;
     r.week = week;
-    if(newPhoto){
-      const oldUrl = r.photoDataUrl;
-      r.photoDataUrl = newPhoto.dataUrl;
-      r.photoName = newPhoto.name;
-      if(oldUrl && oldUrl!==newPhoto.dataUrl) deleteFromStorage(oldUrl);
+    if(newPhotos && newPhotos.length>0){
+      if(!r.photos) r.photos = [];
+      newPhotos.forEach(p=> r.photos.push({dataUrl:p.dataUrl, name:p.name}));
     }
     state.epEditId = null;
     saveDB();
     renderTab('collectPhoto');
   }
-  if(file){
-    if(file.size > 5*1024*1024){ alert('사진은 5MB 이하로 업로드해 주세요.'); return; }
-    readFileAsDataUrl(file).then(finalize).catch(()=>alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+  if(files.length>0){
+    const oversized = files.find(f=>f.size > 5*1024*1024);
+    if(oversized){ alert(`"${oversized.name}" 사진은 5MB 이하로 업로드해 주세요.`); return; }
+    Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
     finalize(null);
   }
+}
+function removeExecPhotoImage(id, idx){
+  const r = DB.execPhotos.find(x=>x.id===id);
+  if(!canEditExecPhoto(r)){ alert('본인이 등록한 사진 또는 같은 지점 매니저, 관리자만 삭제할 수 있습니다.'); return; }
+  if(!confirm('이 사진을 삭제하시겠습니까?')) return;
+  const removed = (r.photos||[]).splice(idx,1)[0];
+  if(removed && removed.dataUrl) deleteFromStorage(removed.dataUrl);
+  saveDB();
+  renderTab('collectPhoto');
 }
 function deleteExecPhoto(id){
   const target = DB.execPhotos.find(r=>r.id===id);
   if(!canEditExecPhoto(target)){ alert('본인이 등록한 사진 또는 관리자만 삭제할 수 있습니다.'); return; }
   if(!confirm('삭제하시겠습니까?')) return;
   DB.execPhotos = DB.execPhotos.filter(r=>r.id!==id);
-  if(target) deleteFromStorage(target.photoDataUrl);
+  if(target) (target.photos||[]).forEach(p=>{ if(p.dataUrl) deleteFromStorage(p.dataUrl); });
   saveDB();
   renderTab('collectPhoto');
 }
@@ -4766,8 +4867,14 @@ function renderCollectGiftcard(){
       <td><input id="gceCustomerName_${r.id}" value="${escapeHtml(r.customerName||'')}" style="width:100px"></td>
       <td><input id="gcePhone_${r.id}" value="${escapeHtml(r.phone||'')}" style="width:120px"></td>
       <td>
-        ${r.receiptDataUrl ? `<img class="xlsx-photo" src="${r.receiptDataUrl}" onclick="openImgLightbox(this.src)" style="width:40px;height:40px;object-fit:cover;border-radius:5px;cursor:zoom-in;display:block;margin-bottom:4px;">`:''}
-        <input id="gceReceipt_${r.id}" type="file" accept="image/*" style="width:120px;font-size:11px;">
+        <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px;">
+        ${(r.receipts||[]).map((p,idx)=>`
+          <div style="position:relative;display:inline-block;">
+            <img class="xlsx-photo" src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:zoom-in;">
+            <button type="button" title="영수증 삭제" onclick="removeGiftcardReceiptImage('${r.id}',${idx})" style="position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:10px;line-height:1;">×</button>
+          </div>`).join('')}
+        </div>
+        <input id="gceReceipt_${r.id}" type="file" accept="image/*" multiple style="width:120px;font-size:11px;">
       </td>
       <td>${r.requesterName}</td>
       <td class="act-col" style="white-space:nowrap;">
@@ -4788,7 +4895,7 @@ function renderCollectGiftcard(){
       <td>${r.deliveryDate||'-'}</td>
       <td>${r.customerName}</td>
       <td>${r.phone}</td>
-      <td>${r.receiptDataUrl ? `<img class="xlsx-photo" src="${r.receiptDataUrl}" onclick="openImgLightbox(this.src)" style="width:40px;height:40px;object-fit:cover;border-radius:5px;cursor:zoom-in;">` : '-'}</td>
+      <td>${(r.receipts||[]).length>0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;">${r.receipts.map(p=>`<img class="xlsx-photo" src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:40px;height:40px;object-fit:cover;border-radius:5px;cursor:zoom-in;">`).join('')}</div>` : '-'}</td>
       <td>${r.requesterName}</td>
       <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditGiftcardRequest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteGiftcardRequest('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
@@ -4873,8 +4980,8 @@ function renderCollectGiftcard(){
           <input id="gcPhone" placeholder="예: 010-1234-5678" style="width:150px">
         </div>
         <div class="field">
-          <label>영수증 증빙 업로드</label>
-          <input id="gcReceipt" type="file" accept="image/*">
+          <label>영수증 증빙 업로드 (여러 장 가능)</label>
+          <input id="gcReceipt" type="file" accept="image/*" multiple>
         </div>
         <button class="btn btn-primary" onclick="submitGiftcardRequest()">등록</button>
       </div>
@@ -4912,31 +5019,42 @@ function submitGiftcardRequest(){
   if(orderNo[0].toLowerCase() !== 'i'){ alert('주문번호는 "I"로 시작해야 합니다. (예: I051245311)'); return; }
   if(!isValidGiftcardModel(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)'); return; }
 
-  function finalize(receiptDataUrl, receiptName){
+  function finalize(receipts){
     DB.giftcardRequests.push({
       id: 'gc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       branchId, transferBranchId, orderNo, model, saleType, amountWon, saleDate, deliveryDate,
-      customerName, phone, receiptDataUrl: receiptDataUrl||null, receiptName: receiptName||null,
+      customerName, phone, receipts: receipts||[],
       requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
     });
+    touchTabContent('collectGiftcard');
     saveDB();
     logActivity('post', `${SESSION.name}님이 [모바일 상품권]을 등록했습니다`);
     renderTab('collectGiftcard');
   }
-  const file = fileInput.files && fileInput.files[0];
-  if(file){
-    if(file.size > 3*1024*1024){ alert('영수증 이미지는 3MB 이하로 업로드해 주세요.'); return; }
-    readFileAsDataUrl(file).then(({dataUrl})=>finalize(dataUrl, file.name)).catch(()=>alert('영수증 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+  const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
+  if(files.length>0){
+    const oversized = files.find(f=>f.size > 3*1024*1024);
+    if(oversized){ alert(`"${oversized.name}" 영수증 이미지는 3MB 이하로 업로드해 주세요.`); return; }
+    Promise.all(files.map(readFileAsDataUrl)).then(uploaded=>finalize(uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name})))).catch(()=>alert('영수증 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
-    finalize(null, null);
+    finalize([]);
   }
+}
+function removeGiftcardReceiptImage(id, idx){
+  const r = DB.giftcardRequests.find(x=>x.id===id);
+  if(!canEditGiftcardRequest(r)){ alert('본인이 등록한 건 또는 관리자만 삭제할 수 있습니다.'); return; }
+  if(!confirm('이 영수증 사진을 삭제하시겠습니까?')) return;
+  const removed = (r.receipts||[]).splice(idx,1)[0];
+  if(removed && removed.dataUrl) deleteFromStorage(removed.dataUrl);
+  saveDB();
+  renderTab('collectGiftcard');
 }
 function deleteGiftcardRequest(id){
   const r = DB.giftcardRequests.find(x=>x.id===id);
   if(!canEditGiftcardRequest(r)){ alert('본인이 등록한 건 또는 관리자만 삭제할 수 있습니다.'); return; }
   if(!confirm('삭제하시겠습니까?')) return;
   DB.giftcardRequests = DB.giftcardRequests.filter(x=>x.id!==id);
-  if(r) deleteFromStorage(r.receiptDataUrl);
+  if(r) (r.receipts||[]).forEach(p=>{ if(p.dataUrl) deleteFromStorage(p.dataUrl); });
   saveDB();
   renderTab('collectGiftcard');
 }
@@ -4963,7 +5081,7 @@ function saveEditGiftcardRequest(id){
   if(orderNo[0].toLowerCase() !== 'i'){ alert('주문번호는 "I"로 시작해야 합니다. (예: I051245311)'); return; }
   if(!isValidGiftcardModel(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)'); return; }
 
-  function finalize(receiptDataUrl, receiptName){
+  function finalize(newReceipts){
     r.branchId = document.getElementById('gceBranch_'+id).value;
     r.transferBranchId = document.getElementById('gceTransferBranch_'+id).value;
     r.orderNo = orderNo;
@@ -4974,18 +5092,22 @@ function saveEditGiftcardRequest(id){
     r.deliveryDate = document.getElementById('gceDeliveryDate_'+id).value;
     r.customerName = customerName;
     r.phone = phone;
-    if(receiptDataUrl){ r.receiptDataUrl = receiptDataUrl; r.receiptName = receiptName; }
+    if(newReceipts && newReceipts.length>0){
+      if(!r.receipts) r.receipts = [];
+      newReceipts.forEach(p=> r.receipts.push(p));
+    }
     state.gcEditId = null;
     saveDB();
     renderTab('collectGiftcard');
   }
   const fileInput = document.getElementById('gceReceipt_'+id);
-  const file = fileInput.files && fileInput.files[0];
-  if(file){
-    if(file.size > 3*1024*1024){ alert('영수증 이미지는 3MB 이하로 업로드해 주세요.'); return; }
-    readFileAsDataUrl(file).then(({dataUrl})=>finalize(dataUrl, file.name)).catch(()=>alert('영수증 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+  const files = (fileInput && fileInput.files) ? Array.from(fileInput.files).slice(0, 10) : [];
+  if(files.length>0){
+    const oversized = files.find(f=>f.size > 3*1024*1024);
+    if(oversized){ alert(`"${oversized.name}" 영수증 이미지는 3MB 이하로 업로드해 주세요.`); return; }
+    Promise.all(files.map(readFileAsDataUrl)).then(uploaded=>finalize(uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name})))).catch(()=>alert('영수증 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
-    finalize(null, null);
+    finalize(null);
   }
 }
 
@@ -5130,19 +5252,10 @@ function addCollectionNoticeImage(key, tab, evt){
   if(evt && evt.target) evt.target.value = ''; // 같은 파일을 다시 선택해도 인식되도록 초기화
   return p;
 }
-function handleCollectionNoticeDragOver(evt){
-  evt.preventDefault();
-  if(evt.currentTarget && evt.currentTarget.classList) evt.currentTarget.classList.add('cn-drop-active');
-}
-function handleCollectionNoticeDragLeave(evt){
-  if(evt.currentTarget && evt.currentTarget.classList) evt.currentTarget.classList.remove('cn-drop-active');
-}
-function handleCollectionNoticeDrop(key, tab, evt){
-  evt.preventDefault();
-  if(evt.currentTarget && evt.currentTarget.classList) evt.currentTarget.classList.remove('cn-drop-active');
-  const dt = evt.dataTransfer;
-  if(dt && dt.files) return processCollectionNoticeFiles(key, tab, dt.files);
-}
+// 드래그앤드롭 자체는 enableDragDropForFileInputs()가 모든 <input type="file">에 이미 전역으로
+// 붙여주고 있으므로(파일을 놓으면 input.files를 채우고 change 이벤트를 발생시켜 줌), 여기서 별도의
+// ondrop 핸들러를 또 만들지 않는다 - 예전에 별도 드롭 핸들러를 두었다가 전역 처리와 겹쳐서 사진이
+// 두 번 등록되는 문제가 있어 제거했다. addCollectionNoticeImage(onchange)만 있으면 충분하다.
 function removeCollectionNoticeImage(key, tab, idx){
   if(SESSION.role!=='admin') return;
   if(!confirm('이 공지 사진을 삭제하시겠습니까?')) return;
@@ -5180,9 +5293,9 @@ function renderCollectionNotice(key, tab){
   const editorControls = showEditor ? `
     <div style="margin-top:${hasContent?'10px':'0'};display:flex;flex-direction:column;gap:8px;">
       <textarea id="cn_${key}_text" rows="2" style="width:100%;font-size:13px;" placeholder="공지 문구를 입력하세요">${n.text?escapeHtml(n.text):''}</textarea>
-      <div class="cn-dropzone" ondragover="handleCollectionNoticeDragOver(event)" ondragleave="handleCollectionNoticeDragLeave(event)" ondrop="handleCollectionNoticeDrop('${key}','${tab}',event)" onclick="document.getElementById('cn_${key}_file').click()" style="border:1.5px dashed var(--border);border-radius:8px;padding:10px 12px;font-size:12px;color:#888;text-align:center;cursor:pointer;">
-        📎 사진을 여기로 끌어다 놓거나 클릭해서 선택하세요 (여러 장 한 번에 가능)
-        <input id="cn_${key}_file" type="file" accept="image/*" multiple onchange="addCollectionNoticeImage('${key}','${tab}',event)" style="display:none;">
+      <div class="field" style="margin:0;">
+        <label style="font-size:11.5px;">사진 첨부 (여러 장 선택 가능, 이 위로 파일을 끌어다 놓아도 첨부됩니다)</label>
+        <input id="cn_${key}_file" type="file" accept="image/*" multiple onchange="addCollectionNoticeImage('${key}','${tab}',event)">
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-sm btn-primary" onclick="saveCollectionNoticeText('${key}','${tab}')">저장</button>
@@ -5497,6 +5610,7 @@ function submitContestGift(){
       customerName, phone, address: address||null, evidenceFiles: evidence,
       requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
     });
+    touchTabContent('collectContest');
     saveDB();
     logActivity('post', `${SESSION.name}님이 [컨테스트 사은품]을 등록했습니다`);
     renderTab('collectContest');
@@ -5745,6 +5859,7 @@ function submitSubTierContest(){
       contestType, giftName: giftName||null, branchId, saleDate, evidenceFiles: evidence,
       requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
     });
+    touchTabContent('subTierContest');
     saveDB();
     logActivity('post', `${SESSION.name}님이 [구독4품목/금액대별 사은품]을 등록했습니다`);
     if(msgEl) msgEl.textContent = '';
@@ -5970,6 +6085,7 @@ function submitMistakeNote(){
     authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString()
   };
   DB.mistakeNotes.push(entry);
+  touchTabContent('mistakeNote');
   saveDB();
   state.lastMistakeFeedback = { entry, lines: aiFeedbackForMistakeNote(entry) };
   renderTab('mistakeNote');
@@ -6170,6 +6286,7 @@ function submitBestPractice(){
       branchId, managerEmpId, managerName, activityDate, content, activityResult, attachments,
       authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString()
     });
+    touchTabContent('bestPractice');
     saveDB();
     logActivity('post', `${SESSION.name}님이 [우수 활동 사례]를 등록했습니다`);
     renderTab('bestPractice');
@@ -6322,6 +6439,7 @@ function addPolicyQuizQuestion(){
   if(answers.length===0){ alert('정답을 최소 1개 이상 입력해 주세요.'); return; }
   if(!DB.policyQuizBank) DB.policyQuizBank = [];
   DB.policyQuizBank.push({ id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), text, answers });
+  touchTabContent('policyQuiz');
   saveDB();
   renderTab('policyQuiz');
 }
@@ -6580,6 +6698,7 @@ function submitSuggestion(){
       attachmentDataUrl: attachmentDataUrl||null, attachmentName: attachmentName||null,
       authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString()
     });
+    touchTabContent('suggestions');
     saveDB();
     state.suggestionSubmitted = true;
     renderTab('suggestions');
@@ -6757,6 +6876,7 @@ function addEduSchedule(cat){
     targetEmpIds: empIds, alarmDaysBefore: isNaN(alarmDays) ? 2 : alarmDays,
     createdAt: new Date().toISOString()
   });
+  touchTabContent(eduTabName(cat));
   saveDB();
   const msgEl = document.getElementById(`es_${cat}_msg`);
   if(msgEl && unresolved.length>0) msgEl.textContent = `다음 대상자를 인식하지 못했습니다(사번을 확인해 주세요): ${unresolved.join(', ')}`;
@@ -6923,6 +7043,7 @@ function handleEduCompletionFile(evt, cat){
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
       const parsed = parseEduCompletionRows(rows);
       DB.eduCompletion[cat] = parsed;
+      touchTabContent(eduTabName(cat));
       saveDB();
       renderTab(eduTabName(cat));
       alert(`혼매경북팀(경북2담당) 소속 ${parsed.length}명의 이수 현황이 반영되었습니다.`);
@@ -7227,6 +7348,7 @@ function handleKakaoFriendsFile(evt){
       const keyOf = r => r.branchId + '|' + r.weekStart;
       const newKeys = new Set(parsed.map(keyOf));
       DB.kakaoFriends = (DB.kakaoFriends||[]).filter(r=> !newKeys.has(keyOf(r))).concat(parsed);
+      touchTabContent('kakaoFriends');
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 관리] 데이터를 갱신했습니다`);
       if(msgEl) msgEl.innerHTML = `<span style="color:var(--good);">${parsed.length}건의 플친 데이터가 반영되었습니다.</span>`;
@@ -8047,6 +8169,7 @@ function afterRenderHooks(tab){
   updateInventoryNavLabel();
   enableDragDropForFileInputs();
   updateExportToolbarVisibility(tab);
+  refreshNavBadges();
 }
 // 구독 실적 페이지는 외부 대시보드를 iframe으로 그대로 띄우는 화면이라 우리 쪽 표를 내보낼
 // 대상 자체가 없고, 화면 우상단에 고정(position:fixed)된 엑셀/PDF 버튼이 iframe 내부의 자체
