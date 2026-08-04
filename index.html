@@ -5042,12 +5042,20 @@ function canEditContestGift(r){
 // 여러 취합 페이지(구독연동사은품 취합·구독4품목↑/금액대별 사은품 취합·모바일 상품권 취합 등)에서
 // 공통으로 쓰는 재사용 컴포넌트. key로 DB.collectionNotices[key]를 구분해서 저장하고,
 // tab은 저장 후 다시 그릴 화면 이름(renderTab에 넘길 탭 id)이다.
-// 등록 폼을 가리지 않도록 사진 높이를 작게(최대 140px) 제한해 "너무 크지 않게" 만들고,
+// 평소에는 읽기 전용으로 보여주고(사진도 어느 정도 크게), 관리자에게만 "수정"/"삭제" 버튼을 노출해서
+// 누르기 전까지는 편집 폼(문구 입력창 등)이 화면을 차지하지 않게 한다. 편집 상태는 페이지 이동 시
+// 초기화되는 임시 UI 상태이므로 다른 편집중 상태(state.cgEditId 등)와 같은 방식으로 state에 둔다.
 // 사진은 클릭 시 기존 라이트박스(openImgLightbox)로 확대해서 볼 수 있다.
 function getCollectionNotice(key){
   if(!DB.collectionNotices) DB.collectionNotices = {};
   if(!DB.collectionNotices[key]) DB.collectionNotices[key] = { text:'', images:[] };
   return DB.collectionNotices[key];
+}
+function toggleCollectionNoticeEdit(key, tab, on){
+  if(SESSION.role!=='admin') return;
+  if(!state.collectionNoticeEditing) state.collectionNoticeEditing = {};
+  state.collectionNoticeEditing[key] = on;
+  renderTab(tab);
 }
 function saveCollectionNoticeText(key, tab){
   if(SESSION.role!=='admin') return;
@@ -5055,6 +5063,7 @@ function saveCollectionNoticeText(key, tab){
   const n = getCollectionNotice(key);
   n.text = el ? el.value.trim() : '';
   n.updatedAt = todayStr(); n.updatedBy = SESSION.name;
+  if(state.collectionNoticeEditing) state.collectionNoticeEditing[key] = false;
   saveDB();
   logActivity('update', `${SESSION.name}님(관리자)이 [${currentPageTitle()}] 공지 문구를 수정했습니다`);
   renderTab(tab);
@@ -5087,31 +5096,51 @@ function removeCollectionNoticeImage(key, tab, idx){
   saveDB();
   renderTab(tab);
 }
+// 문구+사진 전체를 한 번에 초기화한다 (개별 사진 삭제는 removeCollectionNoticeImage로 따로 가능).
+function deleteCollectionNotice(key, tab){
+  if(SESSION.role!=='admin') return;
+  if(!confirm('이 공지(문구+사진)를 전체 삭제하시겠습니까?')) return;
+  const n = getCollectionNotice(key);
+  (n.images||[]).forEach(img=>{ if(img.dataUrl) deleteFromStorage(img.dataUrl); });
+  DB.collectionNotices[key] = { text:'', images:[] };
+  if(state.collectionNoticeEditing) state.collectionNoticeEditing[key] = false;
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [${currentPageTitle()}] 공지를 삭제했습니다`);
+  renderTab(tab);
+}
 function renderCollectionNotice(key, tab){
   const isAdmin = SESSION.role==='admin';
   const n = getCollectionNotice(key);
   const hasContent = !!(n.text || (n.images && n.images.length>0));
   if(!hasContent && !isAdmin) return '';
+  const editing = isAdmin && !!(state.collectionNoticeEditing && state.collectionNoticeEditing[key]);
+  const showEditor = isAdmin && (editing || !hasContent);
   const imagesHtml = (n.images||[]).map((img,idx)=>`
     <div style="position:relative;display:inline-block;">
-      <img class="xlsx-photo" src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:180px;max-height:140px;border-radius:8px;cursor:zoom-in;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.12);">
-      ${isAdmin ? `<button type="button" title="사진 삭제" onclick="removeCollectionNoticeImage('${key}','${tab}',${idx})" style="position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:12px;line-height:1;">×</button>` : ''}
+      <img class="xlsx-photo" src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:260px;max-height:220px;border-radius:8px;cursor:zoom-in;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.12);">
+      ${showEditor ? `<button type="button" title="사진 삭제" onclick="removeCollectionNoticeImage('${key}','${tab}',${idx})" style="position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:12px;line-height:1;">×</button>` : ''}
     </div>`).join('');
-  const adminControls = isAdmin ? `
+  const editorControls = showEditor ? `
     <div style="margin-top:${hasContent?'10px':'0'};display:flex;flex-direction:column;gap:8px;">
       <textarea id="cn_${key}_text" rows="2" style="width:100%;font-size:13px;" placeholder="공지 문구를 입력하세요">${n.text?escapeHtml(n.text):''}</textarea>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-sm btn-primary" onclick="saveCollectionNoticeText('${key}','${tab}')">문구 저장</button>
+        <button class="btn btn-sm btn-primary" onclick="saveCollectionNoticeText('${key}','${tab}')">저장</button>
         <input type="file" accept="image/*" onchange="addCollectionNoticeImage('${key}','${tab}',event)" style="max-width:200px;">
+        ${hasContent ? `<button class="btn btn-sm" onclick="toggleCollectionNoticeEdit('${key}','${tab}',false)">취소</button>` : ''}
         <span id="cn_${key}_msg" class="small-note"></span>
       </div>
+    </div>` : '';
+  const viewActions = (isAdmin && hasContent && !editing) ? `
+    <div style="margin-top:10px;display:flex;gap:8px;">
+      <button class="btn btn-sm" onclick="toggleCollectionNoticeEdit('${key}','${tab}',true)">수정</button>
+      <button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="deleteCollectionNotice('${key}','${tab}')">삭제</button>
     </div>` : '';
   if(!hasContent){
     return `
     <div class="card" style="margin-bottom:16px;">
       <div style="font-size:11.5px;font-weight:700;opacity:.7;">📌 공지</div>
       <div class="muted" style="font-size:13px;margin-top:4px;">등록된 안내가 없습니다. 관리자만 등록할 수 있습니다.</div>
-      ${adminControls}
+      ${editorControls}
     </div>`;
   }
   return `
@@ -5124,7 +5153,8 @@ function renderCollectionNotice(key, tab){
         ${imagesHtml ? `<div style="display:flex;gap:10px;flex-wrap:wrap;">${imagesHtml}</div>` : ''}
       </div>
       ${imagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진을 클릭하면 확대해서 볼 수 있습니다.</div>` : ''}
-      ${adminControls}
+      ${editorControls}
+      ${viewActions}
     </div>`;
 }
 function renderCollectContest(){
