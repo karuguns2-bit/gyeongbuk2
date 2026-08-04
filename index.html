@@ -353,7 +353,7 @@
       <button class="logout-btn" onclick="handleLogout()">로그아웃</button>
     </div>
   </div>
-  <div class="export-toolbar">
+  <div class="export-toolbar" id="exportToolbar">
     <button class="export-btn excel" onclick="exportCurrentPageExcel()" title="현재 화면을 엑셀 파일로 다운로드">
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="3" fill="#1a7a3d"/><path d="M6.5 7l4 5-4 5h2.1l2.9-3.7 2.9 3.7h2.1l-4-5 4-5h-2.1l-2.9 3.7L8.6 7H6.5z" fill="#fff"/></svg>
       엑셀
@@ -7805,6 +7805,15 @@ function afterRenderHooks(tab){
   if(tab==='accountManagement') loadLoginStatsIfNeeded();
   updateInventoryNavLabel();
   enableDragDropForFileInputs();
+  updateExportToolbarVisibility(tab);
+}
+// 구독 실적 페이지는 외부 대시보드를 iframe으로 그대로 띄우는 화면이라 우리 쪽 표를 내보낼
+// 대상 자체가 없고, 화면 우상단에 고정(position:fixed)된 엑셀/PDF 버튼이 iframe 내부의 자체
+// 헤더(실적 월 선택, 새로고침 버튼 등)와 겹쳐 화면이 깨져 보이는 문제가 있어 이 탭에서는 숨긴다.
+function updateExportToolbarVisibility(tab){
+  const el = document.getElementById('exportToolbar');
+  if(!el) return;
+  el.style.display = (tab==='subscription') ? 'none' : '';
 }
 function updateInventoryNavLabel(){
   const el = document.getElementById('navInventoryDate');
