@@ -740,6 +740,7 @@ function buildSeedDataFromReal(){
     kakaoContestInfo: JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO)),
     kakaoContestResultImage: null,
     execPhotoGuide: null,
+    collectionNotices: {},
     policyQuizBank: JSON.parse(JSON.stringify(POLICY_QUIZ_BANK)),
     subscriptionData };
 }
@@ -1178,6 +1179,34 @@ function migrateDB(){
   if(!DB.kakaoContestInfo) DB.kakaoContestInfo = JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO));
   if(DB.kakaoContestResultImage===undefined) DB.kakaoContestResultImage = null;
   if(DB.execPhotoGuide===undefined) DB.execPhotoGuide = null;
+  // ---- 취합 페이지 공지배너(문구+사진, 관리자 편집/삭제 가능) ----
+  // 신규 페이지(구독연동사은품 취합)는 빈 상태로 시작하고, 기존에 코드에 하드코딩되어 있던
+  // 구독4품목↑/금액대별 사은품 취합 · 모바일 상품권 취합 배너는 최초 1회만 기존 문구/이미지를
+  // 그대로 시드(seed)하여, 이후로는 관리자가 앱에서 직접 수정·삭제할 수 있게 한다.
+  if(!DB.collectionNotices) DB.collectionNotices = {};
+  if(!DB.collectionNotices.collectContest) DB.collectionNotices.collectContest = { text:'', images:[] };
+  if(!DB.collectionNotices.subTierContest) DB.collectionNotices.subTierContest = {
+    text: `📢 인터비즈_경북2담당 '26년 8월 Contest
+🔥 매니저님들을 위한 8월 특별 혜택! 🔥
+이번 달도 파이팅하여 준비된 사은품 모두 챙겨가세요! 🎁
+-----------------------------------
+✨ Contest. 1 [구독 4품목 계약 시]
+👉 앤루시 에어스톰R 리모컨 써큘레이터
+✨ Contest. 2 [금액대별 달성 혜택]
+👉 800만원 금액대  : [제너] 클로제 IH 스텐냄비 3종 세트
+👉 1,000만원 금액대 : [에스트] 세라믹 후라이팬 2종 세트
+-----------------------------------
+※ 업체 재고에 따른 이슈 발생 시 제품이 변경될 수 있습니다. (이미지는 참고용)
+※해당 사은품은 지점으로 배송됩니다`,
+    images: [{ dataUrl: SUB_TIER_CONTEST_BANNER_IMG, name:'기존 배너 이미지' }]
+  };
+  if(!DB.collectionNotices.collectGiftcard) DB.collectionNotices.collectGiftcard = {
+    text: '⚠ 반드시 운영안을 숙지하고 사용해주시기 바랍니다 (당월 한도 150만원)',
+    images: [
+      { dataUrl: MOBILE_GIFTCARD_GUIDE_IMAGES[0], name:"'26년 8월 이마트 모바일 및 사은품 운영 안내" },
+      { dataUrl: MOBILE_GIFTCARD_GUIDE_IMAGES[1], name:"'26년 8월 이마트 집중 소진 모델 모바일 지원 안내" }
+    ]
+  };
   if(!DB.policyQuizBank) DB.policyQuizBank = JSON.parse(JSON.stringify(POLICY_QUIZ_BANK));
   DB.branches.forEach(b=>{
     if(!DB.schedule[b.id]) DB.schedule[b.id] = {};
@@ -4757,17 +4786,7 @@ function renderCollectGiftcard(){
     <div class="page-title">모바일 상품권 취합</div>
     <div class="page-desc">모바일 상품권 지급 건을 취합·관리합니다.</div>
 
-    <div class="guide-alert-banner">⚠ 반드시 운영안을 숙지하고 사용해주시기 바랍니다 (당월 한도 150만원)</div>
-    <div class="guide-img-row">
-      <div class="guide-img-card">
-        <img src="${MOBILE_GIFTCARD_GUIDE_IMAGES[0]}" alt="8월 모바일 및 사은품 운영 안내" onclick="openImgLightbox(MOBILE_GIFTCARD_GUIDE_IMAGES[0])">
-        <div class="guide-img-caption">'26년 8월 이마트 모바일 및 사은품 운영 안내 (클릭 시 확대)</div>
-      </div>
-      <div class="guide-img-card">
-        <img src="${MOBILE_GIFTCARD_GUIDE_IMAGES[1]}" alt="8월 집중 소진 모델 모바일 지원 안내" onclick="openImgLightbox(MOBILE_GIFTCARD_GUIDE_IMAGES[1])">
-        <div class="guide-img-caption">'26년 8월 이마트 집중 소진 모델 모바일 지원 안내 (클릭 시 확대)</div>
-      </div>
-    </div>
+    ${renderCollectionNotice('collectGiftcard','collectGiftcard')}
 
     ${collectBranchPills('collectGiftcard')}
 
@@ -5019,6 +5038,95 @@ function syncContestGiftNameFor(selectId, giftId, addressId, recordId){
 function canEditContestGift(r){
   return !!(r && (SESSION.role==='admin' || r.requesterEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
+// ---- 취합 페이지 공통 공지배너 (문구 + 사진 여러 장, 관리자만 등록·수정·삭제, 전 직원 열람) ----
+// 여러 취합 페이지(구독연동사은품 취합·구독4품목↑/금액대별 사은품 취합·모바일 상품권 취합 등)에서
+// 공통으로 쓰는 재사용 컴포넌트. key로 DB.collectionNotices[key]를 구분해서 저장하고,
+// tab은 저장 후 다시 그릴 화면 이름(renderTab에 넘길 탭 id)이다.
+// 등록 폼을 가리지 않도록 사진 높이를 작게(최대 140px) 제한해 "너무 크지 않게" 만들고,
+// 사진은 클릭 시 기존 라이트박스(openImgLightbox)로 확대해서 볼 수 있다.
+function getCollectionNotice(key){
+  if(!DB.collectionNotices) DB.collectionNotices = {};
+  if(!DB.collectionNotices[key]) DB.collectionNotices[key] = { text:'', images:[] };
+  return DB.collectionNotices[key];
+}
+function saveCollectionNoticeText(key, tab){
+  if(SESSION.role!=='admin') return;
+  const el = document.getElementById('cn_'+key+'_text');
+  const n = getCollectionNotice(key);
+  n.text = el ? el.value.trim() : '';
+  n.updatedAt = todayStr(); n.updatedBy = SESSION.name;
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [${currentPageTitle()}] 공지 문구를 수정했습니다`);
+  renderTab(tab);
+}
+async function addCollectionNoticeImage(key, tab, evt){
+  if(SESSION.role!=='admin') return;
+  const file = evt.target.files && evt.target.files[0];
+  if(!file) return;
+  const msgEl = document.getElementById('cn_'+key+'_msg');
+  if(msgEl) msgEl.textContent = '업로드 중...';
+  try{
+    const uploaded = await readFileAsDataUrl(file);
+    const n = getCollectionNotice(key);
+    n.images.push({ dataUrl: uploaded.dataUrl, name: uploaded.name });
+    n.updatedAt = todayStr(); n.updatedBy = SESSION.name;
+    saveDB();
+    logActivity('update', `${SESSION.name}님(관리자)이 [${currentPageTitle()}] 공지 사진을 추가했습니다`);
+    renderTab(tab);
+  }catch(err){
+    if(msgEl) msgEl.textContent = '업로드 중 오류가 발생했습니다.';
+  }
+}
+function removeCollectionNoticeImage(key, tab, idx){
+  if(SESSION.role!=='admin') return;
+  if(!confirm('이 공지 사진을 삭제하시겠습니까?')) return;
+  const n = getCollectionNotice(key);
+  const removed = n.images.splice(idx,1)[0];
+  if(removed && removed.dataUrl) deleteFromStorage(removed.dataUrl);
+  n.updatedAt = todayStr(); n.updatedBy = SESSION.name;
+  saveDB();
+  renderTab(tab);
+}
+function renderCollectionNotice(key, tab){
+  const isAdmin = SESSION.role==='admin';
+  const n = getCollectionNotice(key);
+  const hasContent = !!(n.text || (n.images && n.images.length>0));
+  if(!hasContent && !isAdmin) return '';
+  const imagesHtml = (n.images||[]).map((img,idx)=>`
+    <div style="position:relative;display:inline-block;">
+      <img class="xlsx-photo" src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:180px;max-height:140px;border-radius:8px;cursor:zoom-in;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.12);">
+      ${isAdmin ? `<button type="button" title="사진 삭제" onclick="removeCollectionNoticeImage('${key}','${tab}',${idx})" style="position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:12px;line-height:1;">×</button>` : ''}
+    </div>`).join('');
+  const adminControls = isAdmin ? `
+    <div style="margin-top:${hasContent?'10px':'0'};display:flex;flex-direction:column;gap:8px;">
+      <textarea id="cn_${key}_text" rows="2" style="width:100%;font-size:13px;" placeholder="공지 문구를 입력하세요">${n.text?escapeHtml(n.text):''}</textarea>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-sm btn-primary" onclick="saveCollectionNoticeText('${key}','${tab}')">문구 저장</button>
+        <input type="file" accept="image/*" onchange="addCollectionNoticeImage('${key}','${tab}',event)" style="max-width:200px;">
+        <span id="cn_${key}_msg" class="small-note"></span>
+      </div>
+    </div>` : '';
+  if(!hasContent){
+    return `
+    <div class="card" style="margin-bottom:16px;">
+      <div style="font-size:11.5px;font-weight:700;opacity:.7;">📌 공지</div>
+      <div class="muted" style="font-size:13px;margin-top:4px;">등록된 안내가 없습니다. 관리자만 등록할 수 있습니다.</div>
+      ${adminControls}
+    </div>`;
+  }
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
+        ${n.text ? `<div style="flex:1;min-width:220px;">
+          <div style="font-size:11.5px;font-weight:700;opacity:.7;">📌 공지</div>
+          <div style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;margin-top:4px;">${escapeHtml(n.text)}</div>
+        </div>` : ''}
+        ${imagesHtml ? `<div style="display:flex;gap:10px;flex-wrap:wrap;">${imagesHtml}</div>` : ''}
+      </div>
+      ${imagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진을 클릭하면 확대해서 볼 수 있습니다.</div>` : ''}
+      ${adminControls}
+    </div>`;
+}
 function renderCollectContest(){
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.contestGifts);
@@ -5078,6 +5186,7 @@ function renderCollectContest(){
     <div class="page-title">구독연동사은품 취합</div>
     <div class="page-desc">구독연동 사은품 발송 건을 취합·관리합니다.</div>
     ${collectBranchPills('collectContest')}
+    ${renderCollectionNotice('collectContest','collectContest')}
 
     <div class="card" style="margin-bottom:16px;">
       <h3>새 건 등록</h3>
@@ -5460,7 +5569,7 @@ function renderSubTierContest(){
     <div class="page-title">구독4품목↑/금액대별 사은품 취합</div>
     <div class="page-desc">구독 4품목 이상 계약 또는 결제금액 기준 사은품 컨테스트 건을 취합·관리합니다.</div>
 
-    ${subTierContestBannerHtml()}
+    ${renderCollectionNotice('subTierContest','subTierContest')}
 
     ${collectBranchPills('subTierContest')}
 
