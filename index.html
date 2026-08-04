@@ -234,6 +234,11 @@
   .notice-banner .nb-label{font-size:11.5px;font-weight:700;letter-spacing:.5px;opacity:.85;text-transform:uppercase;flex-shrink:0;}
   .notice-banner .nb-title{font-size:17px;font-weight:800;margin:6px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .notice-banner .nb-content{font-size:13px;opacity:.95;line-height:1.6;white-space:pre-wrap;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;}
+  .notice-banner .nb-more-btn{
+    background:none;border:none;color:#fff;opacity:.9;font-size:11.5px;font-weight:700;
+    text-decoration:underline;cursor:pointer;padding:2px 0;margin-top:2px;align-self:flex-start;flex-shrink:0;
+  }
+  .notice-banner .nb-more-btn:hover{opacity:1;}
   .notice-banner .nb-photos{max-height:60px;overflow:hidden;}
   .notice-banner .nb-meta{font-size:11px;opacity:.75;margin-top:10px;flex-shrink:0;}
   .notice-banner .nb-empty{font-size:13.5px;opacity:.9;padding:6px 0;}
@@ -383,6 +388,15 @@
       <button type="button" onclick="closeAddressSearch()" style="border:none;background:none;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
     </div>
     <div id="addressSearchContainer" style="width:100%;height:470px;"></div>
+  </div>
+</div>
+<div id="noticeDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this) closeNoticeDetail();">
+  <div style="background:#fff;border-radius:10px;overflow:hidden;width:520px;max-width:92vw;max-height:82vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.4);">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <b style="font-size:14px;">📢 공지사항</b>
+      <button type="button" onclick="closeNoticeDetail()" style="border:none;background:none;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div id="noticeDetailBody" style="padding:18px 20px;overflow-y:auto;color:var(--text);"></div>
   </div>
 </div>
 
@@ -2333,6 +2347,17 @@ function noticeAttachmentHtml(f, size, removeOnClick){
     ${removeBtn}
   </span>`;
 }
+// 홈 화면 공지 배너는 카드 높이가 고정(210px)이고 본문이 2줄로 잘려 보이므로(CSS -webkit-line-clamp:2),
+// 내용이 길어서 잘릴 가능성이 있는 공지에는 "자세히 보기" 버튼을 노출해 전체 내용을 모달로 볼 수 있게 한다.
+// 실제 렌더링 폭에 따라 정확히 몇 글자에서 잘리는지는 서버 쪽에서 알 수 없으므로, 2줄(가로 폭 기준 대략
+// 40자 내외)을 넉넉히 넘길 만한 글자 수(60자) 또는 줄바꿈이 3줄 이상인 경우를 기준으로 삼는다 -
+// 애매한 경우 버튼을 보여주는 쪽(과다 노출)이 버튼이 없어서 못 보는 것보다 낫다.
+function noticeContentIsLong(content){
+  const text = String(content||'');
+  if(text.length > 60) return true;
+  if(text.split('\n').length > 2) return true;
+  return false;
+}
 function noticeBodyHtml(n){
   const dt = new Date(n.createdAt);
   const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
@@ -2340,12 +2365,41 @@ function noticeBodyHtml(n){
     <div class="nb-photos" style="margin:8px 0;">
       ${n.attachments.map(f=>noticeAttachmentHtml(f, 56, null)).join('')}
     </div>` : '';
+  const moreBtn = noticeContentIsLong(n.content) ? `<button type="button" class="nb-more-btn" onclick="openNoticeDetail('${n.id}')">자세히 보기 ›</button>` : '';
   return `
     <div class="nb-title">${escapeHtml(n.title)}</div>
     <div class="nb-content">${escapeHtml(n.content)}</div>
+    ${moreBtn}
     ${photosHtml}
     <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
   `;
+}
+// "자세히 보기" 클릭 시 잘린 본문 전체를 모달로 보여준다 (배너 자체는 자동 롤링/고정 높이라 인라인으로
+// 펼치면 레이아웃이 깨지므로, 이미지 확대(#imgLightbox)와 같은 방식의 별도 모달을 사용한다).
+function openNoticeDetail(id){
+  const n = DB.notices.find(x=>x.id===id);
+  if(!n) return;
+  const dt = new Date(n.createdAt);
+  const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+  const photosHtml = (n.attachments && n.attachments.length>0) ? `
+    <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;">
+      ${n.attachments.map(f=>noticeAttachmentHtml(f, 90, null)).join('')}
+    </div>` : '';
+  const bodyEl = document.getElementById('noticeDetailBody');
+  if(bodyEl){
+    bodyEl.innerHTML = `
+      <div style="font-weight:800;font-size:17px;margin-bottom:10px;">${escapeHtml(n.title)}</div>
+      <div style="font-size:13.5px;line-height:1.75;white-space:pre-wrap;">${escapeHtml(n.content)}</div>
+      ${photosHtml}
+      <div style="font-size:11.5px;color:var(--text-sub);margin-top:16px;">${escapeHtml(n.author)} · ${dtStr}</div>
+    `;
+  }
+  const modal = document.getElementById('noticeDetailModal');
+  if(modal) modal.style.display = 'flex';
+}
+function closeNoticeDetail(){
+  const modal = document.getElementById('noticeDetailModal');
+  if(modal) modal.style.display = 'none';
 }
 function updateNoticeBannerDOM(){
   const body = document.getElementById('noticeBannerBody');
