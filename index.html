@@ -7028,6 +7028,7 @@ function renderEduCompletion(cat){
   return `
     <div class="page-title">${w.pageTitle}</div>
     <div class="page-desc">혼매경북팀(경북2담당) 소속 인원 기준 ${eduCategoryLabel(cat)} 현황입니다.</div>
+    ${cat==='aiRp' ? renderCollectionNotice('eduAiRp', eduTabName(cat)) : ''}
     ${branchPills}
     <div class="card ai-box" style="margin-bottom:16px;">
       <div class="ai-title">📊 ${w.rateWord} 현황</div>
