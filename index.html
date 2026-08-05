@@ -4724,11 +4724,7 @@ function renderCollectPhoto(){
   const cards = sorted.map(r=>{
     const canEdit = canEditExecPhoto(r);
     if(canEdit && editId===r.id){
-      const editPhotosHtml = (r.photos||[]).map((p,idx)=>`
-        <div style="position:relative;display:inline-block;margin:0 4px 4px 0;">
-          <img src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:52px;height:52px;object-fit:cover;border-radius:6px;cursor:zoom-in;">
-          <button type="button" title="사진 삭제" onclick="removeExecPhotoImage('${r.id}',${idx})" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:11px;line-height:1;">×</button>
-        </div>`).join('');
+      const editPhotosHtml = (r.photos||[]).map((p,idx)=> noticeAttachmentHtml(p, 52, `removeExecPhotoImage('${r.id}',${idx})`)).join('');
       return `
       <div class="card" style="width:220px;border:1.5px dashed var(--primary);">
         <div class="field" style="margin-bottom:8px;">
@@ -4739,18 +4735,21 @@ function renderCollectPhoto(){
           <label>실행 주차</label>
           <select id="epe_${r.id}_week" style="width:100%">${execPhotoWeekOptionsHtml(r.week)}</select>
         </div>
-        <div style="margin-bottom:6px;">${editPhotosHtml || '<div class="muted" style="font-size:11.5px;">사진 없음</div>'}</div>
+        <div style="margin-bottom:6px;">${editPhotosHtml || '<div class="muted" style="font-size:11.5px;">첨부된 파일 없음</div>'}</div>
         <div class="field" style="margin-bottom:8px;">
-          <label>사진 추가 (선택, 여러 장 가능)</label>
-          <input id="epe_${r.id}_file" type="file" accept="image/*" multiple style="width:100%;font-size:11px;">
+          <label>파일 추가 (선택, 사진/PPT/엑셀 등 여러 개 가능)</label>
+          <input id="epe_${r.id}_file" type="file" multiple style="width:100%;font-size:11px;">
         </div>
         <button class="btn btn-sm btn-primary" style="width:100%;margin-bottom:4px;" onclick="saveEditExecPhoto('${r.id}')">저장</button>
         <button class="btn btn-sm" style="width:100%;" onclick="cancelEditExecPhoto()">취소</button>
       </div>`;
     }
     const photosHtml = (r.photos||[]).length>0
-      ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">${(r.photos||[]).map(p=>`<img src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:calc(50% - 2px);height:90px;object-fit:cover;border-radius:6px;cursor:zoom-in;">`).join('')}</div>`
-      : `<div class="muted" style="margin-bottom:6px;">등록된 사진이 없습니다.</div>`;
+      ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">${(r.photos||[]).map(p=> isImageAttachment(p)
+          ? `<img src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:calc(50% - 2px);height:90px;object-fit:cover;border-radius:6px;cursor:zoom-in;">`
+          : `<a href="${p.dataUrl}" download="${escapeHtml(p.name||'file')}" style="display:flex;align-items:center;gap:5px;width:calc(50% - 2px);height:90px;padding:6px;border:1px solid var(--border);border-radius:6px;background:#f7f7f8;font-size:11px;text-decoration:none;color:inherit;overflow:hidden;">📎 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name||'파일')}</span></a>`
+        ).join('')}</div>`
+      : `<div class="muted" style="margin-bottom:6px;">등록된 파일이 없습니다.</div>`;
     return `
     <div class="card" style="width:220px;">
       <div class="flex-between" style="margin-bottom:6px;">
@@ -4781,8 +4780,8 @@ function renderCollectPhoto(){
           <select id="epWeek" style="width:140px">${execPhotoWeekOptionsHtml('')}</select>
         </div>
         <div class="field">
-          <label>사진 업로드 (여러 장 가능)</label>
-          <input id="epFile" type="file" accept="image/*" multiple>
+          <label>파일 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
+          <input id="epFile" type="file" multiple>
         </div>
         <button class="btn btn-primary" onclick="submitExecPhoto()">등록</button>
       </div>
@@ -4799,9 +4798,9 @@ function submitExecPhoto(){
   const fileInput = document.getElementById('epFile');
   const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
   if(!week){ alert('실행 주차를 선택해 주세요.'); return; }
-  if(files.length===0){ alert('사진을 선택해 주세요.'); return; }
+  if(files.length===0){ alert('파일을 선택해 주세요.'); return; }
   const oversized = files.find(f=>f.size > 5*1024*1024);
-  if(oversized){ alert(`"${oversized.name}" 사진은 5MB 이하로 업로드해 주세요.`); return; }
+  if(oversized){ alert(`"${oversized.name}" 파일은 5MB 이하로 업로드해 주세요.`); return; }
   Promise.all(files.map(readFileAsDataUrl)).then(uploaded=>{
     DB.execPhotos.push({
       id: 'ep_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
@@ -4845,8 +4844,8 @@ function saveEditExecPhoto(id){
   }
   if(files.length>0){
     const oversized = files.find(f=>f.size > 5*1024*1024);
-    if(oversized){ alert(`"${oversized.name}" 사진은 5MB 이하로 업로드해 주세요.`); return; }
-    Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+    if(oversized){ alert(`"${oversized.name}" 파일은 5MB 이하로 업로드해 주세요.`); return; }
+    Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
     finalize(null);
   }
@@ -4854,7 +4853,7 @@ function saveEditExecPhoto(id){
 function removeExecPhotoImage(id, idx){
   const r = DB.execPhotos.find(x=>x.id===id);
   if(!canEditExecPhoto(r)){ alert('본인이 등록한 사진 또는 같은 지점 매니저, 관리자만 삭제할 수 있습니다.'); return; }
-  if(!confirm('이 사진을 삭제하시겠습니까?')) return;
+  if(!confirm('이 파일을 삭제하시겠습니까?')) return;
   const removed = (r.photos||[]).splice(idx,1)[0];
   if(removed && removed.dataUrl) deleteFromStorage(removed.dataUrl);
   saveDB();
@@ -4922,13 +4921,9 @@ function renderCollectGiftcard(){
       <td><input id="gcePhone_${r.id}" value="${escapeHtml(r.phone||'')}" style="width:120px"></td>
       <td>
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px;">
-        ${(r.receipts||[]).map((p,idx)=>`
-          <div style="position:relative;display:inline-block;">
-            <img class="xlsx-photo" src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:zoom-in;">
-            <button type="button" title="영수증 삭제" onclick="removeGiftcardReceiptImage('${r.id}',${idx})" style="position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:10px;line-height:1;">×</button>
-          </div>`).join('')}
+        ${(r.receipts||[]).map((p,idx)=> noticeAttachmentHtml(p, 36, `removeGiftcardReceiptImage('${r.id}',${idx})`)).join('')}
         </div>
-        <input id="gceReceipt_${r.id}" type="file" accept="image/*" multiple style="width:120px;font-size:11px;">
+        <input id="gceReceipt_${r.id}" type="file" multiple style="width:120px;font-size:11px;">
       </td>
       <td>${r.requesterName}</td>
       <td class="act-col" style="white-space:nowrap;">
@@ -4949,7 +4944,7 @@ function renderCollectGiftcard(){
       <td>${r.deliveryDate||'-'}</td>
       <td>${r.customerName}</td>
       <td>${r.phone}</td>
-      <td>${(r.receipts||[]).length>0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;">${r.receipts.map(p=>`<img class="xlsx-photo" src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:40px;height:40px;object-fit:cover;border-radius:5px;cursor:zoom-in;">`).join('')}</div>` : '-'}</td>
+      <td>${(r.receipts||[]).length>0 ? `<div style="display:flex;flex-wrap:wrap;gap:3px;">${r.receipts.map(p=> noticeAttachmentHtml(p, 40, null)).join('')}</div>` : '-'}</td>
       <td>${r.requesterName}</td>
       <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditGiftcardRequest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteGiftcardRequest('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
@@ -5034,8 +5029,8 @@ function renderCollectGiftcard(){
           <input id="gcPhone" placeholder="예: 010-1234-5678" style="width:150px">
         </div>
         <div class="field">
-          <label>영수증 증빙 업로드 (여러 장 가능)</label>
-          <input id="gcReceipt" type="file" accept="image/*" multiple>
+          <label>영수증 증빙 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
+          <input id="gcReceipt" type="file" multiple>
         </div>
         <button class="btn btn-primary" onclick="submitGiftcardRequest()">등록</button>
       </div>
@@ -5088,7 +5083,7 @@ function submitGiftcardRequest(){
   const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
   if(files.length>0){
     const oversized = files.find(f=>f.size > 3*1024*1024);
-    if(oversized){ alert(`"${oversized.name}" 영수증 이미지는 3MB 이하로 업로드해 주세요.`); return; }
+    if(oversized){ alert(`"${oversized.name}" 영수증 파일은 3MB 이하로 업로드해 주세요.`); return; }
     Promise.all(files.map(readFileAsDataUrl)).then(uploaded=>finalize(uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name})))).catch(()=>alert('영수증 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
     finalize([]);
@@ -5097,7 +5092,7 @@ function submitGiftcardRequest(){
 function removeGiftcardReceiptImage(id, idx){
   const r = DB.giftcardRequests.find(x=>x.id===id);
   if(!canEditGiftcardRequest(r)){ alert('본인이 등록한 건 또는 관리자만 삭제할 수 있습니다.'); return; }
-  if(!confirm('이 영수증 사진을 삭제하시겠습니까?')) return;
+  if(!confirm('이 영수증 파일을 삭제하시겠습니까?')) return;
   const removed = (r.receipts||[]).splice(idx,1)[0];
   if(removed && removed.dataUrl) deleteFromStorage(removed.dataUrl);
   saveDB();
@@ -5158,7 +5153,7 @@ function saveEditGiftcardRequest(id){
   const files = (fileInput && fileInput.files) ? Array.from(fileInput.files).slice(0, 10) : [];
   if(files.length>0){
     const oversized = files.find(f=>f.size > 3*1024*1024);
-    if(oversized){ alert(`"${oversized.name}" 영수증 이미지는 3MB 이하로 업로드해 주세요.`); return; }
+    if(oversized){ alert(`"${oversized.name}" 영수증 파일은 3MB 이하로 업로드해 주세요.`); return; }
     Promise.all(files.map(readFileAsDataUrl)).then(uploaded=>finalize(uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name})))).catch(()=>alert('영수증 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
     finalize(null);
@@ -5279,7 +5274,8 @@ function saveCollectionNoticeText(key, tab){
 // 파일 선택(다중 선택)과 드래그앤드롭 두 경로 모두 이 함수로 모여서 한 번에 여러 장을 순서대로 업로드한다.
 async function processCollectionNoticeFiles(key, tab, fileList){
   if(SESSION.role!=='admin') return;
-  const files = Array.from(fileList||[]).filter(f=>f && (!f.type || f.type.startsWith('image/')));
+  // 사진뿐 아니라 PPT/엑셀 등 어떤 파일이든 첨부할 수 있다 - 이미지가 아닌 파일은 다운로드 링크(noticeAttachmentHtml)로 표시된다.
+  const files = Array.from(fileList||[]).filter(Boolean);
   if(files.length===0) return;
   const msgEl = document.getElementById('cn_'+key+'_msg');
   const n = getCollectionNotice(key);
@@ -5294,7 +5290,7 @@ async function processCollectionNoticeFiles(key, tab, fileList){
     }
     n.updatedAt = todayStr(); n.updatedBy = SESSION.name;
     saveDB();
-    logActivity('update', `${SESSION.name}님(관리자)이 [${currentPageTitle()}] 공지 사진을 ${files.length}장 추가했습니다`);
+    logActivity('update', `${SESSION.name}님(관리자)이 [${currentPageTitle()}] 공지 첨부파일을 ${files.length}개 추가했습니다`);
     renderTab(tab);
   }catch(err){
     if(msgEl) msgEl.textContent = '업로드 중 오류가 발생했습니다.';
@@ -5312,7 +5308,7 @@ function addCollectionNoticeImage(key, tab, evt){
 // 두 번 등록되는 문제가 있어 제거했다. addCollectionNoticeImage(onchange)만 있으면 충분하다.
 function removeCollectionNoticeImage(key, tab, idx){
   if(SESSION.role!=='admin') return;
-  if(!confirm('이 공지 사진을 삭제하시겠습니까?')) return;
+  if(!confirm('이 첨부파일을 삭제하시겠습니까?')) return;
   const n = getCollectionNotice(key);
   const removed = n.images.splice(idx,1)[0];
   if(removed && removed.dataUrl) deleteFromStorage(removed.dataUrl);
@@ -5339,17 +5335,25 @@ function renderCollectionNotice(key, tab){
   if(!hasContent && !isAdmin) return '';
   const editing = isAdmin && !!(state.collectionNoticeEditing && state.collectionNoticeEditing[key]);
   const showEditor = isAdmin && (editing || !hasContent);
-  const imagesHtml = (n.images||[]).map((img,idx)=>`
-    <div style="position:relative;display:inline-block;">
-      <img class="xlsx-photo" src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:260px;max-height:220px;border-radius:8px;cursor:zoom-in;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.12);">
-      ${showEditor ? `<button type="button" title="사진 삭제" onclick="removeCollectionNoticeImage('${key}','${tab}',${idx})" style="position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:12px;line-height:1;">×</button>` : ''}
-    </div>`).join('');
+  const imagesHtml = (n.images||[]).map((img,idx)=>{
+    const removeBtn = showEditor ? `<button type="button" title="파일 삭제" onclick="removeCollectionNoticeImage('${key}','${tab}',${idx})" style="position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:12px;line-height:1;">×</button>` : '';
+    if(isImageAttachment(img)){
+      return `<div style="position:relative;display:inline-block;">
+        <img class="xlsx-photo" src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:260px;max-height:220px;border-radius:8px;cursor:zoom-in;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.12);">
+        ${removeBtn}
+      </div>`;
+    }
+    return `<div style="position:relative;display:inline-block;">
+      <a href="${img.dataUrl}" download="${escapeHtml(img.name||'file')}" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:#f7f7f8;font-size:12.5px;text-decoration:none;color:inherit;max-width:220px;">📎 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(img.name||'파일')}</span></a>
+      ${removeBtn}
+    </div>`;
+  }).join('');
   const editorControls = showEditor ? `
     <div style="margin-top:${hasContent?'10px':'0'};display:flex;flex-direction:column;gap:8px;">
       <textarea id="cn_${key}_text" rows="2" style="width:100%;font-size:13px;" placeholder="공지 문구를 입력하세요">${n.text?escapeHtml(n.text):''}</textarea>
       <div class="field" style="margin:0;">
-        <label style="font-size:11.5px;">사진 첨부 (여러 장 선택 가능, 이 위로 파일을 끌어다 놓아도 첨부됩니다)</label>
-        <input id="cn_${key}_file" type="file" accept="image/*" multiple onchange="addCollectionNoticeImage('${key}','${tab}',event)">
+        <label style="font-size:11.5px;">파일 첨부 (사진/PPT/엑셀 등 여러 개 선택 가능, 이 위로 파일을 끌어다 놓아도 첨부됩니다)</label>
+        <input id="cn_${key}_file" type="file" multiple onchange="addCollectionNoticeImage('${key}','${tab}',event)">
       </div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button class="btn btn-sm btn-primary" onclick="saveCollectionNoticeText('${key}','${tab}')">저장</button>
@@ -5379,7 +5383,7 @@ function renderCollectionNotice(key, tab){
         </div>` : ''}
         ${imagesHtml ? `<div style="display:flex;gap:10px;flex-wrap:wrap;">${imagesHtml}</div>` : ''}
       </div>
-      ${imagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진을 클릭하면 확대해서 볼 수 있습니다.</div>` : ''}
+      ${imagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진은 클릭하면 확대, 그 외 파일은 클릭하면 다운로드됩니다.</div>` : ''}
       ${editorControls}
       ${viewActions}
     </div>`;
@@ -5394,7 +5398,7 @@ function renderCollectContest(){
     const canEdit = canEditContestGift(r);
     if(canEdit && editId===r.id){
       const existingPhotos = (r.evidenceFiles&&r.evidenceFiles.length>0)
-        ? r.evidenceFiles.map(f=>`<img class="xlsx-photo" src="${f.dataUrl}" onclick="openImgLightbox(this.src)" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:zoom-in;margin:0 3px 3px 0;">`).join('')
+        ? r.evidenceFiles.map(f=>noticeAttachmentHtml(f, 36, null)).join('')
         : '없음';
       return `
     <tr>
@@ -5413,8 +5417,8 @@ function renderCollectContest(){
       <td><input id="cge_${r.id}_address" value="${escapeHtml(r.address||'')}" style="width:160px"></td>
       <td>
         기존: ${existingPhotos}<br>
-        <input id="cge_${r.id}_evidence" type="file" accept="image/*" multiple style="width:130px;font-size:11px;">
-        <div class="small-note" style="margin:2px 0 0;">새로 첨부 시 기존 사진을 대체합니다.</div>
+        <input id="cge_${r.id}_evidence" type="file" multiple style="width:130px;font-size:11px;">
+        <div class="small-note" style="margin:2px 0 0;">새로 첨부 시 기존 파일을 대체합니다.</div>
       </td>
       <td class="act-col" style="white-space:nowrap;">
         <button class="btn btn-sm btn-primary" onclick="saveEditContestGift('${r.id}')">저장</button>
@@ -5434,7 +5438,7 @@ function renderCollectContest(){
       <td>${r.customerName}</td>
       <td>${r.phone}</td>
       <td class="muted">${r.address||'-'}</td>
-      <td>${(r.evidenceFiles&&r.evidenceFiles.length>0) ? r.evidenceFiles.map(f=>`<img class="xlsx-photo" src="${f.dataUrl}" onclick="openImgLightbox(this.src)" style="width:36px;height:36px;object-fit:cover;border-radius:5px;cursor:zoom-in;margin:0 3px 3px 0;">`).join('') : '-'}</td>
+      <td>${(r.evidenceFiles&&r.evidenceFiles.length>0) ? r.evidenceFiles.map(f=>noticeAttachmentHtml(f, 36, null)).join('') : '-'}</td>
       <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditContestGift('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteContestGift('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
   }).join('') || `<tr><td colspan="12" class="muted">등록된 내역이 없습니다.</td></tr>`;
@@ -5510,8 +5514,8 @@ function renderCollectContest(){
       </div>
       <div class="form-row">
         <div class="field" style="min-width:260px;">
-          <label>증빙자료 첨부</label>
-          <input id="cgEvidenceFiles" type="file" accept="image/*" multiple>
+          <label>증빙자료 첨부 (사진/PPT/엑셀 등 여러 개 가능)</label>
+          <input id="cgEvidenceFiles" type="file" multiple>
         </div>
         <button class="btn btn-primary" onclick="submitContestGift()">등록</button>
       </div>
@@ -6244,8 +6248,8 @@ function renderBestPractice(){
         ${editAttachmentsHtml ? `<div style="margin-bottom:8px;"><label>기존 첨부 파일 (× 클릭 시 즉시 삭제)</label><br>${editAttachmentsHtml}</div>` : ''}
         <div class="form-row">
           <div class="field">
-            <label>새 첨부파일 추가 (선택, 기존 첨부에 이어서 추가됨)</label>
-            <input id="bpe_${p.id}_files" type="file" accept="image/*,.pdf" multiple>
+            <label>새 첨부파일 추가 (선택, 사진/PPT/엑셀 등, 기존 첨부에 이어서 추가됨)</label>
+            <input id="bpe_${p.id}_files" type="file" multiple>
           </div>
           <button class="btn btn-sm btn-primary" onclick="saveEditBestPractice('${p.id}')">저장</button>
           <button class="btn btn-sm" onclick="cancelEditBestPractice()">취소</button>
@@ -6311,8 +6315,8 @@ function renderBestPractice(){
       </div>
       <div class="form-row">
         <div class="field">
-          <label>첨부파일 (여러 개 선택 가능)</label>
-          <input id="bpFiles" type="file" accept="image/*,.pdf" multiple>
+          <label>첨부파일 (사진/PPT/엑셀 등 여러 개 선택 가능)</label>
+          <input id="bpFiles" type="file" multiple>
         </div>
         <button class="btn btn-primary" onclick="submitBestPractice()">등록</button>
       </div>
@@ -6703,8 +6707,8 @@ function renderSuggestions(){
       </div>
       <div class="form-row">
         <div class="field">
-          <label>첨부파일 (선택)</label>
-          <input id="sgFile" type="file" accept="image/*,.pdf">
+          <label>첨부파일 (선택, 사진/PPT/엑셀 등)</label>
+          <input id="sgFile" type="file">
         </div>
         <button class="btn btn-primary" onclick="submitSuggestion()">제출</button>
       </div>
