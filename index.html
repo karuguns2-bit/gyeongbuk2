@@ -389,6 +389,22 @@
       <button type="button" onclick="closeAddressSearch()" style="border:none;background:none;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
     </div>
     <div id="addressSearchContainer" style="width:100%;height:470px;"></div>
+    <!-- 기본주소 검색(다음 우편번호) 후 같은 창 안에서 바로 상세주소까지 입력받는 2단계 화면.
+         주소는 반드시 이 검색 흐름을 거쳐야만 채워지도록 하여(입력창 readonly) 임의 입력을 막는다. -->
+    <div id="addressSearchStep2" style="display:none;padding:16px;">
+      <div class="field" style="margin-bottom:12px;">
+        <label>기본주소</label>
+        <div id="addressSearchBaseText" style="padding:8px 10px;background:#f7f7f8;border:1px solid var(--border);border-radius:6px;font-size:13px;margin-top:4px;"></div>
+      </div>
+      <div class="field">
+        <label>상세주소</label>
+        <input id="addressSearchDetailInput" placeholder="예: 101동 202호 (선택)" style="width:100%;" onkeydown="if(event.key==='Enter'){ event.preventDefault(); confirmAddressSearchDetail(); }">
+      </div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+        <button type="button" class="btn btn-sm" onclick="backToAddressSearchStep1()">‹ 다시 검색</button>
+        <button type="button" class="btn btn-sm btn-primary" onclick="confirmAddressSearchDetail()">확인</button>
+      </div>
+    </div>
   </div>
 </div>
 <div id="noticeDetailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this) closeNoticeDetail();">
@@ -5527,7 +5543,12 @@ function renderCollectContest(){
       <td><input id="cge_${r.id}_qty" type="number" value="${r.qty!=null?r.qty:''}" style="width:70px"></td>
       <td><input id="cge_${r.id}_customerName" value="${escapeHtml(r.customerName||'')}" style="width:100px"></td>
       <td><input id="cge_${r.id}_phone" value="${escapeHtml(r.phone||'')}" style="width:120px" oninput="handlePhoneInput(event)"></td>
-      <td><input id="cge_${r.id}_address" value="${escapeHtml(r.address||'')}" style="width:160px"></td>
+      <td>
+        <div style="display:flex;gap:4px;align-items:center;">
+          <input id="cge_${r.id}_address" value="${escapeHtml(r.address||'')}" style="width:110px;background:#f7f7f8;" readonly>
+          <button type="button" class="btn btn-sm" style="padding:2px 6px;font-size:11px;white-space:nowrap;" onclick="openAddressSearch('cge_${r.id}_address')">검색</button>
+        </div>
+      </td>
       <td>
         기존: ${existingPhotos}<br>
         <input id="cge_${r.id}_evidence" type="file" multiple style="width:130px;font-size:11px;">
@@ -5613,16 +5634,13 @@ function renderCollectContest(){
         &nbsp;&nbsp;&nbsp;&nbsp;예)H876GBB111.CKOR / Z484GBB152.AKOR
       </div>
       <div class="form-row">
-        <div class="field" style="min-width:260px;">
+        <div class="field" style="min-width:300px;">
           <label>주소</label>
           <div style="display:flex;gap:6px;">
-            <input id="cgAddress" placeholder="주소 검색 버튼을 눌러 입력하세요" style="width:220px">
+            <input id="cgAddress" placeholder="주소 검색 버튼을 눌러 입력하세요 (직접 입력 불가)" style="width:300px;background:#f7f7f8;" readonly>
             <button type="button" class="btn btn-sm" onclick="openAddressSearch('cgAddress')">주소 검색</button>
           </div>
-        </div>
-        <div class="field" style="min-width:160px;">
-          <label>상세주소</label>
-          <input id="cgAddressDetail" placeholder="예: 101동 202호" style="width:160px">
+          <div class="small-note">※ 주소는 검색 버튼을 눌러 검색창에서 기본주소·상세주소를 함께 입력해야 등록됩니다. 직접 타이핑으로는 입력할 수 없습니다.</div>
         </div>
       </div>
       <div class="form-row">
@@ -5757,9 +5775,9 @@ function submitContestGift(){
   const qty = Number(document.getElementById('cgQty').value)||0;
   const customerName = document.getElementById('cgCustomerName').value.trim();
   const phone = document.getElementById('cgPhone').value.trim();
-  const addressBase = document.getElementById('cgAddress').value.trim();
-  const addressDetail = document.getElementById('cgAddressDetail').value.trim();
-  const address = [addressBase, addressDetail].filter(Boolean).join(' ');
+  // 주소는 openAddressSearch()의 검색 흐름(기본주소+상세주소 확인)에서만 채워지는 readonly 입력창이므로,
+  // 여기서는 그 값을 그대로 사용한다 (임의 직접 입력은 불가능).
+  const address = document.getElementById('cgAddress').value.trim();
   const evidenceInput = document.getElementById('cgEvidenceFiles');
   const evidenceFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
 
@@ -6074,38 +6092,73 @@ function saveEditSubTierContest(id){
   }
 }
 
+// 주소는 반드시 이 검색 흐름을 통해서만 입력되도록 한다 (대상 입력창은 readonly로 렌더링됨).
+// 1단계: 다음 우편번호 검색으로 기본주소를 고르면 → 2단계: 같은 모달 안에서 상세주소를 입력받고
+// "확인"을 눌러야 최종적으로 (기본주소 + 상세주소)가 대상 입력창에 채워진다.
 let addressSearchTargetId = null;
+let addressSearchBaseValue = '';
 function openAddressSearch(inputId){
   try{
     if(typeof daum === 'undefined' || !daum.Postcode){
-      alert('주소 검색 서비스를 불러오지 못했습니다. 인터넷 연결을 확인하거나 직접 입력해 주세요.');
+      alert('주소 검색 서비스를 불러오지 못했습니다. 인터넷 연결을 확인하거나 잠시 후 다시 시도해 주세요.');
       return;
     }
     addressSearchTargetId = inputId;
+    addressSearchBaseValue = '';
     const modal = document.getElementById('addressSearchModal');
     const container = document.getElementById('addressSearchContainer');
+    const step2 = document.getElementById('addressSearchStep2');
     if(!modal || !container) return;
     container.innerHTML = '';
+    container.style.display = 'block';
+    if(step2) step2.style.display = 'none';
     modal.style.display = 'flex';
     new daum.Postcode({
       oncomplete: function(data){
-        const el = document.getElementById(addressSearchTargetId);
-        if(el) el.value = data.address;
-        closeAddressSearch();
+        addressSearchBaseValue = data.address;
+        showAddressSearchStep2();
       },
       width: '100%',
       height: '100%'
     }).embed(container);
   } catch(err){
-    alert('주소 검색 서비스를 불러오지 못했습니다. 직접 입력해 주세요.');
+    alert('주소 검색 서비스를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.');
   }
+}
+function showAddressSearchStep2(){
+  const container = document.getElementById('addressSearchContainer');
+  const step2 = document.getElementById('addressSearchStep2');
+  const baseText = document.getElementById('addressSearchBaseText');
+  const detailInput = document.getElementById('addressSearchDetailInput');
+  if(container) container.style.display = 'none';
+  if(baseText) baseText.textContent = addressSearchBaseValue;
+  if(detailInput) detailInput.value = '';
+  if(step2) step2.style.display = 'block';
+  if(detailInput) detailInput.focus();
+}
+function backToAddressSearchStep1(){
+  const container = document.getElementById('addressSearchContainer');
+  const step2 = document.getElementById('addressSearchStep2');
+  if(step2) step2.style.display = 'none';
+  if(container) container.style.display = 'block';
+}
+function confirmAddressSearchDetail(){
+  const detailInput = document.getElementById('addressSearchDetailInput');
+  const detail = detailInput ? detailInput.value.trim() : '';
+  const finalAddress = [addressSearchBaseValue, detail].filter(Boolean).join(' ');
+  const el = document.getElementById(addressSearchTargetId);
+  if(el) el.value = finalAddress;
+  closeAddressSearch();
 }
 function closeAddressSearch(){
   const modal = document.getElementById('addressSearchModal');
   if(modal) modal.style.display = 'none';
   const container = document.getElementById('addressSearchContainer');
-  if(container) container.innerHTML = '';
+  if(container){ container.innerHTML = ''; container.style.display = 'block'; }
+  const step2 = document.getElementById('addressSearchStep2');
+  if(step2) step2.style.display = 'none';
   addressSearchTargetId = null;
+  addressSearchBaseValue = '';
 }
 
 /* =========================================================================
