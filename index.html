@@ -356,6 +356,7 @@
     <div class="nav-item sub" data-tab="subTierContest">구독4품목↑/금액대별 사은품 취합</div>
     <div class="nav-group-label">성장 지원</div>
     <div class="nav-item sub" data-tab="mistakeNote">구독 오답노트</div>
+    <div class="nav-item sub" data-tab="issueCase">이슈제품 판매 성공 사례</div>
     <div class="nav-item sub" data-tab="bestPractice">우수 활동 사례 공유</div>
     <div class="nav-item sub" data-tab="policyQuiz">금주 주말 정책 숙지도 점검</div>
     <div class="nav-group-label">건의함</div>
@@ -755,7 +756,7 @@ function buildSeedDataFromReal(){
   return { branches, users, goals, progress, attendance, salesData, schedule,
     competitiveness, competitivenessSummary, competitivenessAsOf, competitivenessHistory, inventory,
     notices, execPhotos: [], giftcardRequests: [], contestGifts: [], giftcardBudgetWon: 1500000,
-    mistakeNotes: [], bestPractices: [], suggestions: [],
+    mistakeNotes: [], bestPractices: [], issueCases: [], suggestions: [],
     eduSchedules: { hq: eduSchedulesHq, inhouse: [], etc: eduSchedulesEtc },
     eduCompletion: { video: eduCompletionVideo, test: eduCompletionTest, aiRp: [] },
     kakaoFriends, prospects: [], subB2bSales: [], policyQuizAttempts: [],
@@ -1185,6 +1186,7 @@ function migrateDB(){
   if(DB.giftcardBudgetWon===undefined || DB.giftcardBudgetWon===null) DB.giftcardBudgetWon = 0;
   if(!DB.mistakeNotes) DB.mistakeNotes = [];
   if(!DB.bestPractices) DB.bestPractices = [];
+  if(!DB.issueCases) DB.issueCases = [];
   if(!DB.suggestions) DB.suggestions = [];
   if(!DB.contestGifts) DB.contestGifts = [];
   if(!DB.subTierContestGifts) DB.subTierContestGifts = [];
@@ -1423,7 +1425,7 @@ const NEW_BADGE_TABS = [
   'notices','infoReports','kakaoFriends',
   'eduHq','eduInhouse','eduEtc','eduVideo','eduTest','eduAiRp',
   'collectPhoto','collectGiftcard','collectContest','subTierContest',
-  'mistakeNote','bestPractice','policyQuiz',
+  'mistakeNote','issueCase','bestPractice','policyQuiz',
   'suggestions'
 ];
 // 시각(타임스탬프) 대신 전역 일련번호(seq)로 비교한다 - 같은 밀리초 안에 "새 글 등록"과
@@ -1542,6 +1544,7 @@ function renderTab(tab){
   if(tab==='collectContest') main.innerHTML = renderCollectContest();
   if(tab==='subTierContest') main.innerHTML = renderSubTierContest();
   if(tab==='mistakeNote') main.innerHTML = renderMistakeNote();
+  if(tab==='issueCase') main.innerHTML = renderIssueCase();
   if(tab==='bestPractice') main.innerHTML = renderBestPractice();
   if(tab==='policyQuiz') main.innerHTML = renderPolicyQuiz();
   if(tab==='eduHq') main.innerHTML = renderEduSchedule('hq');
@@ -1563,6 +1566,7 @@ function renderTab(tab){
   if(tab!=='collectContest') state.cgEditId = null;
   if(tab!=='subTierContest') state.stcEditId = null;
   if(tab!=='bestPractice') state.bpEditId = null;
+  if(tab!=='issueCase') state.icEditId = null;
   if(tab!=='systemAdmin' && tab!=='accountManagement') loginStatsCache = null;
   if(tab!=='accountManagement') state.sysUserEditId = null;
   if(tab!=='notices') state.noticeBoardEditId = null;
@@ -1940,6 +1944,7 @@ function renameEmpIdEverywhere(oldId, newId){
   (DB.execPhotos||[]).forEach(r=>{ if(r.uploaderEmpId===oldId) r.uploaderEmpId = newId; });
   (DB.mistakeNotes||[]).forEach(r=>{ if(r.authorEmpId===oldId) r.authorEmpId = newId; });
   (DB.bestPractices||[]).forEach(r=>{ if(r.authorEmpId===oldId) r.authorEmpId = newId; });
+  (DB.issueCases||[]).forEach(r=>{ if(r.authorEmpId===oldId) r.authorEmpId = newId; });
   (DB.suggestions||[]).forEach(r=>{ if(r.authorEmpId===oldId) r.authorEmpId = newId; });
   (DB.prospects||[]).forEach(r=>{ if(r.empId===oldId) r.empId = newId; });
   if(DB.eduCompletion){
@@ -2166,6 +2171,7 @@ function collectDbImageTargets(){
   (DB.notices||[]).forEach(n=>(n.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
   (DB.infoReports||[]).forEach(r=>(r.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
   (DB.bestPractices||[]).forEach(p=>(p.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
+  (DB.issueCases||[]).forEach(p=>(p.attachments||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
   (DB.suggestions||[]).forEach(s=>{ if(s.attachmentDataUrl) targets.push({get:()=>s.attachmentDataUrl, set:v=>{s.attachmentDataUrl=v;}}); });
   (DB.contestGifts||[]).forEach(r=>(r.evidenceFiles||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
   (DB.subTierContestGifts||[]).forEach(r=>(r.evidenceFiles||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
@@ -6267,6 +6273,12 @@ function renderBestPractice(){
         </div>
         <div class="form-row">
           <div class="field" style="flex:1;min-width:320px;">
+            <label>제목</label>
+            <input id="bpe_${p.id}_title" style="width:100%" placeholder="활동 사례 제목을 입력하세요 (선택)" value="${escapeHtml(p.title||'')}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="flex:1;min-width:320px;">
             <label>활동 내용</label>
             <textarea id="bpe_${p.id}_content" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다.">${escapeHtml(p.content||'')}</textarea>
           </div>
@@ -6297,7 +6309,12 @@ function renderBestPractice(){
     return `
       <div class="card" style="margin-bottom:14px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${p.id}','bestPractice')">
-          <div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>
+          <div>
+            ${p.title ? `
+              <div class="nb-title" style="font-size:15px;">${escapeHtml(p.title)}</div>
+              <div class="muted" style="font-size:11.5px;margin-top:2px;">${bpBranchDisplayName(p.branchId)} · ${p.managerName || '-'} · ${p.activityDate}</div>
+            ` : `<div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>`}
+          </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${hasAttachmentBp ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
             <span class="muted" style="font-size:11px;">${expandedBp ? '▲' : '▼'}</span>
@@ -6343,6 +6360,12 @@ function renderBestPractice(){
       </div>
       <div class="form-row">
         <div class="field" style="flex:1;min-width:320px;">
+          <label>제목</label>
+          <input id="bpTitle" style="width:100%" placeholder="활동 사례 제목을 입력하세요 (선택)">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:320px;">
           <label>활동 내용</label>
           <textarea id="bpContent" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다."></textarea>
           <div class="small-note">※ 상세하게 작성 부탁드립니다.</div>
@@ -6374,6 +6397,7 @@ function submitBestPractice(){
   const managerOpt = managerSelect.options && Array.from(managerSelect.options||[]).find(o=>o.value===managerEmpId);
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById('bpActivityDate').value;
+  const title = document.getElementById('bpTitle').value.trim();
   const content = document.getElementById('bpContent').value.trim();
   const activityResult = document.getElementById('bpResult').value.trim();
   const fileInput = document.getElementById('bpFiles');
@@ -6383,7 +6407,7 @@ function submitBestPractice(){
   function finalize(attachments){
     DB.bestPractices.push({
       id: 'bp_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      branchId, managerEmpId, managerName, activityDate, content, activityResult, attachments,
+      branchId, managerEmpId, managerName, activityDate, title: title||null, content, activityResult, attachments,
       authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString()
     });
     touchTabContent('bestPractice');
@@ -6425,6 +6449,7 @@ function saveEditBestPractice(id){
   const managerOpt = managerSelect.options && Array.from(managerSelect.options||[]).find(o=>o.value===managerEmpId);
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById(`bpe_${id}_date`).value;
+  const title = document.getElementById(`bpe_${id}_title`).value.trim();
   const content = document.getElementById(`bpe_${id}_content`).value.trim();
   const activityResult = document.getElementById(`bpe_${id}_result`).value.trim();
   const fileInput = document.getElementById(`bpe_${id}_files`);
@@ -6433,13 +6458,277 @@ function saveEditBestPractice(id){
   const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
   function finalize(newAttachments){
     p.branchId = branchId; p.managerEmpId = managerEmpId; p.managerName = managerName;
-    p.activityDate = activityDate; p.content = content; p.activityResult = activityResult;
+    p.activityDate = activityDate; p.title = title||null; p.content = content; p.activityResult = activityResult;
     if(newAttachments && newAttachments.length>0){
       p.attachments = (p.attachments||[]).concat(newAttachments);
     }
     state.bpEditId = null;
     saveDB();
     renderTab('bestPractice');
+  }
+  if(files.length===0){ finalize([]); return; }
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ alert('첨부파일은 각 5MB 이하로 업로드해 주세요.'); return; }
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+}
+
+/* =========================================================================
+   9e1b. RENDER: 이슈제품 판매 성공 사례 (게시판) — 우수 활동 사례 공유와 동일한 양식
+   ========================================================================= */
+function canEditIssueCase(p){
+  return !!(p && (SESSION.role==='admin' || p.authorEmpId===SESSION.empId));
+}
+function removeIssueCaseAttachment(id, idx){
+  const p = DB.issueCases.find(x=>x.id===id);
+  if(!canEditIssueCase(p) || !p.attachments) return;
+  const removed = p.attachments[idx];
+  p.attachments.splice(idx, 1);
+  if(removed) deleteFromStorage(removed.dataUrl);
+  saveDB();
+  renderTab('issueCase');
+}
+// 추천(따봉) 토글 — 작성자 본인 포함 누구나 클릭 가능하며, 이미 추천했으면 다시 눌러 취소할 수 있다.
+function toggleIssueCaseLike(id){
+  const p = DB.issueCases.find(x=>x.id===id);
+  if(!p) return;
+  if(!p.likedBy) p.likedBy = [];
+  const idx = p.likedBy.indexOf(SESSION.empId);
+  if(idx>=0) p.likedBy.splice(idx, 1); else p.likedBy.push(SESSION.empId);
+  saveDB();
+  renderTab('issueCase');
+}
+function renderIssueCase(){
+  const myBranch = SESSION.branchId || DB.branches[0].id;
+  const sorted = [...DB.issueCases].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const editId = state.icEditId;
+  const posts = sorted.map(p=>{
+    const canEdit = canEditIssueCase(p);
+    // 공통 헬퍼(noticeAttachmentHtml/isImageAttachment)를 사용해 Storage URL로 저장된 사진도
+    // 파일명 링크가 아니라 썸네일로 정상 표시되도록 한다.
+    const attachmentsHtml = (p.attachments||[]).map(a=>noticeAttachmentHtml(a, 90, null)).join('');
+    // 수정 화면에서는 기존 첨부 사진마다 클릭 한 번으로 바로 삭제할 수 있도록 별도로 만든다
+    // (우수 활동 사례 공유 게시판과 동일한 방식 — removeIssueCaseAttachment 참고).
+    const editAttachmentsHtml = (p.attachments||[]).map((a,idx)=>noticeAttachmentHtml(a, 90, `removeIssueCaseAttachment('${p.id}', ${idx})`)).join('');
+
+    if(canEdit && editId===p.id){
+      return `
+      <div class="card" style="margin-bottom:14px;border:1.5px dashed var(--primary);">
+        <div class="form-row">
+          <div class="field">
+            <label>지점명</label>
+            <select id="ice_${p.id}_branch" style="width:150px" onchange="updateIcEditManagerOptions('${p.id}')">${bpBranchOptionsHtml(p.branchId)}</select>
+          </div>
+          <div class="field">
+            <label>매니저명</label>
+            <select id="ice_${p.id}_manager" style="width:150px">${bpManagerOptionsHtml(p.branchId, SESSION.role==='staff' ? SESSION.empId : (p.managerEmpId||null))}</select>
+          </div>
+          <div class="field">
+            <label>활동일자</label>
+            <input id="ice_${p.id}_date" type="date" value="${p.activityDate||''}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="flex:1;min-width:320px;">
+            <label>제목</label>
+            <input id="ice_${p.id}_title" style="width:100%" placeholder="이슈제품 판매 성공 사례 제목을 입력하세요 (선택)" value="${escapeHtml(p.title||'')}">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="flex:1;min-width:320px;">
+            <label>활동 내용</label>
+            <textarea id="ice_${p.id}_content" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다.">${escapeHtml(p.content||'')}</textarea>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field" style="flex:1;min-width:320px;">
+            <label>활동 결과</label>
+            <textarea id="ice_${p.id}_result" rows="2" style="width:100%;" placeholder="n건 판매/n명 가망고객 확보 등 결과치 작성">${escapeHtml(p.activityResult||'')}</textarea>
+          </div>
+        </div>
+        ${editAttachmentsHtml ? `<div style="margin-bottom:8px;"><label>기존 첨부 파일 (× 클릭 시 즉시 삭제)</label><br>${editAttachmentsHtml}</div>` : ''}
+        <div class="form-row">
+          <div class="field">
+            <label>새 첨부파일 추가 (선택, 사진/PPT/엑셀 등, 기존 첨부에 이어서 추가됨)</label>
+            <input id="ice_${p.id}_files" type="file" multiple>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="saveEditIssueCase('${p.id}')">저장</button>
+          <button class="btn btn-sm" onclick="cancelEditIssueCase()">취소</button>
+        </div>
+      </div>`;
+    }
+
+    // 게시내용이 좋다고 생각하는 다른 매니저가 추천(따봉)할 수 있도록 likedBy(empId 배열)로 추천 여부/수를 관리한다.
+    const likedByIc = p.likedBy || [];
+    const iLikedIc = likedByIc.includes(SESSION.empId);
+    const hasAttachmentIc = (p.attachments||[]).length>0;
+    const expandedIc = isPostExpanded(p.id);
+    return `
+      <div class="card" style="margin-bottom:14px;">
+        <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${p.id}','issueCase')">
+          <div>
+            ${p.title ? `
+              <div class="nb-title" style="font-size:15px;">${escapeHtml(p.title)}</div>
+              <div class="muted" style="font-size:11.5px;margin-top:2px;">${bpBranchDisplayName(p.branchId)} · ${p.managerName || '-'} · ${p.activityDate}</div>
+            ` : `<div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>`}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            ${hasAttachmentIc ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            <span class="muted" style="font-size:11px;">${expandedIc ? '▲' : '▼'}</span>
+          </div>
+        </div>
+        ${expandedIc ? `
+        <div style="white-space:pre-wrap;line-height:1.6;margin:8px 0;">${escapeHtml(p.content)}</div>
+        ${p.activityResult ? `<div style="background:#fff7f9;border:1px solid #f0c7d4;border-radius:8px;padding:8px 12px;margin-bottom:8px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
+        ${attachmentsHtml ? `<div>${attachmentsHtml}</div>` : ''}
+        <div class="flex-between" style="margin-top:8px;align-items:center;">
+          <button class="btn btn-sm ${iLikedIc?'like-btn-active':''}" onclick="event.stopPropagation();toggleIssueCaseLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedByIc.length>0?` ${likedByIc.length}`:''}</button>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="muted" style="font-size:11.5px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
+            ${canEdit ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditIssueCase('${p.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteIssueCase('${p.id}')">삭제</button></div>` : ''}
+          </div>
+        </div>
+        ` : ''}
+      </div>`;
+  }).join('') || `<div class="muted">등록된 이슈제품 판매 성공 사례가 없습니다.</div>`;
+
+  return `
+    <div class="page-title">이슈제품 판매 성공 사례</div>
+    <div class="notice-banner" style="margin-bottom:16px;">
+      <div style="font-weight:800;font-size:16px;">💡 이슈제품(단종임박/저회전재고/특판 등) 판매 노하우를 공유해 주세요</div>
+    </div>
+    <div class="page-desc">이슈제품을 성공적으로 판매한 사례를 자유롭게 공유해 주세요.</div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>새 사례 등록</h3>
+      <div class="form-row">
+        <div class="field">
+          <label>지점명</label>
+          <select id="icBranch" style="width:150px" onchange="updateIcManagerOptions()">${bpBranchOptionsHtml(myBranch)}</select>
+        </div>
+        <div class="field">
+          <label>매니저명</label>
+          <select id="icManager" style="width:150px">${bpManagerOptionsHtml(myBranch, SESSION.role==='staff' ? SESSION.empId : null)}</select>
+        </div>
+        <div class="field">
+          <label>활동일자</label>
+          <input id="icActivityDate" type="date" value="${todayStr()}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:320px;">
+          <label>제목</label>
+          <input id="icTitle" style="width:100%" placeholder="이슈제품 판매 성공 사례 제목을 입력하세요 (선택)">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:320px;">
+          <label>활동 내용</label>
+          <textarea id="icContent" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다."></textarea>
+          <div class="small-note">※ 상세하게 작성 부탁드립니다.</div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:320px;">
+          <label>활동 결과</label>
+          <textarea id="icResult" rows="2" style="width:100%;" placeholder="n건 판매/n명 가망고객 확보 등 결과치 작성"></textarea>
+          <div class="small-note">※ n건 판매/n명 가망고객 확보 등 결과치 작성</div>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field">
+          <label>첨부파일 (사진/PPT/엑셀 등 여러 개 선택 가능)</label>
+          <input id="icFiles" type="file" multiple>
+        </div>
+        <button class="btn btn-primary" onclick="submitIssueCase()">등록</button>
+      </div>
+    </div>
+
+    ${posts}
+  `;
+}
+function updateIcManagerOptions(){
+  const branchId = document.getElementById('icBranch').value;
+  document.getElementById('icManager').innerHTML = bpManagerOptionsHtml(branchId, null);
+}
+function updateIcEditManagerOptions(id){
+  const branchId = document.getElementById('ice_'+id+'_branch').value;
+  document.getElementById('ice_'+id+'_manager').innerHTML = bpManagerOptionsHtml(branchId, null);
+}
+function submitIssueCase(){
+  const branchId = document.getElementById('icBranch').value;
+  const managerSelect = document.getElementById('icManager');
+  const managerEmpId = managerSelect.value || null;
+  const managerOpt = managerSelect.options && Array.from(managerSelect.options||[]).find(o=>o.value===managerEmpId);
+  const managerName = managerOpt ? managerOpt.textContent : null;
+  const activityDate = document.getElementById('icActivityDate').value;
+  const title = document.getElementById('icTitle').value.trim();
+  const content = document.getElementById('icContent').value.trim();
+  const activityResult = document.getElementById('icResult').value.trim();
+  const fileInput = document.getElementById('icFiles');
+  if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
+
+  const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
+  function finalize(attachments){
+    DB.issueCases.push({
+      id: 'ic_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      branchId, managerEmpId, managerName, activityDate, title: title||null, content, activityResult, attachments,
+      authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString()
+    });
+    touchTabContent('issueCase');
+    saveDB();
+    logActivity('post', `${SESSION.name}님이 [이슈제품 판매 성공 사례]를 등록했습니다`);
+    renderTab('issueCase');
+  }
+  if(files.length===0){ finalize([]); return; }
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ alert('첨부파일은 각 5MB 이하로 업로드해 주세요.'); return; }
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+}
+function deleteIssueCase(id){
+  const p = DB.issueCases.find(x=>x.id===id);
+  if(!p) return;
+  if(!(SESSION.role==='admin' || p.authorEmpId===SESSION.empId)) return;
+  if(!confirm('삭제하시겠습니까?')) return;
+  DB.issueCases = DB.issueCases.filter(x=>x.id!==id);
+  (p.attachments||[]).forEach(f=>deleteFromStorage(f.dataUrl));
+  saveDB();
+  renderTab('issueCase');
+}
+function startEditIssueCase(id){
+  const p = DB.issueCases.find(x=>x.id===id);
+  if(!canEditIssueCase(p)) return;
+  state.icEditId = id;
+  renderTab('issueCase');
+}
+function cancelEditIssueCase(){
+  state.icEditId = null;
+  renderTab('issueCase');
+}
+function saveEditIssueCase(id){
+  const p = DB.issueCases.find(x=>x.id===id);
+  if(!canEditIssueCase(p)) return;
+  const branchId = document.getElementById(`ice_${id}_branch`).value;
+  const managerSelect = document.getElementById(`ice_${id}_manager`);
+  const managerEmpId = managerSelect.value || null;
+  const managerOpt = managerSelect.options && Array.from(managerSelect.options||[]).find(o=>o.value===managerEmpId);
+  const managerName = managerOpt ? managerOpt.textContent : null;
+  const activityDate = document.getElementById(`ice_${id}_date`).value;
+  const title = document.getElementById(`ice_${id}_title`).value.trim();
+  const content = document.getElementById(`ice_${id}_content`).value.trim();
+  const activityResult = document.getElementById(`ice_${id}_result`).value.trim();
+  const fileInput = document.getElementById(`ice_${id}_files`);
+  if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
+
+  const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
+  function finalize(newAttachments){
+    p.branchId = branchId; p.managerEmpId = managerEmpId; p.managerName = managerName;
+    p.activityDate = activityDate; p.title = title||null; p.content = content; p.activityResult = activityResult;
+    if(newAttachments && newAttachments.length>0){
+      p.attachments = (p.attachments||[]).concat(newAttachments);
+    }
+    state.icEditId = null;
+    saveDB();
+    renderTab('issueCase');
   }
   if(files.length===0){ finalize([]); return; }
   const oversized = files.find(f=>f.size > 5*1024*1024);
