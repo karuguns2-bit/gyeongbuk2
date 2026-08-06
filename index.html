@@ -2347,6 +2347,18 @@ function noticeAttachmentHtml(f, size, removeOnClick){
     ${removeBtn}
   </span>`;
 }
+// 공지사항/정보보고/우수 활동 사례 공유처럼 글이 계속 쌓이는 게시판형 목록은 글이 많아질수록
+// 스크롤이 길어지므로, 기본적으로 제목(또는 제목에 준하는 요약줄)만 보이게 접어두고 클릭하면
+// 본문·첨부파일을 펼쳐서 보여준다. 어떤 글이 펼쳐져 있는지는 id 기준으로 state에 기억해 두고,
+// 여러 게시판이 같은 맵을 공유해도 id 프리픽스가 서로 달라(notice_/ir_/bp_) 충돌하지 않는다.
+function togglePostExpand(id, tab){
+  if(!state.expandedPosts) state.expandedPosts = {};
+  state.expandedPosts[id] = !state.expandedPosts[id];
+  renderTab(tab);
+}
+function isPostExpanded(id){
+  return !!(state.expandedPosts && state.expandedPosts[id]);
+}
 // 홈 화면 공지 배너는 카드 높이가 고정(210px)이고 본문이 2줄로 잘려 보이므로(CSS -webkit-line-clamp:2),
 // 내용이 길어서 잘릴 가능성이 있는 공지에는 "자세히 보기" 버튼을 노출해 전체 내용을 모달로 볼 수 있게 한다.
 // 실제 렌더링 폭에 따라 정확히 몇 글자에서 잘리는지는 서버 쪽에서 알 수 없으므로, 2줄(가로 폭 기준 대략
@@ -2563,15 +2575,25 @@ function renderNoticesBoard(){
     const dt = new Date(n.createdAt);
     const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     const photosHtml = (n.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 56, isAdmin ? `removeNoticeAttachment('${n.id}', ${idx})` : null)).join('');
+    const hasAttachment = (n.attachments||[]).length>0;
+    const expanded = isPostExpanded(n.id);
     return `
       <div class="card" style="margin-bottom:12px;">
-        <div class="flex-between">
+        <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${n.id}','notices')">
           <div class="nb-title" style="font-size:15px;">${escapeHtml(n.title)}</div>
-          ${isAdmin ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="startEditNoticeBoard('${n.id}')">수정</button> <button class="btn btn-sm" onclick="deleteNoticeBoard('${n.id}')">삭제</button></div>` : ''}
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
+          </div>
         </div>
+        ${expanded ? `
         <div class="nb-content" style="margin:8px 0;white-space:pre-wrap;">${escapeHtml(n.content)}</div>
         ${photosHtml ? `<div style="margin-bottom:6px;">${photosHtml}</div>` : ''}
-        <div class="nb-meta muted" style="font-size:11.5px;">${escapeHtml(n.author)} · ${dtStr}</div>
+        <div class="flex-between" style="align-items:center;margin-top:4px;">
+          <div class="nb-meta muted" style="font-size:11.5px;">${escapeHtml(n.author)} · ${dtStr}</div>
+          ${isAdmin ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditNoticeBoard('${n.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteNoticeBoard('${n.id}')">삭제</button></div>` : ''}
+        </div>
+        ` : ''}
       </div>`;
   }).join('');
 
@@ -2724,21 +2746,31 @@ function renderInfoReports(){
     const dt = new Date(r.createdAt);
     const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     const filesHtml = (r.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 56, canManage ? `removeInfoReportAttachment('${r.id}', ${idx})` : null)).join('');
+    const hasAttachment = (r.attachments||[]).length>0;
+    const expanded = isPostExpanded(r.id);
     // 게시내용이 좋다고 생각하는 다른 매니저가 추천(따봉)할 수 있도록 likedBy(empId 배열)로 추천 여부/수를 관리한다.
     const likedBy = r.likedBy || [];
     const iLiked = likedBy.includes(SESSION.empId);
     return `
       <div class="card" style="margin-bottom:12px;">
-        <div class="flex-between">
+        <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${r.id}','infoReports')">
           <div class="nb-title" style="font-size:15px;">${escapeHtml(r.title)}</div>
-          ${canManage ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="startEditInfoReport('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteInfoReport('${r.id}')">삭제</button></div>` : ''}
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
+          </div>
         </div>
+        ${expanded ? `
         <div class="nb-content" style="margin:8px 0;white-space:pre-wrap;">${escapeHtml(r.content)}</div>
         ${filesHtml ? `<div style="margin-bottom:6px;">${filesHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:8px;align-items:center;">
-          <button class="btn btn-sm ${iLiked?'like-btn-active':''}" onclick="toggleInfoReportLike('${r.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedBy.length>0?` ${likedBy.length}`:''}</button>
-          <div class="nb-meta muted" style="font-size:11.5px;">${escapeHtml(r.authorName)} · ${escapeHtml(branchName(r.branchId))} · ${dtStr}</div>
+          <button class="btn btn-sm ${iLiked?'like-btn-active':''}" onclick="event.stopPropagation();toggleInfoReportLike('${r.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedBy.length>0?` ${likedBy.length}`:''}</button>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="nb-meta muted" style="font-size:11.5px;">${escapeHtml(r.authorName)} · ${escapeHtml(branchName(r.branchId))} · ${dtStr}</div>
+            ${canManage ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditInfoReport('${r.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteInfoReport('${r.id}')">삭제</button></div>` : ''}
+          </div>
         </div>
+        ` : ''}
       </div>`;
   }).join('');
 
@@ -6260,19 +6292,29 @@ function renderBestPractice(){
     // 게시내용이 좋다고 생각하는 다른 매니저가 추천(따봉)할 수 있도록 likedBy(empId 배열)로 추천 여부/수를 관리한다.
     const likedByBp = p.likedBy || [];
     const iLikedBp = likedByBp.includes(SESSION.empId);
+    const hasAttachmentBp = (p.attachments||[]).length>0;
+    const expandedBp = isPostExpanded(p.id);
     return `
       <div class="card" style="margin-bottom:14px;">
-        <div class="flex-between" style="margin-bottom:6px;">
+        <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${p.id}','bestPractice')">
           <div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>
-          <div>${canEdit ? `<button class="btn btn-sm" onclick="startEditBestPractice('${p.id}')">수정</button> <button class="btn btn-sm" onclick="deleteBestPractice('${p.id}')">삭제</button>` : ''}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            ${hasAttachmentBp ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            <span class="muted" style="font-size:11px;">${expandedBp ? '▲' : '▼'}</span>
+          </div>
         </div>
-        <div style="white-space:pre-wrap;line-height:1.6;margin-bottom:8px;">${escapeHtml(p.content)}</div>
+        ${expandedBp ? `
+        <div style="white-space:pre-wrap;line-height:1.6;margin:8px 0;">${escapeHtml(p.content)}</div>
         ${p.activityResult ? `<div style="background:#fff7f9;border:1px solid #f0c7d4;border-radius:8px;padding:8px 12px;margin-bottom:8px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
         ${attachmentsHtml ? `<div>${attachmentsHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:8px;align-items:center;">
-          <button class="btn btn-sm ${iLikedBp?'like-btn-active':''}" onclick="toggleBestPracticeLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedByBp.length>0?` ${likedByBp.length}`:''}</button>
-          <div class="muted" style="font-size:11.5px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
+          <button class="btn btn-sm ${iLikedBp?'like-btn-active':''}" onclick="event.stopPropagation();toggleBestPracticeLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedByBp.length>0?` ${likedByBp.length}`:''}</button>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="muted" style="font-size:11.5px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
+            ${canEdit ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditBestPractice('${p.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteBestPractice('${p.id}')">삭제</button></div>` : ''}
+          </div>
         </div>
+        ` : ''}
       </div>`;
   }).join('') || `<div class="muted">등록된 활동 사례가 없습니다.</div>`;
 
