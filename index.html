@@ -2365,6 +2365,67 @@ function togglePostExpand(id, tab){
 function isPostExpanded(id){
   return !!(state.expandedPosts && state.expandedPosts[id]);
 }
+// 공지사항/정보보고/구독 오답노트/이슈제품 판매 성공 사례/우수 활동 사례 공유처럼 게시글이 계속
+// 쌓이는 게시판에서, 글이 많아질수록 스크롤이 길어지는 문제를 줄이기 위한 공통 검색+목록 개수 헬퍼.
+// 게시판별로 고유한 prefix(예: 'notice','infoReport','mistakeNote','issueCase','bestPractice')를 키로
+// 검색어/목록 개수(10/20/전체)/현재 페이지를 state에 저장한다.
+function boardListState(prefix){
+  if(!state.boardList) state.boardList = {};
+  if(!state.boardList[prefix]) state.boardList[prefix] = { search: '', pageSize: 10, page: 1 };
+  return state.boardList[prefix];
+}
+function setBoardSearch(prefix, tab, value){
+  const st = boardListState(prefix);
+  st.search = value;
+  st.page = 1;
+  renderTab(tab);
+}
+function setBoardPageSize(prefix, tab, size){
+  const st = boardListState(prefix);
+  st.pageSize = size; // 10, 20, 또는 'all'
+  st.page = 1;
+  renderTab(tab);
+}
+function setBoardPage(prefix, tab, page){
+  const st = boardListState(prefix);
+  st.page = page;
+  renderTab(tab);
+}
+// list: 정렬까지 끝난 게시글 배열. searchTextFn: 게시글에서 검색 대상 텍스트를 뽑아내는 함수.
+// 반환값: 검색+페이지 적용된 items와, 검색창+개수버튼(barHtml)/이전·다음 페이지 이동(pagerHtml) UI.
+function applyBoardSearchAndPaging(prefix, tab, list, searchTextFn, placeholder){
+  const st = boardListState(prefix);
+  const q = (st.search||'').trim().toLowerCase();
+  const filtered = q ? list.filter(item=> searchTextFn(item).toLowerCase().includes(q)) : list;
+  const pageSize = st.pageSize;
+  let items = filtered, totalPages = 1, page = 1;
+  if(pageSize !== 'all'){
+    totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+    page = Math.min(Math.max(1, st.page||1), totalPages);
+    st.page = page;
+    items = filtered.slice((page-1)*pageSize, page*pageSize);
+  }
+  const barHtml = `
+    <div class="form-row" style="align-items:center;margin-bottom:10px;gap:8px;">
+      <div class="field" style="flex:1;min-width:180px;">
+        <input type="text" value="${escapeHtml(st.search)}" placeholder="${escapeHtml(placeholder||'검색어를 입력하세요')}" oninput="setBoardSearch('${prefix}','${tab}',this.value)" style="width:100%;">
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button type="button" class="btn btn-sm ${pageSize===10?'btn-primary':''}" onclick="setBoardPageSize('${prefix}','${tab}',10)">10개씩 보기</button>
+        <button type="button" class="btn btn-sm ${pageSize===20?'btn-primary':''}" onclick="setBoardPageSize('${prefix}','${tab}',20)">20개씩 보기</button>
+        <button type="button" class="btn btn-sm ${pageSize==='all'?'btn-primary':''}" onclick="setBoardPageSize('${prefix}','${tab}','all')">전체보기</button>
+      </div>
+    </div>
+    ${q ? `<div class="muted" style="font-size:11.5px;margin:-4px 0 10px;">"${escapeHtml(st.search)}" 검색 결과 ${filtered.length}건</div>` : ''}
+  `;
+  const pagerHtml = totalPages>1 ? `
+    <div style="display:flex;justify-content:center;align-items:center;gap:10px;margin-top:14px;">
+      <button type="button" class="btn btn-sm" ${page<=1?'disabled':''} onclick="setBoardPage('${prefix}','${tab}',${page-1})">‹ 이전</button>
+      <span class="muted" style="font-size:12.5px;">${page} / ${totalPages} 페이지</span>
+      <button type="button" class="btn btn-sm" ${page>=totalPages?'disabled':''} onclick="setBoardPage('${prefix}','${tab}',${page+1})">다음 ›</button>
+    </div>` : '';
+  return { items, barHtml, pagerHtml, filteredCount: filtered.length, totalCount: list.length };
+}
 // 홈 화면 공지 배너는 카드 높이가 고정(210px)이고 본문이 2줄로 잘려 보이므로(CSS -webkit-line-clamp:2),
 // 내용이 길어서 잘릴 가능성이 있는 공지에는 "자세히 보기" 버튼을 노출해 전체 내용을 모달로 볼 수 있게 한다.
 // 실제 렌더링 폭에 따라 정확히 몇 글자에서 잘리는지는 서버 쪽에서 알 수 없으므로, 2줄(가로 폭 기준 대략
@@ -2527,7 +2588,12 @@ function canEditNotice(){ return !!(SESSION && SESSION.role==='admin'); }
 function renderNoticesBoard(){
   const isAdmin = canEditNotice();
   const editId = state.noticeBoardEditId || null;
-  const notices = sortedNotices();
+  const allNotices = sortedNotices();
+  const { items: notices, barHtml: noticeBarHtml, pagerHtml: noticePagerHtml } = applyBoardSearchAndPaging(
+    'notice', 'notices', allNotices,
+    n => `${n.title||''} ${n.content||''} ${n.author||''}`,
+    '제목·내용·작성자로 검색'
+  );
 
   const createFormHtml = isAdmin ? `
     <div class="card" style="margin-bottom:16px;">
@@ -2607,7 +2673,9 @@ function renderNoticesBoard(){
     <div class="page-title">공지사항</div>
     <div class="page-desc">전체 팀에 공지할 내용을 게시판 형태로 관리합니다. 등록한 공지는 홈 화면 공지사항 배너에도 함께 표시됩니다.</div>
     ${createFormHtml}
-    ${listHtml || `<div class="card muted">등록된 공지사항이 없습니다.</div>`}
+    ${allNotices.length>0 ? noticeBarHtml : ''}
+    ${listHtml || `<div class="card muted">${allNotices.length===0 ? '등록된 공지사항이 없습니다.' : '검색 결과가 없습니다.'}</div>`}
+    ${noticePagerHtml}
   `;
 }
 function startEditNoticeBoard(id){
@@ -2697,7 +2765,12 @@ function sortedInfoReports(){
 }
 function renderInfoReports(){
   const editId = state.infoReportEditId || null;
-  const reports = sortedInfoReports();
+  const allReports = sortedInfoReports();
+  const { items: reports, barHtml: irBarHtml, pagerHtml: irPagerHtml } = applyBoardSearchAndPaging(
+    'infoReport', 'infoReports', allReports,
+    r => `${r.title||''} ${r.content||''} ${r.authorName||''} ${branchName(r.branchId)||''}`,
+    '제목·내용·작성자로 검색'
+  );
 
   const createFormHtml = `
     <div class="card" style="margin-bottom:16px;">
@@ -2789,7 +2862,9 @@ function renderInfoReports(){
     </div>
 
     ${createFormHtml}
-    ${listHtml || `<div class="card muted">등록된 정보보고가 없습니다.</div>`}
+    ${allReports.length>0 ? irBarHtml : ''}
+    ${listHtml || `<div class="card muted">${allReports.length===0 ? '등록된 정보보고가 없습니다.' : '검색 결과가 없습니다.'}</div>`}
+    ${irPagerHtml}
   `;
 }
 function startEditInfoReport(id){
@@ -6098,7 +6173,12 @@ function renderMistakeNote(){
   let adminSection = '';
   if(isAdmin){
     const stats = mistakeNoteStats(DB.mistakeNotes);
-    const sorted = [...DB.mistakeNotes].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+    const allSorted = [...DB.mistakeNotes].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+    const { items: sorted, barHtml: mnBarHtml, pagerHtml: mnPagerHtml } = applyBoardSearchAndPaging(
+      'mistakeNote', 'mistakeNote', allSorted,
+      n => `${branchName(n.branchId)||''} ${n.authorName||''} ${n.category||''} ${n.model||''} ${n.content||''}`,
+      '지점·작성자·실수유형·내용으로 검색'
+    );
     const rows = sorted.map(n=>`
       <tr>
         <td>${branchName(n.branchId)}</td>
@@ -6108,7 +6188,7 @@ function renderMistakeNote(){
         <td class="muted">${n.model||'-'}</td>
         <td>${escapeHtml(n.content)}</td>
         <td><button class="btn btn-sm" onclick="deleteMistakeNote('${n.id}')">삭제</button></td>
-      </tr>`).join('') || `<tr><td colspan="7" class="muted">등록된 오답노트가 없습니다.</td></tr>`;
+      </tr>`).join('') || `<tr><td colspan="7" class="muted">${allSorted.length===0 ? '등록된 오답노트가 없습니다.' : '검색 결과가 없습니다.'}</td></tr>`;
 
     adminSection = `
       <div class="card ai-box" style="margin-bottom:16px;">
@@ -6122,10 +6202,12 @@ function renderMistakeNote(){
       </div>
       <div class="card">
         <h3>누적 오답노트 목록 (관리자 전용)</h3>
+        ${allSorted.length>0 ? mnBarHtml : ''}
         <table>
           <thead><tr><th>지점</th><th>작성일자</th><th>작성자</th><th>실수유형</th><th>모델</th><th>상세내용</th><th></th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
+        ${mnPagerHtml}
       </div>`;
   }
 
@@ -6242,7 +6324,12 @@ function toggleBestPracticeLike(id){
 }
 function renderBestPractice(){
   const myBranch = SESSION.branchId || DB.branches[0].id;
-  const sorted = [...DB.bestPractices].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const allSorted = [...DB.bestPractices].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const { items: sorted, barHtml: bpBarHtml, pagerHtml: bpPagerHtml } = applyBoardSearchAndPaging(
+    'bestPractice', 'bestPractice', allSorted,
+    p => `${p.title||''} ${p.content||''} ${p.activityResult||''} ${p.managerName||''} ${bpBranchDisplayName(p.branchId)||''} ${p.authorName||''}`,
+    '제목·내용·지점·매니저로 검색'
+  );
   const editId = state.bpEditId;
   const posts = sorted.map(p=>{
     const canEdit = canEditBestPractice(p);
@@ -6333,7 +6420,7 @@ function renderBestPractice(){
         </div>
         ` : ''}
       </div>`;
-  }).join('') || `<div class="muted">등록된 활동 사례가 없습니다.</div>`;
+  }).join('') || `<div class="muted">${allSorted.length===0 ? '등록된 활동 사례가 없습니다.' : '검색 결과가 없습니다.'}</div>`;
 
   return `
     <div class="page-title">우수 활동 사례 공유</div>
@@ -6387,7 +6474,9 @@ function renderBestPractice(){
       </div>
     </div>
 
+    ${allSorted.length>0 ? bpBarHtml : ''}
     ${posts}
+    ${bpPagerHtml}
   `;
 }
 function submitBestPractice(){
@@ -6501,7 +6590,12 @@ function toggleIssueCaseLike(id){
 function renderIssueCase(){
   const isAdmin = SESSION.role==='admin';
   const myBranch = SESSION.branchId || DB.branches[0].id;
-  const sorted = [...DB.issueCases].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const allSorted = [...DB.issueCases].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const { items: sorted, barHtml: icBarHtml, pagerHtml: icPagerHtml } = applyBoardSearchAndPaging(
+    'issueCase', 'issueCase', allSorted,
+    p => `${p.title||''} ${p.content||''} ${p.activityResult||''} ${p.managerName||''} ${bpBranchDisplayName(p.branchId)||''} ${p.authorName||''}`,
+    '제목·내용·지점·매니저로 검색'
+  );
   const editId = state.icEditId;
   const posts = sorted.map(p=>{
     const canEdit = canEditIssueCase(p);
@@ -6591,7 +6685,7 @@ function renderIssueCase(){
         </div>
         ` : ''}
       </div>`;
-  }).join('') || `<div class="muted">등록된 이슈제품 판매 성공 사례가 없습니다.</div>`;
+  }).join('') || `<div class="muted">${allSorted.length===0 ? '등록된 이슈제품 판매 성공 사례가 없습니다.' : '검색 결과가 없습니다.'}</div>`;
 
   // 우수 활동 사례 공유와 달리 이 게시판은 관리자만 작성할 수 있으므로, 일반 직원 화면에는
   // "새 사례 등록" 카드 자체를 아예 숨긴다 (공지사항 게시판과 동일한 방식).
@@ -6650,7 +6744,9 @@ function renderIssueCase(){
 
     ${newEntryFormHtml}
 
+    ${allSorted.length>0 ? icBarHtml : ''}
     ${posts}
+    ${icPagerHtml}
   `;
 }
 function updateIcManagerOptions(){
