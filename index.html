@@ -72,6 +72,48 @@
     font-weight:800;background:linear-gradient(90deg,var(--primary),#4a0016);
     -webkit-background-clip:text;background-clip:text;color:transparent;
   }
+  .login-remember{
+    display:flex;align-items:center;gap:7px;margin-top:14px;font-size:12.5px;color:var(--text-sub);
+    user-select:none;cursor:pointer;
+  }
+  .login-remember input{width:15px;height:15px;margin:0;accent-color:var(--primary);cursor:pointer;}
+
+  /* ---------- 스크린세이버 (장기 미사용 시 자동 전환, 클릭하면 해제) ---------- */
+  #screensaverOverlay{
+    position:fixed;inset:0;z-index:20000;display:none;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,var(--primary) 0%,#4a0016 100%);
+    cursor:pointer;animation:ssFadeIn .6s ease;
+  }
+  @keyframes ssFadeIn{ from{opacity:0;} to{opacity:1;} }
+  .ss-inner{ text-align:center;color:#fff;padding:40px;max-width:640px; }
+  .ss-badge{
+    display:inline-flex;align-items:center;gap:8px;padding:7px 16px;border-radius:999px;
+    background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);
+    font-size:12.5px;letter-spacing:.06em;color:rgba(255,255,255,.85);margin-bottom:28px;
+  }
+  .ss-badge .dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:ssPulse 1.8s ease-in-out infinite;}
+  @keyframes ssPulse{ 0%,100%{opacity:.35;transform:scale(.85);} 50%{opacity:1;transform:scale(1.15);} }
+  .ss-brand{font-size:26px;font-weight:800;line-height:1.5;margin-bottom:18px;letter-spacing:-.01em;}
+  .ss-msg{font-size:15px;line-height:1.9;color:rgba(255,255,255,.92);margin-bottom:36px;}
+  .ss-hint{
+    font-size:12.5px;color:rgba(255,255,255,.68);display:inline-flex;align-items:center;gap:8px;
+    padding:9px 18px;border:1px solid rgba(255,255,255,.3);border-radius:999px;
+    animation:ssHintFloat 2.4s ease-in-out infinite;
+  }
+  @keyframes ssHintFloat{ 0%,100%{transform:translateY(0);} 50%{transform:translateY(-4px);} }
+
+  /* ---------- 관리자 설정용 토글 스위치 ---------- */
+  .toggle-switch{ position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0; }
+  .toggle-switch input{ opacity:0;width:0;height:0; }
+  .toggle-switch .slider{
+    position:absolute;inset:0;background:#d1d5db;border-radius:999px;cursor:pointer;transition:background .18s ease;
+  }
+  .toggle-switch .slider::before{
+    content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;
+    transition:transform .18s ease;box-shadow:0 1px 3px rgba(0,0,0,.3);
+  }
+  .toggle-switch input:checked + .slider{ background:var(--primary); }
+  .toggle-switch input:checked + .slider::before{ transform:translateX(20px); }
 
   /* ---------- App shell ---------- */
   #app{display:none;min-height:100vh;}
@@ -294,6 +336,7 @@
       <input id="loginId" placeholder="MSIS사번을 입력해주세요 예)1095062" autocomplete="off">
       <label>비밀번호</label>
       <input id="loginPw" type="password" placeholder="최초비밀번호 1234" autocomplete="off">
+      <label class="login-remember"><input type="checkbox" id="loginRememberId"> 아이디 저장</label>
       <button class="submit" onclick="handleLogin()">로그인</button>
       <div class="login-error" id="loginError"></div>
       <div class="login-link" onclick="showPwChangeBox()">비밀번호 변경</div>
@@ -381,6 +424,15 @@
 </div>
 <div id="imgLightbox" class="img-lightbox" onclick="closeImgLightbox()">
   <img id="imgLightboxImg" src="" alt="확대 이미지">
+</div>
+<!-- 장기 미사용(10분) 시 자동 전환되는 스크린세이버. 어디를 클릭하든 원래 화면으로 돌아간다. -->
+<div id="screensaverOverlay" onclick="dismissScreensaver()">
+  <div class="ss-inner">
+    <div class="ss-badge"><span class="dot"></span>SCREEN SAVER</div>
+    <div class="ss-brand">혼매경북팀 (경북2담당)<br>업무 지원 시스템</div>
+    <div class="ss-msg">장기 미사용으로 인한 스크린세이버 작동중입니다.<br>클릭 시 원래 화면으로 돌아갑니다.</div>
+    <div class="ss-hint">🖱️ 화면을 클릭하세요</div>
+  </div>
 </div>
 <div id="addressSearchModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this) closeAddressSearch();">
   <div style="background:#fff;border-radius:10px;overflow:hidden;width:420px;max-width:92vw;box-shadow:0 8px 40px rgba(0,0,0,.4);">
@@ -772,6 +824,7 @@ function buildSeedDataFromReal(){
   return { branches, users, goals, progress, attendance, salesData, schedule,
     competitiveness, competitivenessSummary, competitivenessAsOf, competitivenessHistory, inventory,
     notices, execPhotos: [], giftcardRequests: [], contestGifts: [], giftcardBudgetWon: 1500000,
+    screensaverEnabled: true,
     mistakeNotes: [], bestPractices: [], issueCases: [], suggestions: [],
     eduSchedules: { hq: eduSchedulesHq, inhouse: [], etc: eduSchedulesEtc },
     eduCompletion: { video: eduCompletionVideo, test: eduCompletionTest, aiRp: [] },
@@ -1206,6 +1259,8 @@ function migrateDB(){
   if(!DB.suggestions) DB.suggestions = [];
   if(!DB.contestGifts) DB.contestGifts = [];
   if(!DB.subTierContestGifts) DB.subTierContestGifts = [];
+  // 장기 미사용 시 자동 전환되는 스크린세이버 사용 여부 (관리자가 시스템 관리에서 설정, 기본값 사용함)
+  if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
   if(!DB.eduSchedules) DB.eduSchedules = { hq: [], inhouse: [], etc: [] };
   if(!DB.eduSchedules.hq) DB.eduSchedules.hq = [];
   if(!DB.eduSchedules.inhouse) DB.eduSchedules.inhouse = [];
@@ -1352,15 +1407,24 @@ function ensureUser(empIdRaw, name, branchId){
    2. SESSION / AUTH
    ========================================================================= */
 let SESSION = null; // {empId, name, role, branchId}
+const REMEMBER_ID_KEY = 'lg_kpi_remember_id';
+const SESSION_STORAGE_KEY = 'lg_kpi_session';
 
-function handleLogin(){
-  const err = document.getElementById('loginError');
-  if(!dbReady){ err.textContent='데이터를 아직 불러오는 중입니다. 잠시 후 다시 시도해 주세요.'; return; }
-  const id = document.getElementById('loginId').value.trim();
-  const pw = document.getElementById('loginPw').value.trim();
-  const user = DB.users.find(u=>u.empId===id && u.pw===pw);
-  if(!user){ err.textContent='사번 또는 비밀번호가 올바르지 않습니다.'; return; }
-  err.textContent='';
+// 아이디 저장 체크박스: 로그인 화면이 뜰 때(최초 로드/로그아웃 후) 저장된 아이디가 있으면
+// 입력창에 미리 채워주고 체크박스도 켜둔다.
+function applyRememberedLoginId(){
+  const idEl = document.getElementById('loginId');
+  const checkEl = document.getElementById('loginRememberId');
+  if(!idEl || !checkEl) return;
+  let remembered = '';
+  try{ remembered = localStorage.getItem(REMEMBER_ID_KEY) || ''; }catch(e){ /* 무시 */ }
+  if(remembered){ idEl.value = remembered; checkEl.checked = true; }
+  else { checkEl.checked = false; }
+}
+
+// 로그인 성공 후 화면 전환/사이드바 갱신/폴링 시작 등 공통 처리.
+// fromRestore가 true면 새로고침 등으로 저장된 세션을 복원한 경우이므로 로그인 활동 로그는 남기지 않는다.
+function enterApp(user, fromRestore){
   SESSION = {empId:user.empId, name:user.name, role:user.role, branchId:user.branchId};
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').classList.add('active');
@@ -1372,16 +1436,102 @@ function handleLogin(){
   renderTab('home');
   startDbPolling();
   startHeartbeat();
-  logActivity('login');
+  startScreensaverWatch();
+  if(!fromRestore) logActivity('login');
+}
+function handleLogin(){
+  const err = document.getElementById('loginError');
+  if(!dbReady){ err.textContent='데이터를 아직 불러오는 중입니다. 잠시 후 다시 시도해 주세요.'; return; }
+  const id = document.getElementById('loginId').value.trim();
+  const pw = document.getElementById('loginPw').value.trim();
+  const user = DB.users.find(u=>u.empId===id && u.pw===pw);
+  if(!user){ err.textContent='사번 또는 비밀번호가 올바르지 않습니다.'; return; }
+  err.textContent='';
+  // 아이디 저장 체크 여부에 따라 다음 접속 시 자동으로 채워지도록 저장/삭제한다.
+  const rememberChecked = !!(document.getElementById('loginRememberId') && document.getElementById('loginRememberId').checked);
+  try{
+    if(rememberChecked) localStorage.setItem(REMEMBER_ID_KEY, id);
+    else localStorage.removeItem(REMEMBER_ID_KEY);
+  }catch(e){ /* 저장 공간 문제 등은 무시 */ }
+  // 새로고침해도 로그인 상태가 유지되도록 세션을 저장해 둔다.
+  try{ localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({empId:user.empId})); }catch(e){ /* 무시 */ }
+  enterApp(user, false);
+}
+// 페이지가 새로고침되어도 로그아웃되지 않도록, 저장된 세션이 있으면 자동으로 복원한다.
+// (계정이 그 사이 삭제되었을 수 있으니 DB.users에서 다시 조회해서 유효할 때만 복원한다)
+function restoreSessionIfAny(){
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(SESSION_STORAGE_KEY) || 'null'); }catch(e){ saved = null; }
+  if(!saved || !saved.empId) return false;
+  const user = DB.users.find(u=>u.empId===saved.empId);
+  if(!user){ try{ localStorage.removeItem(SESSION_STORAGE_KEY); }catch(e){ /* 무시 */ } return false; }
+  enterApp(user, true);
+  return true;
 }
 function handleLogout(){
   SESSION = null;
   stopDbPolling();
   stopHeartbeat();
   stopHomeStatusWidget();
+  stopScreensaverWatch();
+  try{ localStorage.removeItem(SESSION_STORAGE_KEY); }catch(e){ /* 무시 */ }
   document.getElementById('app').classList.remove('active');
   document.getElementById('loginScreen').style.display='flex';
-  document.getElementById('loginId').value=''; document.getElementById('loginPw').value='';
+  document.getElementById('loginPw').value='';
+  applyRememberedLoginId();
+}
+
+/* =========================================================================
+   3z. 스크린세이버 (관리자가 시스템 관리에서 켜고 끌 수 있음, 기본 사용함)
+   로그인 상태에서 마우스/키보드/스크롤/터치 활동이 10분간 없으면 전체화면
+   오버레이를 띄우고, 클릭하면(활동 재개로 간주) 원래 화면으로 되돌린다.
+   ========================================================================= */
+const SCREENSAVER_IDLE_MS = 10 * 60 * 1000; // 10분
+let screensaverTimer = null;
+let screensaverActivityHandler = null;
+const SCREENSAVER_ACTIVITY_EVENTS = ['mousemove','mousedown','keydown','scroll','touchstart'];
+function resetScreensaverTimer(){
+  if(!SESSION) return; // 로그인 화면에서는 동작하지 않는다
+  if(screensaverTimer){ clearTimeout(screensaverTimer); screensaverTimer = null; }
+  if(!DB || !DB.screensaverEnabled) return; // 관리자가 꺼두었으면 예약하지 않는다
+  screensaverTimer = setTimeout(showScreensaverOverlay, SCREENSAVER_IDLE_MS);
+}
+function showScreensaverOverlay(){
+  const el = document.getElementById('screensaverOverlay');
+  if(el) el.style.display = 'flex';
+}
+function hideScreensaverOverlay(){
+  const el = document.getElementById('screensaverOverlay');
+  if(el) el.style.display = 'none';
+}
+// 스크린세이버 화면을 클릭하면 원래 화면으로 돌아가고, 다시 10분 카운트가 시작된다.
+function dismissScreensaver(){
+  hideScreensaverOverlay();
+  resetScreensaverTimer();
+}
+function startScreensaverWatch(){
+  if(screensaverActivityHandler) return; // 중복 등록 방지
+  screensaverActivityHandler = ()=> resetScreensaverTimer();
+  SCREENSAVER_ACTIVITY_EVENTS.forEach(ev=> document.addEventListener(ev, screensaverActivityHandler));
+  resetScreensaverTimer();
+}
+function stopScreensaverWatch(){
+  if(screensaverTimer){ clearTimeout(screensaverTimer); screensaverTimer = null; }
+  if(screensaverActivityHandler){
+    SCREENSAVER_ACTIVITY_EVENTS.forEach(ev=> document.removeEventListener(ev, screensaverActivityHandler));
+    screensaverActivityHandler = null;
+  }
+  hideScreensaverOverlay();
+}
+// 시스템 관리 화면의 토글 스위치에서 호출 - 관리자만 사용 여부를 바꿀 수 있다.
+function toggleScreensaverSetting(checked){
+  if(!SESSION || SESSION.role!=='admin') return;
+  DB.screensaverEnabled = !!checked;
+  saveDB();
+  if(DB.screensaverEnabled) resetScreensaverTimer();
+  else stopScreensaverWatch();
+  // 스위치 상태는 그대로 두고(재렌더링 없이) 안내 문구만 갱신되도록 다시 그린다.
+  renderTab('systemAdmin');
 }
 function branchName(id){ const b=DB.branches.find(x=>x.id===id); return b?b.name:'-'; }
 function updateNavVisibilityForRole(){
@@ -1984,6 +2134,18 @@ function renderSystemAdmin(){
   return `
     <div class="page-title">시스템 관리</div>
     <div class="page-desc">관리자 전용 화면입니다. 계정(매니저/사원) 관리, 신규 계정 생성, 각종 데이터 업로드를 이 화면에서 한 번에 처리할 수 있습니다.</div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>스크린세이버 설정</h3>
+      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">로그인한 화면에서 10분간 마우스·키보드 등 사용이 없으면 자동으로 스크린세이버가 표시됩니다(화면을 클릭하면 바로 해제). 자리 비움 시 화면 내용이 노출되는 것을 막기 위한 기능이며, 필요 시 꺼둘 수 있습니다.</div>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <span class="toggle-switch">
+          <input type="checkbox" id="screensaverToggle" ${DB.screensaverEnabled ? 'checked' : ''} onchange="toggleScreensaverSetting(this.checked)">
+          <span class="slider"></span>
+        </span>
+        <span style="font-size:13.5px;">${DB.screensaverEnabled ? '사용 중' : '사용 안 함'}</span>
+      </label>
+    </div>
 
     <div class="card" style="margin-bottom:16px;">
       <h3>DB 용량 최적화</h3>
@@ -8734,6 +8896,9 @@ function updateInventoryNavLabel(){
 (async function initApp(){
   await loadDB();
   updateInventoryNavLabel();
+  // 새로고침해도 로그인 상태가 유지되도록, 저장된 세션이 있으면 로그인 화면을 건너뛰고 바로 복원한다.
+  const restored = restoreSessionIfAny();
+  if(!restored) applyRememberedLoginId();
   const overlay = document.getElementById('loginLoadingOverlay');
   if(overlay) overlay.style.display = 'none';
 })();
