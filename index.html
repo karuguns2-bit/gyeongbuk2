@@ -6475,8 +6475,9 @@ function saveEditBestPractice(id){
 /* =========================================================================
    9e1b. RENDER: 이슈제품 판매 성공 사례 (게시판) — 우수 활동 사례 공유와 동일한 양식
    ========================================================================= */
+// 이슈제품 판매 성공 사례는 우수 활동 사례 공유와 달리 관리자만 작성/수정/삭제할 수 있다 (요청에 따라 제한).
 function canEditIssueCase(p){
-  return !!(p && (SESSION.role==='admin' || p.authorEmpId===SESSION.empId));
+  return !!(p && SESSION.role==='admin');
 }
 function removeIssueCaseAttachment(id, idx){
   const p = DB.issueCases.find(x=>x.id===id);
@@ -6498,6 +6499,7 @@ function toggleIssueCaseLike(id){
   renderTab('issueCase');
 }
 function renderIssueCase(){
+  const isAdmin = SESSION.role==='admin';
   const myBranch = SESSION.branchId || DB.branches[0].id;
   const sorted = [...DB.issueCases].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const editId = state.icEditId;
@@ -6591,13 +6593,9 @@ function renderIssueCase(){
       </div>`;
   }).join('') || `<div class="muted">등록된 이슈제품 판매 성공 사례가 없습니다.</div>`;
 
-  return `
-    <div class="page-title">이슈제품 판매 성공 사례</div>
-    <div class="notice-banner" style="margin-bottom:16px;">
-      <div style="font-weight:800;font-size:16px;">💡 이슈제품 판매 노하우/성공사례 등을 공유해주세요</div>
-    </div>
-    <div class="page-desc">이슈제품을 성공적으로 판매한 사례를 자유롭게 공유해 주세요.</div>
-
+  // 우수 활동 사례 공유와 달리 이 게시판은 관리자만 작성할 수 있으므로, 일반 직원 화면에는
+  // "새 사례 등록" 카드 자체를 아예 숨긴다 (공지사항 게시판과 동일한 방식).
+  const newEntryFormHtml = isAdmin ? `
     <div class="card" style="margin-bottom:16px;">
       <h3>새 사례 등록</h3>
       <div class="form-row">
@@ -6641,7 +6639,16 @@ function renderIssueCase(){
         </div>
         <button class="btn btn-primary" onclick="submitIssueCase()">등록</button>
       </div>
+    </div>` : '';
+
+  return `
+    <div class="page-title">이슈제품 판매 성공 사례</div>
+    <div class="notice-banner" style="margin-bottom:16px;">
+      <div style="font-weight:800;font-size:16px;">💡 이슈제품 판매 노하우/성공사례 등을 공유해주세요</div>
     </div>
+    <div class="page-desc">이슈제품을 성공적으로 판매한 사례를 자유롭게 공유해 주세요.${isAdmin ? '' : ' (등록/수정/삭제는 관리자만 가능합니다)'}</div>
+
+    ${newEntryFormHtml}
 
     ${posts}
   `;
@@ -6655,6 +6662,7 @@ function updateIcEditManagerOptions(id){
   document.getElementById('ice_'+id+'_manager').innerHTML = bpManagerOptionsHtml(branchId, null);
 }
 function submitIssueCase(){
+  if(SESSION.role!=='admin') return;
   const branchId = document.getElementById('icBranch').value;
   const managerSelect = document.getElementById('icManager');
   const managerEmpId = managerSelect.value || null;
@@ -6687,7 +6695,7 @@ function submitIssueCase(){
 function deleteIssueCase(id){
   const p = DB.issueCases.find(x=>x.id===id);
   if(!p) return;
-  if(!(SESSION.role==='admin' || p.authorEmpId===SESSION.empId)) return;
+  if(SESSION.role!=='admin') return;
   if(!confirm('삭제하시겠습니까?')) return;
   DB.issueCases = DB.issueCases.filter(x=>x.id!==id);
   (p.attachments||[]).forEach(f=>deleteFromStorage(f.dataUrl));
