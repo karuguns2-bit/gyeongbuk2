@@ -1607,6 +1607,39 @@ function renderHomeGoalsManagerBanner(){
       <div style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
+// 관리자별 합산 경쟁력(msis경쟁력 시트 기준): 홈 대시보드에서 GROSS 목표 배너와 같은 스타일로
+// 관리자가 담당하는 지점들을 합산한 LG/SS/MS/GAP을 보여준다.
+function competManagerSummary(period){
+  period = period || currentGoalsPeriod();
+  const data = competitivenessDataForPeriod(period);
+  if(!data) return [];
+  const comp = data.competitiveness || {};
+  const managers = [...new Set(DB.branches.map(b=>b.manager).filter(Boolean))];
+  return managers.map(mgr=>{
+    const branchesOfMgr = DB.branches.filter(b=>b.manager===mgr && comp[b.id]);
+    const lgWon = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].lgWon||0),0);
+    const ssWon = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].ssWon||0),0);
+    const msPct = (lgWon+ssWon)>0 ? Math.round(lgWon/(lgWon+ssWon)*1000)/10 : 0;
+    return { manager:mgr, branchCount:branchesOfMgr.length, lgWon, ssWon, gapWon:lgWon-ssWon, msPct };
+  }).filter(m=>m.branchCount>0).sort((a,b)=>b.msPct-a.msPct);
+}
+function renderHomeManagerCompetitivenessBanner(){
+  const period = currentGoalsPeriod();
+  const summary = competManagerSummary(period);
+  if(summary.length===0) return '';
+  const cards = summary.map(m=>`
+    <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
+      <div style="font-weight:700;font-size:13px;">${m.manager}</div>
+      <div class="stat-sub">${m.branchCount}개 지점</div>
+      <div style="font-size:19px;font-weight:800;color:var(--primary);margin-top:2px;">MS ${m.msPct}%</div>
+      <div class="stat-sub" style="margin-top:4px;">LG ${fmtMillion(m.lgWon)}백만 · SS ${fmtMillion(m.ssWon)}백만</div>
+    </div>`).join('');
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <h3>🏆 관리자별 합산 경쟁력 <small>(${goalsPeriodLabel(period)} · msis경쟁력 시트 기준 · 전체 지점 공개)</small></h3>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
+    </div>`;
+}
 function renderHome(){
   const myBranch = SESSION.role==='admin' ? state.viewBranchId : SESSION.branchId;
   const branch = DB.branches.find(b=>b.id===myBranch);
@@ -1640,6 +1673,7 @@ function renderHome(){
     ${renderNoticeBanner()}
     ${renderEduReminderBanner()}
     ${renderHomeGoalsManagerBanner()}
+    ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
     <div class="grid grid-3" style="margin-bottom:16px;">
       <div class="card">
@@ -3118,8 +3152,81 @@ function parseGoalsSubscriptionSheet(rows){
   return out;
 }
 
+// "msis경쟁력" 시트: 지점(Ship To)별 LG vs 경쟁사(SS) 매출/점유율(M/S)을 가전+PC 합계로,
+// 그리고 그 뒤로 제품(47개) 각각의 LG(수량)/LG(금액)/M/S/SS(수량)/SS(금액) 5칸 블록이 이어지는
+// 매우 넓은 표다. 구조: 1행=대분류/제품명 헤더(병합 셀이라 각 블록의 첫 칸에만 값이 있음),
+// 2행=세부 헤더(LG/M/S/SS/Gap 또는 LG(수량)/LG(금액)/M/S/SS(수량)/SS(금액)), 3행부터 지점별
+// 데이터, 마지막에 "소계"/"합계" 행. 금액은 천원 단위로 들어있어 ×1000 해서 원 단위로 저장한다.
+function parseGoalsMsisCompetitivenessSheet(rows){
+  const out = { branches: [], warnings: [] };
+  if(!rows || rows.length < 3){ out.warnings.push('msis경쟁력 시트 형식을 인식하지 못했습니다.'); return out; }
+  const header1 = rows[0] || [];
+  // "총 합계 금액(가전+PC)" 블록: LG=index11, M/S=index12, SS=index13, Gap=index14 (0-based, 헤더 12번째 칸부터).
+  const TOTAL_LG_IDX = 11, TOTAL_MS_IDX = 12, TOTAL_SS_IDX = 13, TOTAL_GAP_IDX = 14;
+  // 제품별 5칸 블록은 index15부터 시작해 5칸씩(LG수량,LG금액,M/S,SS수량,SS금액) 반복된다.
+  const productBlocks = [];
+  for(let i=15; i<header1.length; i+=5){
+    const label = header1[i];
+    if(label!=null && String(label).trim()!=='') productBlocks.push({ startIdx:i, label:String(label).trim() });
+  }
+  if(productBlocks.length===0){ out.warnings.push('msis경쟁력 시트에서 제품별 열 구성을 인식하지 못했습니다.'); }
+
+  for(let r=2; r<rows.length; r++){
+    const row = rows[r]; if(!row) continue;
+    const shipto = row[2];
+    if(shipto==null || String(shipto).trim()==='') continue;
+    const nm = String(shipto).trim();
+    if(nm==='소계' || nm==='합계') continue; // 지점 소계/전체 합계 행은 우리가 직접 재계산하므로 건너뛴다
+    const branch = matchBranchByFileName(nm);
+    if(!branch){ out.warnings.push(`msis경쟁력: "${nm}" 지점을 시스템에서 찾지 못해 건너뛰었습니다.`); continue; }
+
+    const lgWon = Math.round((Number(row[TOTAL_LG_IDX])||0) * 1000);
+    const ssWon = Math.round((Number(row[TOTAL_SS_IDX])||0) * 1000);
+    const gapWon = Math.round((Number(row[TOTAL_GAP_IDX])||0) * 1000);
+    const msPct = Math.round((Number(row[TOTAL_MS_IDX])||0) * 1000) / 10; // 0.8057 -> 80.6
+
+    // 제품(47개) 단위를 그대로 쓰면 그래프가 너무 촘촘해지므로, 다른 화면과 동일하게
+    // productCategory()로 상위 카테고리(TV/냉장고/세탁기 등)로 묶어서 집계한다.
+    const catAgg = {};
+    productBlocks.forEach(pb=>{
+      const lgQty = Number(row[pb.startIdx]) || 0;
+      const lgAmtWon = Math.round((Number(row[pb.startIdx+1])||0) * 1000);
+      const ssQty = Number(row[pb.startIdx+3]) || 0;
+      const ssAmtWon = Math.round((Number(row[pb.startIdx+4])||0) * 1000);
+      if(!lgQty && !lgAmtWon && !ssQty && !ssAmtWon) return;
+      const cat = productCategory(pb.label);
+      if(!catAgg[cat]) catAgg[cat] = { lgQty:0, lgAmtWon:0, ssQty:0, ssAmtWon:0 };
+      catAgg[cat].lgQty += lgQty;
+      catAgg[cat].lgAmtWon += lgAmtWon;
+      catAgg[cat].ssQty += ssQty;
+      catAgg[cat].ssAmtWon += ssAmtWon;
+    });
+    const categories = Object.entries(catAgg).map(([category, v])=>{
+      const amtTotal = v.lgAmtWon + v.ssAmtWon;
+      return {
+        category, lgQty:v.lgQty, lgAmtWon:v.lgAmtWon, ssQty:v.ssQty, ssAmtWon:v.ssAmtWon,
+        msPct: amtTotal>0 ? Math.round(v.lgAmtWon/amtTotal*1000)/10 : 0
+      };
+    });
+
+    out.branches.push({ branchId: branch.id, branchName: branch.name, lgWon, msPct, ssWon, gapWon, categories });
+  }
+
+  if(out.branches.length>0){
+    const lgWon = out.branches.reduce((s,b)=>s+b.lgWon,0);
+    const ssWon = out.branches.reduce((s,b)=>s+b.ssWon,0);
+    out.summary = {
+      lgWon, ssWon, gapWon: lgWon-ssWon,
+      msPct: (lgWon+ssWon)>0 ? Math.round(lgWon/(lgWon+ssWon)*1000)/10 : 0
+    };
+  } else {
+    out.summary = null;
+  }
+  return out;
+}
+
 function parseGoalsFileWorkbook(wb){
-  const out = { branchGrossTargetsWon:{}, branchSubTargetsRaw:{}, branchManagers:{}, employeePerf:[], subscriptionPerf:[], warnings:[], monthUsedGross:null, monthUsedSub:null };
+  const out = { branchGrossTargetsWon:{}, branchSubTargetsRaw:{}, branchManagers:{}, employeePerf:[], subscriptionPerf:[], competitiveness:null, warnings:[], monthUsedGross:null, monthUsedSub:null };
   const period = currentGoalsPeriod();
   const currentMonthNum = Number(period.split('-')[1]);
 
@@ -3220,6 +3327,17 @@ function parseGoalsFileWorkbook(wb){
     out.warnings.push('"구독 수기 실적 관리" 시트를 찾지 못해 구독 실적은 갱신하지 않았습니다.');
   }
 
+  // "msis경쟁력" 시트: 지점별 LG vs 경쟁사(SS) 매출/점유율(자체/타사 M/S)을 매달 이 파일로 갱신한다.
+  const msisSheetName = wb.SheetNames.find(n=>/msis/i.test(n) && n.includes('경쟁력'));
+  if(msisSheetName){
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[msisSheetName], {header:1, defval:null, raw:true});
+    const parsedComp = parseGoalsMsisCompetitivenessSheet(rows);
+    out.warnings.push(...parsedComp.warnings);
+    out.competitiveness = parsedComp;
+  } else {
+    out.warnings.push('"msis경쟁력" 시트를 찾지 못해 경쟁력 현황은 갱신하지 않았습니다.');
+  }
+
   return out;
 }
 
@@ -3297,8 +3415,21 @@ function applyGoalsFileUpload(parsed){
     });
   });
 
+  // 지점별 경쟁력(msis경쟁력 시트)도 다른 데이터와 동일하게 "월별로 분리 저장"한다 — 지난달
+  // 기록은 그대로 두고, 이번 달(period) 분만 이번 파일 내용으로 통째로 교체한다.
+  let competCount = 0;
+  if(parsed.competitiveness && parsed.competitiveness.branches && parsed.competitiveness.branches.length>0){
+    const compByBranch = {};
+    parsed.competitiveness.branches.forEach(b=>{
+      compByBranch[b.branchId] = { lgWon:b.lgWon, msPct:b.msPct, ssWon:b.ssWon, gapWon:b.gapWon, categories:b.categories };
+      competCount++;
+    });
+    if(!DB.competitivenessHistory) DB.competitivenessHistory = {};
+    DB.competitivenessHistory[period] = { competitiveness: compByBranch, summary: parsed.competitiveness.summary, asOf: today };
+  }
+
   saveDB();
-  return { branchTargetCount, subTargetCount, employeeCount: parsed.employeePerf.length, subPerfCount, warnings: parsed.warnings };
+  return { branchTargetCount, subTargetCount, employeeCount: parsed.employeePerf.length, subPerfCount, competCount, warnings: parsed.warnings };
 }
 
 function handleGoalsFile(evt){
@@ -3314,7 +3445,7 @@ function handleGoalsFile(evt){
       const wb = XLSX.read(data, {type:'array'});
       const parsed = parseGoalsFileWorkbook(wb);
       const result = applyGoalsFileUpload(parsed);
-      let msg = `반영 완료 — 지점 GROSS 목표 ${result.branchTargetCount}건, 구독 목표 ${result.subTargetCount}건, GROSS 실적 ${result.employeeCount}명, 구독 실적 ${result.subPerfCount}명.`;
+      let msg = `반영 완료 — 지점 GROSS 목표 ${result.branchTargetCount}건, 구독 목표 ${result.subTargetCount}건, GROSS 실적 ${result.employeeCount}명, 구독 실적 ${result.subPerfCount}명, 경쟁력 ${result.competCount}개 지점.`;
       if(result.warnings.length) msg += ' ⚠ ' + result.warnings.join(' ');
       logActivity('update', `${SESSION.name}님(관리자)이 [목표 관리] 파일을 갱신했습니다 (GROSS 목표/구독 목표/실적)`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
@@ -3685,10 +3816,25 @@ function shiftScheduleWeek(delta){
 let branchChartInstance = null;
 let kakaoTrendChartInstance = null;
 let kakaoBranchTrendChartInstance = null;
+let competQtyMsChartInstance = null;
+let competAmtMsChartInstance = null;
 function setBranchesPeriod(period){
   state.branchesPeriod = period;
   renderTab('branches');
 }
+function setCompetScope(scope){
+  state.competScope = scope;
+  if(scope==='manager' && !state.competManagerSel){
+    const managers = [...new Set(DB.branches.map(b=>b.manager).filter(Boolean))].sort();
+    state.competManagerSel = managers[0] || null;
+  }
+  if(scope==='branch' && !state.competBranchSel){
+    state.competBranchSel = DB.branches[0] ? DB.branches[0].id : null;
+  }
+  renderTab('branches');
+}
+function setCompetManager(mgr){ state.competManagerSel = mgr; renderTab('branches'); }
+function setCompetBranchSel(bid){ state.competBranchSel = bid; renderTab('branches'); }
 function renderBranches(){
   const period = state.branchesPeriod || currentGoalsPeriod();
   const isCurrentPeriod = period === currentGoalsPeriod();
@@ -3711,7 +3857,13 @@ function renderBranches(){
     return {b, target, achieved, pct, present, total: att.records.length};
   });
 
-  const cards = rows.map(r=>`
+  // 지점별 경쟁력(msis경쟁력 시트 기준)도 이 카드에 함께 보여준다.
+  const competDataForCards = competitivenessDataForPeriod(period);
+  const competByBranchForCards = (competDataForCards && competDataForCards.competitiveness) || {};
+
+  const cards = rows.map(r=>{
+    const c = competByBranchForCards[r.b.id];
+    return `
     <div class="card" style="cursor:pointer" onclick="setViewBranch('${r.b.id}'); renderTab('branches')">
       <div class="flex-between">
         <h3 style="margin:0">${r.b.name} ${r.b.id===state.viewBranchId?'<span class="tag">선택됨</span>':''}</h3>
@@ -3721,8 +3873,10 @@ function renderBranches(){
       <div class="progress-bar"><div style="width:${Math.min(r.pct,100)}%"></div></div>
       <div class="stat-sub" style="margin-top:8px;">목표 ${fmtWon(r.target)} · 실적 ${fmtWon(r.achieved)}</div>
       <div class="stat-sub">오늘 출근 ${r.present}/${r.total}명</div>
+      ${c ? `<div class="stat-sub" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">경쟁력 MS <b>${c.msPct}%</b> <span class="muted">(LG ${fmtMillion(c.lgWon)}백만 · SS ${fmtMillion(c.ssWon)}백만)</span></div>` : ''}
     </div>
-  `).join('');
+  `;
+  }).join('');
 
   const detailBranch = (state.viewBranchId && state.viewBranchId!=='ALL') ? state.viewBranchId : DB.branches[0].id;
   const g = getGoals(detailBranch, period);
@@ -3782,6 +3936,35 @@ function competitivenessDataForPeriod(period){
   }
   return null;
 }
+// 제품군별로 LG(자사)/SS(경쟁사) 수량·금액을 선택된 지점 범위(전체/관리자/지점) 안에서 합산해서,
+// 표 아래 "타사 대비 제품별 대수/금액 MS 비교" 그래프에 쓴다.
+function competitivenessCategoryAggregate(period, branchIds){
+  const data = competitivenessDataForPeriod(period);
+  if(!data) return [];
+  const comp = data.competitiveness || {};
+  const agg = {};
+  (branchIds||[]).forEach(bid=>{
+    const c = comp[bid];
+    if(!c || !c.categories) return;
+    c.categories.forEach(cat=>{
+      if(!agg[cat.category]) agg[cat.category] = {lgQty:0, lgAmtWon:0, ssQty:0, ssAmtWon:0};
+      agg[cat.category].lgQty += cat.lgQty;
+      agg[cat.category].lgAmtWon += cat.lgAmtWon;
+      agg[cat.category].ssQty += cat.ssQty;
+      agg[cat.category].ssAmtWon += cat.ssAmtWon;
+    });
+  });
+  return Object.entries(agg).map(([category, v])=>{
+    const qtyTotal = v.lgQty + v.ssQty;
+    const amtTotal = v.lgAmtWon + v.ssAmtWon;
+    return {
+      category, ...v,
+      qtyMsPct: qtyTotal>0 ? Math.round(v.lgQty/qtyTotal*1000)/10 : null,
+      amtMsPct: amtTotal>0 ? Math.round(v.lgAmtWon/amtTotal*1000)/10 : null
+    };
+  }).filter(c=>c.qtyMsPct!==null || c.amtMsPct!==null)
+    .sort((a,b)=>(b.amtMsPct||0)-(a.amtMsPct||0));
+}
 function renderCompetitivenessSection(period){
   period = period || currentGoalsPeriod();
   const data = competitivenessDataForPeriod(period);
@@ -3789,48 +3972,139 @@ function renderCompetitivenessSection(period){
     return `
     <div class="card" style="margin-top:16px;">
       <h3>지점별 경쟁력 현황</h3>
-      <div class="muted">${period} 월의 경쟁력 데이터가 없습니다. (통합 보드 업로드 시 해당 월 데이터로 저장됩니다)</div>
+      <div class="muted">${period} 월의 경쟁력 데이터가 없습니다. (목표 관리 파일의 "msis경쟁력" 시트 업로드 시 해당 월 데이터로 저장됩니다)</div>
     </div>`;
   }
   const s = data.summary;
   const comp = data.competitiveness || {};
-  const summaryRow = s ? `
-    <tr style="font-weight:700;background:#fafafa;">
-      <td>이마트 전체(소계)</td><td>${fmtMillion(s.lgWon)}</td><td>${s.msPct}%</td>
-      <td>${fmtMillion(s.ssWon)}</td><td>${gapCell(Math.round(s.gapWon/1e6*10)/10)}</td>
-    </tr>` : '';
+  const managers = [...new Set(DB.branches.map(b=>b.manager).filter(Boolean))].sort();
 
-  const managers = [...new Set(DB.branches.map(b=>b.manager).filter(Boolean))];
-  const groupRows = managers.map(mgr=>{
-    const branchesOfMgr = DB.branches.filter(b=>b.manager===mgr && comp[b.id]);
-    if(branchesOfMgr.length===0) return '';
-    const rows = branchesOfMgr.map((b,i)=>{
+  if(!state.competScope) state.competScope = 'all';
+  const scope = state.competScope;
+
+  const scopeButtonsHtml = `
+    <div style="margin-bottom:10px;">
+      <span class="branch-pill ${scope==='all'?'active':''}" onclick="setCompetScope('all')">전체</span>
+      <span class="branch-pill ${scope==='manager'?'active':''}" onclick="setCompetScope('manager')">관리자별</span>
+      <span class="branch-pill ${scope==='branch'?'active':''}" onclick="setCompetScope('branch')">지점별</span>
+    </div>`;
+
+  let selectorHtml = '';
+  let tableHtml = '';
+  let scopeBranchIds = [];
+  let chartTitleSuffix = '전체';
+
+  if(scope==='manager'){
+    const mgrSel = (state.competManagerSel && managers.includes(state.competManagerSel)) ? state.competManagerSel : (managers[0]||null);
+    state.competManagerSel = mgrSel;
+    selectorHtml = `<div class="form-row" style="margin-bottom:10px;"><div class="field">
+      <label>관리자 선택</label>
+      <select style="width:180px" onchange="setCompetManager(this.value)">
+        ${managers.map(m=>`<option value="${m}" ${m===mgrSel?'selected':''}>${m}</option>`).join('')}
+      </select>
+    </div></div>`;
+    const branchesOfMgr = DB.branches.filter(b=>b.manager===mgrSel && comp[b.id]);
+    scopeBranchIds = branchesOfMgr.map(b=>b.id);
+    chartTitleSuffix = mgrSel || '관리자';
+    const mgrLg = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].lgWon||0),0);
+    const mgrSs = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].ssWon||0),0);
+    const mgrMs = (mgrLg+mgrSs)>0 ? Math.round(mgrLg/(mgrLg+mgrSs)*1000)/10 : 0;
+    const rows = branchesOfMgr.map(b=>{
       const c = comp[b.id];
-      return `<tr>
-        ${i===0?`<td rowspan="${branchesOfMgr.length}"><b>${mgr}</b></td>`:''}
-        <td>${b.name}</td><td>${fmtMillion(c.lgWon)}</td><td>${c.msPct}%</td>
-        <td>${fmtMillion(c.ssWon)}</td><td>${gapCell(Math.round(c.gapWon/1e6*10)/10)}</td>
-      </tr>`;
+      return `<tr><td>${b.name}</td><td>${fmtMillion(c.lgWon)}</td><td>${c.msPct}%</td><td>${fmtMillion(c.ssWon)}</td><td>${gapCell(Math.round(c.gapWon/1e6*10)/10)}</td></tr>`;
+    }).join('') || `<tr><td colspan="5" class="muted">데이터 없음</td></tr>`;
+    tableHtml = `
+      <table>
+        <thead><tr><th>지점명</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th></tr></thead>
+        <tbody>
+          <tr style="font-weight:700;background:#fafafa;"><td>${mgrSel||'-'} 소계</td><td>${fmtMillion(mgrLg)}</td><td>${mgrMs}%</td><td>${fmtMillion(mgrSs)}</td><td>${gapCell(Math.round((mgrLg-mgrSs)/1e6*10)/10)}</td></tr>
+          ${rows}
+        </tbody>
+      </table>`;
+  } else if(scope==='branch'){
+    const brSel = (state.competBranchSel && DB.branches.some(b=>b.id===state.competBranchSel)) ? state.competBranchSel : (DB.branches[0]?DB.branches[0].id:null);
+    state.competBranchSel = brSel;
+    selectorHtml = `<div class="form-row" style="margin-bottom:10px;"><div class="field">
+      <label>지점 선택</label>
+      <select style="width:180px" onchange="setCompetBranchSel(this.value)">
+        ${DB.branches.map(b=>`<option value="${b.id}" ${b.id===brSel?'selected':''}>${b.name}</option>`).join('')}
+      </select>
+    </div></div>`;
+    const c = comp[brSel];
+    scopeBranchIds = (brSel && c) ? [brSel] : [];
+    const brName = branchName(brSel);
+    chartTitleSuffix = brName;
+    tableHtml = c ? `
+      <table>
+        <thead><tr><th>지점명</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th></tr></thead>
+        <tbody><tr><td>${brName}</td><td>${fmtMillion(c.lgWon)}</td><td>${c.msPct}%</td><td>${fmtMillion(c.ssWon)}</td><td>${gapCell(Math.round(c.gapWon/1e6*10)/10)}</td></tr></tbody>
+      </table>` : `<div class="muted">${brName}의 ${period} 월 경쟁력 데이터가 없습니다.</div>`;
+  } else {
+    // 전체: 지점을 낱낱이 나열하지 않고 관리자별로 요약해서 표 길이를 줄인다(지점별 상세는
+    // [관리자별]/[지점별] 필터에서 조회).
+    scopeBranchIds = Object.keys(comp);
+    chartTitleSuffix = '전체';
+    const summaryRow = s ? `
+      <tr style="font-weight:700;background:#fafafa;">
+        <td>이마트 전체(소계)</td><td>${fmtMillion(s.lgWon)}</td><td>${s.msPct}%</td>
+        <td>${fmtMillion(s.ssWon)}</td><td>${gapCell(Math.round(s.gapWon/1e6*10)/10)}</td><td></td>
+      </tr>` : '';
+    const mgrRows = managers.map(mgr=>{
+      const branchesOfMgr = DB.branches.filter(b=>b.manager===mgr && comp[b.id]);
+      if(branchesOfMgr.length===0) return '';
+      const lg = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].lgWon||0),0);
+      const ss = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].ssWon||0),0);
+      const ms = (lg+ss)>0 ? Math.round(lg/(lg+ss)*1000)/10 : 0;
+      return `<tr><td><b>${mgr}</b></td><td>${fmtMillion(lg)}</td><td>${ms}%</td><td>${fmtMillion(ss)}</td><td>${gapCell(Math.round((lg-ss)/1e6*10)/10)}</td><td class="muted">${branchesOfMgr.length}개 지점</td></tr>`;
     }).join('');
-    return rows;
-  }).join('');
+    if(!s && !mgrRows) return '';
+    tableHtml = `
+      <table>
+        <thead><tr><th>구분</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th><th></th></tr></thead>
+        <tbody>${summaryRow}<tr><td colspan="6" style="border-bottom:none;height:4px;"></td></tr>${mgrRows}</tbody>
+      </table>
+      <div class="small-note" style="margin-top:6px;">지점별 상세는 위 [관리자별] 또는 [지점별] 필터에서 조회할 수 있습니다.</div>`;
+  }
 
-  if(!s && !groupRows) return '';
+  // ---- 표 아래: 제품군별 LG(자사) vs SS(경쟁사) 수량/금액 MS% 비교 그래프 (적당한 크기) ----
+  const catData = competitivenessCategoryAggregate(period, scopeBranchIds);
+  setTimeout(()=>{
+    const qtyCtx = document.getElementById('competQtyMsChart');
+    if(qtyCtx){
+      if(competQtyMsChartInstance) competQtyMsChartInstance.destroy();
+      competQtyMsChartInstance = new Chart(qtyCtx, {
+        type:'bar',
+        data:{ labels: catData.map(c=>c.category), datasets:[{ label:'자사(LG) 수량 MS%', data: catData.map(c=>c.qtyMsPct), backgroundColor:'#A50034' }] },
+        options:{ plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`MS ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true, max:100}} }
+      });
+    }
+    const amtCtx = document.getElementById('competAmtMsChart');
+    if(amtCtx){
+      if(competAmtMsChartInstance) competAmtMsChartInstance.destroy();
+      competAmtMsChartInstance = new Chart(amtCtx, {
+        type:'bar',
+        data:{ labels: catData.map(c=>c.category), datasets:[{ label:'자사(LG) 금액 MS%', data: catData.map(c=>c.amtMsPct), backgroundColor:'#2b6cb0' }] },
+        options:{ plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`MS ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true, max:100}} }
+      });
+    }
+  }, 0);
 
   return `
     <div class="card" style="margin-top:16px;">
-      <h3>지점별 경쟁력 현황 <small>(${data.asOf ? data.asOf+' 기준 · ' : ''}${period} 월 · 업로드된 실적 파일 기준 · 단위 백만원, MS=자사 점유율%, LG=자사 매출, SS=경쟁사 매출, GAP=LG−SS)</small></h3>
-      <table>
-        <thead><tr><th>구분</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th></tr></thead>
-        <tbody>
-          ${summaryRow}
-          <tr><td colspan="5" style="border-bottom:none;height:4px;"></td></tr>
-        </tbody>
-      </table>
-      <table style="margin-top:6px;">
-        <thead><tr><th style="width:90px">관리자</th><th>지점명</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th></tr></thead>
-        <tbody>${groupRows}</tbody>
-      </table>
+      <h3>지점별 경쟁력 현황 <small>(${data.asOf ? data.asOf+' 기준 · ' : ''}${period} 월 · msis경쟁력 시트 기준 · 단위 백만원, MS=자사 점유율%, LG=자사 매출, SS=경쟁사 매출, GAP=LG−SS)</small></h3>
+      ${scopeButtonsHtml}
+      ${selectorHtml}
+      ${tableHtml}
+      <div class="grid grid-2" style="margin-top:14px;">
+        <div>
+          <h4 style="margin:0 0 6px;font-size:13px;">제품군별 수량 MS% <small class="muted">(${chartTitleSuffix} · 타사 대비)</small></h4>
+          <canvas id="competQtyMsChart" height="140"></canvas>
+        </div>
+        <div>
+          <h4 style="margin:0 0 6px;font-size:13px;">제품군별 금액 MS% <small class="muted">(${chartTitleSuffix} · 타사 대비)</small></h4>
+          <canvas id="competAmtMsChart" height="140"></canvas>
+        </div>
+      </div>
     </div>
   `;
 }
