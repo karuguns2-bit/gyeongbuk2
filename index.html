@@ -2399,13 +2399,6 @@ function renderSystemAdmin(){
     <div class="page-title">시스템 관리</div>
     <div class="page-desc">관리자 전용 화면입니다. 계정(매니저/사원) 관리, 신규 계정 생성, 각종 데이터 업로드를 이 화면에서 한 번에 처리할 수 있습니다.</div>
 
-    <div class="card" style="margin-bottom:16px;background:#fff7f9;border-color:#f0c7d4;">
-      <h3>📁 목표/실적 파일 업로드 <small>("목표" 시트 + "실판매 목표대비 실적조회" 시트 포함 .xlsx)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"목표" 시트(구독목표/판매 금액 목표 표)와 "실판매 목표대비 실적조회" 시트가 들어있는 파일을 그대로 올리면, 지점별 GROSS 목표·구독 금액 목표·팀원별 누적 실적이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리] 페이지 데이터로 한 번에 갱신됩니다. 오늘(${todayStr()})은 ${nowWeekIdx}주차로 인식되어, 주차별 달성율 계산용 실적 스냅샷으로 함께 기록됩니다. 지난 달로 넘어가면 지난 달 데이터는 그대로 보존되고, 이번 달 실적만 새로 올리면 됩니다.</div>
-      <input type="file" id="goalsFileInput" accept=".xlsx,.xls" onchange="handleGoalsFile(event)">
-      <div id="goalsUploadMsg" class="small-note"></div>
-    </div>
-
     <div class="card" style="margin-bottom:16px;">
       <h3>스크린세이버 설정</h3>
       <div class="muted" style="margin-bottom:10px;font-size:12.5px;">로그인한 화면에서 10분간 마우스·키보드 등 사용이 없으면 자동으로 스크린세이버가 표시됩니다(화면을 클릭하면 바로 해제). 자리 비움 시 화면 내용이 노출되는 것을 막기 위한 기능이며, 필요 시 꺼둘 수 있습니다.</div>
@@ -2443,6 +2436,13 @@ function renderSystemAdmin(){
       <h3>계정 관리 <small>(현재 등록된 매니저/사원 명단)</small></h3>
       <div class="muted" style="margin-bottom:10px;font-size:12.5px;">전체 계정 목록 조회, 사번·이름·지점명·직책 수정, 비밀번호 초기화·변경, 접속 기록 확인은 별도 화면에서 처리합니다. 계정 수가 많아지면 이 화면이 길어져 다른 관리 항목을 찾기 어려워지는 것을 막기 위함입니다.</div>
       <button class="btn btn-primary" onclick="renderTab('accountManagement')">계정관리 상세</button>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;background:#fff7f9;border-color:#f0c7d4;">
+      <h3>📁 목표/실적 파일 업로드 <small>("목표" 시트 + "실판매 목표대비 실적조회" 시트 포함 .xlsx)</small></h3>
+      <div class="muted" style="margin-bottom:10px;">"목표" 시트(구독목표/판매 금액 목표 표)와 "실판매 목표대비 실적조회" 시트가 들어있는 파일을 그대로 올리면, 지점별 GROSS 목표·구독 금액 목표·팀원별 누적 실적이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리] 페이지 데이터로 한 번에 갱신됩니다. 오늘(${todayStr()})은 ${nowWeekIdx}주차로 인식되어, 주차별 달성율 계산용 실적 스냅샷으로 함께 기록됩니다. 지난 달로 넘어가면 지난 달 데이터는 그대로 보존되고, 이번 달 실적만 새로 올리면 됩니다.</div>
+      <input type="file" id="goalsFileInput" accept=".xlsx,.xls" onchange="handleGoalsFile(event)">
+      <div id="goalsUploadMsg" class="small-note"></div>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
