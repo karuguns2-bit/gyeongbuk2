@@ -870,6 +870,9 @@ function buildSeedDataFromReal(){
     collectionNotices: {},
     policyQuizBank: JSON.parse(JSON.stringify(POLICY_QUIZ_BANK)),
     policyQuizBankVersion: POLICY_QUIZ_BANK_VERSION,
+    policyQuizWeeklyBanks: { [POLICY_QUIZ_CURRENT_WEEK_KEY]: JSON.parse(JSON.stringify(POLICY_QUIZ_BANK)) },
+    policyQuizWeekMeta: { [POLICY_QUIZ_CURRENT_WEEK_KEY]: { label: POLICY_QUIZ_CURRENT_WEEK_LABEL, deadline: POLICY_QUIZ_CURRENT_WEEK_DEADLINE } },
+    policyQuizStructureVersion: POLICY_QUIZ_STRUCTURE_VERSION,
     subscriptionData };
 }
 
@@ -995,7 +998,18 @@ const POLICY_QUIZ_BANK = [
 ];
 // 문제 은행 내용이 통째로 교체될 때마다 값을 올린다. DB.policyQuizBankVersion이 이 값과
 // 다르면(즉, 이전 주차 문제 은행이 저장돼 있으면) migrateDB에서 1회 자동으로 최신 은행으로 교체한다.
+// (참고: v2 이후로는 아래 policyQuizWeeklyBanks 구조로 넘어갔고, 이 상수/필드는 그 이관 작업의
+// 기준 데이터로만 남아있다. 신규 로직은 DB.policyQuizWeeklyBanks를 사용한다.)
 const POLICY_QUIZ_BANK_VERSION = 2; // v2: '26년 8월 2주차 판촉 안내 기반 객관식 20문제로 전량 교체
+// 위 20문제가 실제로 속하는 주(=getMondayStr 기준 weekStart)와, 그 주에 대한 표시 라벨/응시 마감일.
+// 이번 주부터는 주(week)마다 별도의 문제은행을 관리하므로(정책 숙지도 점검을 주차별로 구분),
+// 이 값들은 최초 1회 DB.policyQuizWeeklyBanks/DB.policyQuizWeekMeta로 이관하는 데만 쓰인다.
+const POLICY_QUIZ_CURRENT_WEEK_KEY = '2026-08-03'; // 8/3(월)~8/9(일) — 8월2주차 주말을 대비한 점검
+const POLICY_QUIZ_CURRENT_WEEK_LABEL = '26년 8월2주차';
+const POLICY_QUIZ_CURRENT_WEEK_DEADLINE = '2026-08-08'; // 이 날짜까지만 응시 가능, 이후 응시 차단
+// 문제은행을 "주차별 구조"로 이관하는 마이그레이션의 버전. 이미 이관된 DB(값이 같음)는 다시
+// 건드리지 않아서, 이관 이후 관리자가 추가/수정한 문제나 주차 설정이 덮어써지지 않게 한다.
+const POLICY_QUIZ_STRUCTURE_VERSION = 1;
 
 const SUBSCRIPTION_DATA = {
   asOf: '2026-07-29',
@@ -1375,6 +1389,24 @@ function migrateDB(){
     DB.policyQuizBank = JSON.parse(JSON.stringify(POLICY_QUIZ_BANK));
     DB.policyQuizBankVersion = POLICY_QUIZ_BANK_VERSION;
   }
+  // 정책 숙지도 점검을 "주(week)마다 별도 문제은행 + 표시라벨 + 응시마감일"을 갖는 구조로 1회 이관.
+  // 기존 단일 DB.policyQuizBank(있다면)는 POLICY_QUIZ_CURRENT_WEEK_KEY 주의 문제은행으로 그대로
+  // 옮겨서, 이미 갱신해둔 이번 주(8월2주차) 20문제가 사라지지 않게 한다.
+  if(DB.policyQuizStructureVersion !== POLICY_QUIZ_STRUCTURE_VERSION){
+    if(!DB.policyQuizWeeklyBanks) DB.policyQuizWeeklyBanks = {};
+    if(!DB.policyQuizWeekMeta) DB.policyQuizWeekMeta = {};
+    if(!DB.policyQuizWeeklyBanks[POLICY_QUIZ_CURRENT_WEEK_KEY]){
+      DB.policyQuizWeeklyBanks[POLICY_QUIZ_CURRENT_WEEK_KEY] = (DB.policyQuizBank && DB.policyQuizBank.length>0)
+        ? DB.policyQuizBank
+        : JSON.parse(JSON.stringify(POLICY_QUIZ_BANK));
+    }
+    if(!DB.policyQuizWeekMeta[POLICY_QUIZ_CURRENT_WEEK_KEY]){
+      DB.policyQuizWeekMeta[POLICY_QUIZ_CURRENT_WEEK_KEY] = { label: POLICY_QUIZ_CURRENT_WEEK_LABEL, deadline: POLICY_QUIZ_CURRENT_WEEK_DEADLINE };
+    }
+    DB.policyQuizStructureVersion = POLICY_QUIZ_STRUCTURE_VERSION;
+  }
+  if(!DB.policyQuizWeeklyBanks) DB.policyQuizWeeklyBanks = {};
+  if(!DB.policyQuizWeekMeta) DB.policyQuizWeekMeta = {};
   DB.branches.forEach(b=>{
     if(!DB.schedule[b.id]) DB.schedule[b.id] = {};
     if(!DB.goals[b.id]) DB.goals[b.id] = {};
@@ -7344,6 +7376,31 @@ function normalizeQuizAnswer(s){
 function currentPolicyQuizWeek(){
   return getMondayStr(todayStr());
 }
+// 주(weekStart)에 대한 표시용 라벨. 관리자가 설정해둔 라벨이 있으면 그걸 쓰고("26년 8월2주차"),
+// 없으면 원래 형식(날짜 문자열)으로 대체 표시한다.
+function policyQuizWeekLabel(weekStart){
+  const meta = (DB.policyQuizWeekMeta || {})[weekStart];
+  if(meta && meta.label) return meta.label;
+  return `${weekStart} 주`;
+}
+function policyQuizWeekDeadline(weekStart){
+  const meta = (DB.policyQuizWeekMeta || {})[weekStart];
+  return (meta && meta.deadline) ? meta.deadline : null;
+}
+// 오늘이 해당 주의 응시 마감일을 지났는지. 마감일이 설정되어 있지 않으면 항상 응시 가능.
+function isPolicyQuizPastDeadline(weekStart){
+  const deadline = policyQuizWeekDeadline(weekStart);
+  if(!deadline) return false;
+  return todayStr() > deadline;
+}
+// 이번 주(현재) 문제은행을 반환한다. 아직 이번 주 문제은행이 없으면(=새 주가 시작됐는데
+// 관리자가 아직 문제를 등록하지 않은 경우) 빈 배열로 초기화해서 반환한다.
+function currentPolicyQuizBank(){
+  const week = currentPolicyQuizWeek();
+  if(!DB.policyQuizWeeklyBanks) DB.policyQuizWeeklyBanks = {};
+  if(!DB.policyQuizWeeklyBanks[week]) DB.policyQuizWeeklyBanks[week] = [];
+  return DB.policyQuizWeeklyBanks[week];
+}
 function myLatestPolicyQuizAttempt(empId, week){
   week = week || currentPolicyQuizWeek();
   const attempts = DB.policyQuizAttempts
@@ -7377,13 +7434,29 @@ function policyQuizStats(week){
   return { week, total, attemptedCount, notAttemptedCount, rate, avgScore, results };
 }
 function startPolicyQuiz(){
-  const bank = DB.policyQuizBank || [];
+  const week = currentPolicyQuizWeek();
+  if(isPolicyQuizPastDeadline(week)){
+    alert(`이번 주(${policyQuizWeekLabel(week)}) 응시 기간이 종료되었습니다. (마감: ${policyQuizWeekDeadline(week)})`);
+    return;
+  }
+  const bank = currentPolicyQuizBank();
+  if(bank.length===0){
+    alert('아직 이번 주 문제가 등록되지 않았습니다. 관리자에게 문의해 주세요.');
+    return;
+  }
   state.policyQuizQuestions = shuffle(bank).slice(0, Math.min(5, bank.length));
   state.policyQuizStep = 'taking';
   state.policyQuizResult = null;
   renderTab('policyQuiz');
 }
 function submitPolicyQuiz(){
+  const __week = currentPolicyQuizWeek();
+  if(isPolicyQuizPastDeadline(__week)){
+    alert(`이번 주(${policyQuizWeekLabel(__week)}) 응시 기간이 종료되어 제출할 수 없습니다.`);
+    state.policyQuizStep = null;
+    renderTab('policyQuiz');
+    return;
+  }
   const qs = state.policyQuizQuestions || [];
   let correctCount = 0;
   const detail = qs.map(q=>{
@@ -7451,8 +7524,7 @@ function addPolicyQuizQuestion(){
   const answers = parseQuizAnswersInput(document.getElementById('pqNewAnswers').value);
   const q = buildPolicyQuizQuestionFromForm(text, options, answers);
   if(!q) return;
-  if(!DB.policyQuizBank) DB.policyQuizBank = [];
-  DB.policyQuizBank.push(Object.assign({ id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7) }, q));
+  currentPolicyQuizBank().push(Object.assign({ id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7) }, q));
   touchTabContent('policyQuiz');
   saveDB();
   renderTab('policyQuiz');
@@ -7468,7 +7540,7 @@ function cancelEditPolicyQuizQuestion(){
 }
 function savePolicyQuizQuestion(id){
   if(SESSION.role!=='admin') return;
-  const q = (DB.policyQuizBank||[]).find(x=>x.id===id);
+  const q = currentPolicyQuizBank().find(x=>x.id===id);
   if(!q) return;
   const text = document.getElementById('pqEditText_' + id).value.trim();
   const options = readQuizOptionInputs('pqEditOpt_' + id + '_');
@@ -7485,7 +7557,21 @@ function savePolicyQuizQuestion(id){
 function deletePolicyQuizQuestion(id){
   if(SESSION.role!=='admin') return;
   if(!confirm('이 문제를 삭제하시겠습니까?')) return;
-  DB.policyQuizBank = (DB.policyQuizBank||[]).filter(q=>q.id!==id);
+  const week = currentPolicyQuizWeek();
+  DB.policyQuizWeeklyBanks[week] = currentPolicyQuizBank().filter(q=>q.id!==id);
+  saveDB();
+  renderTab('policyQuiz');
+}
+// 이번 주(현재 주) 문제은행에 대한 표시 라벨/응시 마감일을 관리자가 설정한다.
+function savePolicyQuizWeekMeta(){
+  if(SESSION.role!=='admin') return;
+  const week = currentPolicyQuizWeek();
+  const labelInput = document.getElementById('pqWeekLabelInput');
+  const deadlineInput = document.getElementById('pqWeekDeadlineInput');
+  const label = labelInput ? labelInput.value.trim() : '';
+  const deadline = deadlineInput ? deadlineInput.value : '';
+  if(!DB.policyQuizWeekMeta) DB.policyQuizWeekMeta = {};
+  DB.policyQuizWeekMeta[week] = { label: label || null, deadline: deadline || null };
   saveDB();
   renderTab('policyQuiz');
 }
@@ -7499,12 +7585,12 @@ function renderPolicyQuiz(){
   // 주차 선택 목록: 실제 데이터가 있는 주차 + 이번 주(데이터가 없어도 항상 선택 가능)
   const weekOptions = Array.from(new Set([...policyQuizWeeksWithData(), currentWeek])).sort().reverse();
   const weekSelectorHtml = `<div style="margin-bottom:14px;">` +
-    weekOptions.map(w=>`<span class="branch-pill ${w===viewWeek?'active':''}" onclick="setPolicyQuizViewWeek('${w}')">${w} 주${w===currentWeek?' (이번 주)':''}</span>`).join('') +
+    weekOptions.map(w=>`<span class="branch-pill ${w===viewWeek?'active':''}" onclick="setPolicyQuizViewWeek('${w}')">${policyQuizWeekLabel(w)}${w===currentWeek?' (이번 주)':''}</span>`).join('') +
     `</div>`;
 
   const summaryHtml = `
     <div class="card" style="margin-bottom:16px;">
-      <h3>숙지도 점검 현황 (${stats.week} 주) ${isLatestRegistered ? '<span class="badge good">최근 등록 현황</span>' : ''}</h3>
+      <h3>숙지도 점검 현황 (${policyQuizWeekLabel(stats.week)}) ${isLatestRegistered ? '<span class="badge good">최근 등록 현황</span>' : ''}</h3>
       <div class="grid grid-3">
         <div><b style="font-size:20px;">${stats.avgScore.toFixed(1)}점</b><div class="muted" style="font-size:12px;">평균 점수</div></div>
         <div><b style="font-size:20px;">${stats.rate.toFixed(1)}%</b><div class="muted" style="font-size:12px;">응시율 (응시자 ${stats.attemptedCount}명 / 미응시자 ${stats.notAttemptedCount}명)</div></div>
@@ -7531,7 +7617,20 @@ function renderPolicyQuiz(){
         </table>
       </div>`;
 
-    const bank = DB.policyQuizBank || [];
+    const weekMeta = (DB.policyQuizWeekMeta||{})[currentWeek] || {};
+    const weekPastDeadline = isPolicyQuizPastDeadline(currentWeek);
+    adminSection = `
+      <div class="card" style="margin-bottom:16px;">
+        <h3>이번 주 설정 (관리자 전용)</h3>
+        <div class="form-row">
+          <div class="field" style="min-width:220px;"><label>주차 표시 이름</label><input id="pqWeekLabelInput" value="${escapeHtml(weekMeta.label||'')}" placeholder="예: 26년 8월3주차" style="width:100%;"></div>
+          <div class="field" style="min-width:180px;"><label>응시 마감일 (이 날짜까지만 응시 가능, 비워두면 마감 없음)</label><input id="pqWeekDeadlineInput" type="date" value="${weekMeta.deadline||''}" style="width:100%;"></div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="savePolicyQuizWeekMeta()">저장</button>
+        ${weekMeta.deadline ? `<span class="small-note ${weekPastDeadline?'':'muted'}" style="margin-left:10px;${weekPastDeadline?'color:var(--bad);':''}">${weekPastDeadline ? '⚠️ 마감일이 지나 현재 응시가 차단된 상태입니다.' : `${weekMeta.deadline}까지 응시 가능`}</span>` : ''}
+      </div>` + adminSection;
+
+    const bank = currentPolicyQuizBank();
     const bankRows = bank.map((q,idx)=>{
       if(state.policyQuizEditingId === q.id){
         const optRows = [0,1,2,3].map(i=>`<input id="pqEditOpt_${q.id}_${i+1}" value="${escapeHtml((q.options||[])[i]||'')}" placeholder="보기 ${i+1}" style="width:100%;margin-bottom:4px;">`).join('');
@@ -7565,7 +7664,7 @@ function renderPolicyQuiz(){
 
     questionBankSection = `
       <div class="card" style="margin-bottom:16px;">
-        <h3>문제 은행 관리 (관리자 전용) — 총 ${bank.length}문제, 응시 시 무작위 ${Math.min(5,bank.length)}문제 출제</h3>
+        <h3>${policyQuizWeekLabel(currentWeek)} 문제 은행 관리 (관리자 전용) — 총 ${bank.length}문제, 응시 시 무작위 ${Math.min(5,bank.length)}문제 출제</h3>
         <table>
           <thead><tr><th>#</th><th>문제</th><th>정답</th><th></th></tr></thead>
           <tbody>${bankRows}</tbody>
@@ -7627,6 +7726,7 @@ function renderPolicyQuiz(){
       </div>`;
   } else if(state.policyQuizStep==='result' && state.policyQuizResult){
     const r = state.policyQuizResult;
+    const pastDeadlineForRetake = isPolicyQuizPastDeadline(currentWeek);
     const detailHtml = r.detail.map((d,i)=>`
       <div style="margin-bottom:10px;padding:10px;border-radius:8px;background:${d.correct?'rgba(0,150,80,0.08)':'rgba(220,50,50,0.08)'};">
         <div>${i+1}. ${d.text}</div>
@@ -7639,16 +7739,27 @@ function renderPolicyQuiz(){
         <h3>응시 결과</h3>
         <div style="margin-bottom:12px;"><b style="font-size:22px;">${r.score}점</b> <span class="muted">(${r.detail.length}문제 중 ${r.detail.filter(d=>d.correct).length}문제 정답)</span></div>
         ${detailHtml}
-        <button class="btn btn-sm" style="margin-top:10px;" onclick="startPolicyQuiz()">다시 응시하기</button>
+        ${pastDeadlineForRetake
+          ? `<div class="small-note" style="color:var(--bad);margin-top:10px;">⚠️ 이번 주(${policyQuizWeekLabel(currentWeek)}) 응시 기간이 종료되어 재응시할 수 없습니다.</div>`
+          : `<button class="btn btn-sm" style="margin-top:10px;" onclick="startPolicyQuiz()">다시 응시하기</button>`
+        }
       </div>`;
   } else {
-    const bankLen = (DB.policyQuizBank||[]).length;
+    const bank = currentPolicyQuizBank();
+    const bankLen = bank.length;
+    const pastDeadline = isPolicyQuizPastDeadline(currentWeek);
+    const deadline = policyQuizWeekDeadline(currentWeek);
     bodyHtml = `
       <div class="card">
         <h3>퀴즈 응시</h3>
-        ${myLatest ? `<div class="small-note" style="margin-bottom:10px;">이번 주 응시 완료: <b>${myLatest.score}점</b> (다시 응시하면 최신 결과로 갱신됩니다.)</div>` : ''}
-        <div class="muted" style="margin-bottom:10px;">전체 ${bankLen}문제 중 ${Math.min(5,bankLen)}문제가 랜덤으로 출제됩니다.</div>
-        <button class="btn btn-primary" onclick="startPolicyQuiz()">${myLatest ? '다시 응시하기' : '퀴즈 시작하기'}</button>
+        ${myLatest ? `<div class="small-note" style="margin-bottom:10px;">이번 주 응시 완료: <b>${myLatest.score}점</b>${pastDeadline ? '' : ' (다시 응시하면 최신 결과로 갱신됩니다.)'}</div>` : ''}
+        ${pastDeadline
+          ? `<div class="small-note" style="color:var(--bad);margin-bottom:10px;">⚠️ 이번 주(${policyQuizWeekLabel(currentWeek)}) 응시 기간이 종료되었습니다. (마감: ${deadline})</div>`
+          : bankLen===0
+            ? `<div class="small-note" style="color:var(--bad);margin-bottom:10px;">아직 이번 주 문제가 등록되지 않았습니다. 관리자에게 문의해 주세요.</div>`
+            : `<div class="muted" style="margin-bottom:10px;">전체 ${bankLen}문제 중 ${Math.min(5,bankLen)}문제가 랜덤으로 출제됩니다.${deadline ? ` (응시 마감: ${deadline})` : ''}</div>`
+        }
+        <button class="btn btn-primary" ${(pastDeadline || bankLen===0) ? 'disabled' : ''} onclick="startPolicyQuiz()">${myLatest ? '다시 응시하기' : '퀴즈 시작하기'}</button>
       </div>`;
   }
 
