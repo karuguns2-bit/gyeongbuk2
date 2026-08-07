@@ -5354,6 +5354,7 @@ function renderCollectPhoto(){
           : `<a href="${p.dataUrl}" download="${escapeHtml(p.name||'file')}" style="display:flex;align-items:center;gap:5px;width:calc(50% - 2px);height:90px;padding:6px;border:1px solid var(--border);border-radius:6px;background:#f7f7f8;font-size:11px;text-decoration:none;color:inherit;overflow:hidden;">📎 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name||'파일')}</span></a>`
         ).join('')}</div>`
       : `<div class="muted" style="margin-bottom:6px;">등록된 파일이 없습니다.</div>`;
+    const hasFiles = (r.photos||[]).length>0;
     return `
     <div class="card" style="width:220px;">
       <div class="flex-between" style="margin-bottom:6px;">
@@ -5362,6 +5363,7 @@ function renderCollectPhoto(){
       </div>
       ${photosHtml}
       <div class="muted" style="font-size:11.5px;">${r.uploaderName} · ${r.createdAt.slice(0,16).replace('T',' ')}</div>
+      ${SESSION.role==='admin' && hasFiles ? `<button id="epDownloadBtn_${r.id}" class="btn btn-sm" style="width:100%;margin-top:6px;color:#2b6cb0;border-color:#2b6cb0;" onclick="downloadExecPhotoCard('${r.id}')">⬇ 이 지점 사진 다운로드</button>` : ''}
       ${canEdit ? `<div style="display:flex;gap:4px;margin-top:6px;"><button class="btn btn-sm" style="flex:1;" onclick="startEditExecPhoto('${r.id}')">수정</button><button class="btn btn-sm" style="flex:1;" onclick="deleteExecPhoto('${r.id}')">삭제</button></div>` : ''}
     </div>`;
   }).join('') || `<div class="muted">등록된 사진이 없습니다.</div>`;
@@ -9417,6 +9419,55 @@ async function downloadAllExecPhotos(){
     if(failCount>0) alert(`${okCount}개 사진은 정상적으로 압축했지만, ${failCount}개는 내려받는 데 실패해서 제외했습니다.`);
   }catch(e){
     alert('사진 압축 파일 생성 중 오류가 발생했습니다: ' + e.message);
+  }finally{
+    if(btn){ btn.disabled = false; btn.innerHTML = btnOrigHtml; }
+  }
+}
+// 실행력 점검 사진 취합 - 카드 하나(=한 지점의 한 건)에 대한 개별 다운로드(관리자 전용).
+// 파일이 1개면 바로 그 파일을, 여러 개면 "지점명1.ext, 지점명2.ext, ..." 이름으로 zip에 담아 내려받는다.
+async function downloadExecPhotoCard(id){
+  if(SESSION.role!=='admin') return;
+  const r = (DB.execPhotos||[]).find(x=>x.id===id);
+  if(!r) return;
+  const photos = (r.photos||[]).filter(p=>p && p.dataUrl);
+  if(photos.length===0){ alert('다운로드할 사진(첨부파일)이 없습니다.'); return; }
+  const bName = branchName(r.branchId);
+  const btn = document.getElementById(`epDownloadBtn_${id}`);
+  const btnOrigHtml = btn ? btn.innerHTML : null;
+  if(btn){ btn.disabled = true; btn.innerHTML = '준비 중...'; }
+  try{
+    if(photos.length===1){
+      const res = await fetch(photos[0].dataUrl);
+      if(!res.ok) throw new Error('fetch failed: ' + res.status);
+      const arrBuf = await res.arrayBuffer();
+      const ext = guessAttachmentExt(photos[0].name);
+      downloadBlob(new Blob([arrBuf]), `${bName}1${ext}`);
+      return;
+    }
+    if(typeof JSZip==='undefined'){
+      alert('압축 파일 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
+      return;
+    }
+    const zip = new JSZip();
+    let okCount = 0, failCount = 0;
+    for(let i=0;i<photos.length;i++){
+      try{
+        const res = await fetch(photos[i].dataUrl);
+        if(!res.ok) throw new Error('fetch failed: ' + res.status);
+        const arrBuf = await res.arrayBuffer();
+        const ext = guessAttachmentExt(photos[i].name);
+        zip.file(`${bName}${i+1}${ext}`, arrBuf);
+        okCount++;
+      }catch(e){
+        failCount++;
+      }
+    }
+    if(okCount===0){ alert('사진을 하나도 내려받지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'); return; }
+    const blob = await zip.generateAsync({type:'blob'});
+    downloadBlob(blob, `${bName}_${r.week||todayStr()}.zip`);
+    if(failCount>0) alert(`${okCount}개 사진은 정상적으로 압축했지만, ${failCount}개는 내려받는 데 실패해서 제외했습니다.`);
+  }catch(e){
+    alert('사진 다운로드 중 오류가 발생했습니다: ' + e.message);
   }finally{
     if(btn){ btn.disabled = false; btn.innerHTML = btnOrigHtml; }
   }
