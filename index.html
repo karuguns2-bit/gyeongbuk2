@@ -538,6 +538,13 @@ function addMonthsToPeriod(period, n){
   const d = new Date(y, (m-1)+n, 1);
   return periodStr(d);
 }
+function goalsPeriodLabel(period){
+  if(!period) return '';
+  const parts = String(period).split('-').map(Number);
+  const y = parts[0], m = parts[1];
+  if(!y || !m) return period;
+  return `${y}년 ${m}월`;
+}
 function getGoals(branchId, period){
   period = period || currentGoalsPeriod();
   if(!DB.goals[branchId]) DB.goals[branchId] = {};
@@ -3411,9 +3418,12 @@ function renderGoals(){
     currentGoalsPeriod(),
     addMonthsToPeriod(currentGoalsPeriod(), 1)
   ])).sort();
-  const periodSelectorHtml = `<div style="margin-bottom:14px;">` +
-    periodOptions.map(p=>`<span class="branch-pill ${p===period?'active':''}" onclick="setGoalsPeriod('${p}')">${p}${p===currentGoalsPeriod()?' (이번달)':''}</span>`).join('') +
-    `</div>`;
+  const periodSelectorHtml = `
+    <div class="card" style="margin-bottom:16px;">
+      <h3>🗓️ 월별 목표관리</h3>
+      <div class="small-note" style="margin-bottom:10px;">원하는 달을 선택하면 그 달의 목표를 별도 양식으로 입력·조회할 수 있습니다. 지점 목표, 팀원별 배분, 구독 목표가 달마다 독립적으로 저장됩니다.</div>
+      <div>${periodOptions.map(p=>`<span class="branch-pill ${p===period?'active':''}" onclick="setGoalsPeriod('${p}')">${goalsPeriodLabel(p)}${p===currentGoalsPeriod()?' (이번달)':''}</span>`).join('')}</div>
+    </div>`;
 
   const allocSum = g.allocations.reduce((s,a)=>s+a.target,0);
   const remaining = g.target - allocSum;
@@ -3468,7 +3478,7 @@ function renderGoals(){
 
   return `
     <div class="page-title">목표 관리</div>
-    <div class="page-desc">${branch.name} · ${period}${isCurrentPeriod?'':' <span class="badge warn">이번달 아님</span>'}</div>
+    <div class="page-desc">${branch.name} · ${goalsPeriodLabel(period)}${isCurrentPeriod?'':' <span class="badge warn">이번달 아님</span>'}</div>
     ${branchSelectorHtml}
     ${periodSelectorHtml}
 
