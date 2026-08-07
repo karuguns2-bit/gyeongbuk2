@@ -1973,6 +1973,8 @@ function renderHome(){
       </div>
     </div>
 
+    ${renderHomeEduSummaryBanner()}
+
     <div id="homeStatusWidget" style="position:fixed;bottom:20px;right:20px;z-index:60;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:14px 16px;width:230px;">
       <div style="font-weight:700;font-size:12.5px;color:var(--text-sub);" id="homeClockDate">-</div>
       <div style="font-size:21px;font-weight:800;color:var(--primary);margin-bottom:10px;letter-spacing:.5px;" id="homeClockTime">-</div>
@@ -1987,6 +1989,96 @@ function renderHome(){
         </div>
         <div id="homeNotifList" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto;">${homeNotifListHtml(cachedNotifItems)}</div>
       </div>
+    </div>
+  `;
+}
+// ---- 매니저 홈 대시보드: 소속 지점의 교육참석일자(예정 일정)/교육별 이수현황 요약 배너 ----
+function renderHomeEduSummaryBanner(){
+  if(!SESSION || SESSION.role!=='manager') return '';
+  const branchId = SESSION.branchId;
+  const staffList = DB.users.filter(u=>u.role==='staff' && u.branchId===branchId);
+  const totalStaff = staffList.length;
+  const today = todayStr();
+
+  // ---- 교육참석일자: 이 지점 대상으로 예정된 교육 일정(본부/사내/기타) 중 가까운 순으로 최대 5개 ----
+  const upcoming = [];
+  [['hq','본부(평택)교육'], ['inhouse','사내교육'], ['etc','기타교육']].forEach(([cat,label])=>{
+    (DB.eduSchedules[cat]||[]).forEach(s=>{
+      if(s.date < today) return;
+      const hasTargets = s.targetEmpIds && s.targetEmpIds.length>0;
+      const targetMatch = hasTargets
+        ? s.targetEmpIds.some(id=>staffList.some(u=>u.empId===id))
+        : (!s.branchId || s.branchId===branchId);
+      if(!targetMatch) return;
+      upcoming.push({ label, title:s.title, date:s.date });
+    });
+  });
+  upcoming.sort((a,b)=>a.date.localeCompare(b.date));
+  const upcomingTop = upcoming.slice(0,5);
+
+  const scheduleHtml = upcomingTop.length>0
+    ? `<table style="margin-top:6px;">
+        <thead><tr><th>구분</th><th>교육명</th><th>일자</th><th>D-DAY</th></tr></thead>
+        <tbody>${upcomingTop.map(s=>{
+          const dday = Math.round((toDateObj(s.date) - toDateObj(today)) / 86400000);
+          const ddayLabel = dday===0 ? 'D-DAY' : `D-${dday}`;
+          const badgeClass = dday<=2 ? 'bad' : (dday<=7 ? 'warn' : 'good');
+          return `<tr><td class="muted">${escapeHtml(s.label)}</td><td>${escapeHtml(s.title)}</td><td>${s.date}</td><td><span class="badge ${badgeClass}">${ddayLabel}</span></td></tr>`;
+        }).join('')}</tbody>
+      </table>`
+    : `<div class="muted" style="margin-top:6px;font-size:12.5px;">예정된 교육 일정이 없습니다.</div>`;
+
+  // ---- 교육별 이수현황: 화상교육/월간test/AI R/P 3종 요약(소속 지점 인원 기준) ----
+  function simpleRate(cat){
+    const recs = staffList.map(u=>{
+      const r = (DB.eduCompletion[cat]||[]).find(x=>x.empId===u.empId);
+      return r ? !!r.completed : false;
+    });
+    const done = recs.filter(Boolean).length;
+    return { done, total: recs.length };
+  }
+  const videoStat = simpleRate('video');
+  const testStat = simpleRate('test');
+  const aiRpStat = simpleRate('aiRp');
+
+  const miniStat = (label, stat, tab)=>{
+    const rate = stat.total>0 ? (stat.done/stat.total*100) : 0;
+    return `<div class="card" style="cursor:pointer;padding:12px 14px;" onclick="renderTab('${tab}')">
+      <div class="muted" style="font-size:12px;">${label}</div>
+      <div style="font-size:19px;font-weight:800;color:var(--primary);">${stat.done}/${stat.total}</div>
+      <div class="muted" style="font-size:11.5px;">이수율 ${rate.toFixed(0)}%</div>
+    </div>`;
+  };
+
+  // 화상교육이 회차별(기준날짜+1~4차) 신규 서식으로 업로드된 경우, 미이수자를 회차와 함께 보여준다
+  let videoDetailHtml = '';
+  if(DB.eduVideoRich && DB.eduVideoRich.sessions && DB.eduVideoRich.sessions.length>0){
+    const rich = DB.eduVideoRich;
+    const incomplete = staffList.map(u=>{
+      const rec = (rich.records||[]).find(r=>r.empId===u.empId);
+      if(!rec) return null;
+      const bad = rich.sessions.filter(s=>rec.sessionStatus[s.no]==='미이수');
+      return bad.length>0 ? { name:u.name, sessions: bad.map(s=>s.no+'차') } : null;
+    }).filter(Boolean);
+    videoDetailHtml = `<div class="muted" style="margin-top:4px;font-size:11.5px;">` +
+      (incomplete.length>0
+        ? `(기준날짜 ${rich.refDate}) 회차 미이수: ${incomplete.map(x=>`${x.name}(${x.sessions.join(',')})`).join(', ')}`
+        : `(기준날짜 ${rich.refDate}) 전원 회차 이수 완료`) +
+      `</div>`;
+  }
+
+  return `
+    <div class="card" style="margin-top:16px;">
+      <h3>📚 교육 관리 요약 <small>(${branchName(branchId)} · ${totalStaff}명)</small></h3>
+      <div style="font-weight:600;font-size:12.5px;color:var(--text-sub);margin-top:8px;">교육참석일자</div>
+      ${scheduleHtml}
+      <div style="font-weight:600;font-size:12.5px;color:var(--text-sub);margin-top:14px;">교육별 이수현황</div>
+      <div class="grid grid-3" style="margin-top:6px;">
+        ${miniStat('화상교육', videoStat, 'eduVideo')}
+        ${miniStat('월간test', testStat, 'eduTest')}
+        ${miniStat('AI R/P', aiRpStat, 'eduAiRp')}
+      </div>
+      ${videoDetailHtml}
     </div>
   `;
 }
@@ -7681,14 +7773,18 @@ function renderEduCompletion(cat){
     `</div>` : '';
 
   const w = eduCompletionWording(cat);
+  // 화상교육/월간test는 업로드 파일 데이터를 신뢰하는 것이 원칙이므로, 관리자가 수동으로
+  // 이수/미이수를 뒤집는 버튼을 제공하지 않는다(값이 잘못됐다면 최신 파일을 다시 올려서 갱신).
+  // AI R/P "실행여부"는 파일 업로드가 아닌 관리자 수기 관리 항목이라 토글 버튼을 그대로 유지한다.
+  const showToggleBtn = isAdmin && cat==='aiRp';
   const rows = records.map(r=>`
     <tr>
       <td>${branchName(r.branchId)}</td>
       <td>${r.name} <span class="muted">(${r.empId})</span></td>
       <td>${r.completed ? `<span class="badge good">${w.done}</span>` : `<span class="badge bad">${w.notDone}</span>`}</td>
       <td class="muted">${r.completedDate||'-'}</td>
-      <td>${isAdmin ? `<button class="btn btn-sm" onclick="toggleEduCompletion('${cat}','${r.empId}')">${r.completed?`${w.notDone}로 변경`:`${w.done}로 변경`}</button>` : ''}</td>
-    </tr>`).join('') || `<tr><td colspan="5" class="muted">대상자가 없습니다.</td></tr>`;
+      ${showToggleBtn ? `<td><button class="btn btn-sm" onclick="toggleEduCompletion('${cat}','${r.empId}')">${r.completed?`${w.notDone}로 변경`:`${w.done}로 변경`}</button></td>` : ''}
+    </tr>`).join('') || `<tr><td colspan="${showToggleBtn?5:4}" class="muted">대상자가 없습니다.</td></tr>`;
 
   const uploadHtml = isAdmin ? `
     <div class="card" style="margin-bottom:16px;">
@@ -7708,7 +7804,7 @@ function renderEduCompletion(cat){
     ${uploadHtml}
     <div class="card">
       <table>
-        <thead><tr><th>지점</th><th>이름</th><th>${w.rateWord.includes('실행')?'실행여부':'이수여부'}</th><th>${w.rateWord.includes('실행')?'실행일':'이수일'}</th><th></th></tr></thead>
+        <thead><tr><th>지점</th><th>이름</th><th>${w.rateWord.includes('실행')?'실행여부':'이수여부'}</th><th>${w.rateWord.includes('실행')?'실행일':'이수일'}</th>${showToggleBtn?'<th></th>':''}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -7880,10 +7976,12 @@ function handleEduVideoRichFile(evt){
       DB.eduVideoRich = parsed;
       // 리마인더(로그인 알림)는 기존 DB.eduCompletion.video(간단 완료여부)를 참조하므로,
       // 회차별 "최종" 값을 그대로 반영해 함께 동기화한다.
+      // 주의: 파일의 "최종" 컬럼은 "완료"/"미이수"로 표기된다(회차별 컬럼의 "이수"/"미이수"와 다른 어휘).
+      const isFinalDone = (v)=> v==='완료' || v==='이수';
       DB.eduCompletion.video = parsed.records.map(r=>({
         empId: r.empId, name: r.name, branchId: r.branchId,
-        period: parsed.refDate, completed: r.final==='이수',
-        completedDate: r.final==='이수' ? parsed.refDate : null
+        period: parsed.refDate, completed: isFinalDone(r.final),
+        completedDate: isFinalDone(r.final) ? parsed.refDate : null
       }));
       touchTabContent('eduVideo');
       saveDB();
@@ -7927,8 +8025,10 @@ function renderEduVideoRich(){
     `<span class="branch-pill ${!scopeBranch?'active':''}" onclick="state.viewBranchId='ALL'; renderTab('eduVideo')">전체 보기</span>` +
     `</div>` : '';
 
+  // 회차별 컬럼은 "이수"/"미이수", 최종 컬럼은 "완료"/"미이수"로 표기되어 어휘가 다르다.
+  // 두 어휘 모두 있는 그대로("완료"면 완료라고) 보여주되, 배지 색상만 통일한다.
   const statusBadge = (v)=>{
-    if(v==='이수') return `<span class="badge good">이수</span>`;
+    if(v==='이수' || v==='완료') return `<span class="badge good">${v}</span>`;
     if(v==='미이수') return `<span class="badge bad">미이수</span>`;
     return `<span class="muted">-</span>`;
   };
