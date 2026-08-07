@@ -11,6 +11,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root{
     --primary:#A50034;
@@ -207,6 +208,8 @@
   .export-btn svg{width:15px;height:15px;flex-shrink:0;}
   .export-btn.excel{color:#1a7a3d;}
   .export-btn.pdf{color:#b3261e;}
+  .export-btn.photos{color:#2b6cb0;}
+  .export-btn:disabled{opacity:.6;cursor:not-allowed;}
   .page-title{font-size:20px;font-weight:700;margin:0 0 4px;}
   .page-desc{color:var(--text-sub);font-size:13px;margin:0 0 20px;}
 
@@ -451,6 +454,12 @@
     <button class="export-btn pdf" onclick="exportCurrentPagePDF()" title="현재 화면을 PDF 파일로 다운로드">
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="3" fill="#b3261e"/><path d="M5.5 17V7h3.1c1.4 0 2.4.9 2.4 2.2 0 1.3-1 2.2-2.4 2.2H7v3.6H5.5zm1.5-4.9h1.4c.7 0 1.1-.4 1.1-1 0-.6-.4-1-1.1-1H7v2zm5 4.9V7h2.6c2.2 0 3.6 1.9 3.6 5s-1.4 5-3.6 5H12zm1.5-1.4h1c1.3 0 2.1-1.2 2.1-3.6s-.8-3.6-2.1-3.6h-1v7.2zm5.6 1.4V7h4.9v1.4h-3.4V11h3v1.4h-3V17h-1.5z" fill="#fff"/></svg>
       PDF
+    </button>
+    <!-- 실행력 점검 사진 취합 화면에서 관리자에게만 보이는 일괄 다운로드 버튼. 기본은 숨김 상태이고
+         updateExportToolbarVisibility()에서 탭==='collectPhoto' && 관리자일 때만 보이게 전환한다. -->
+    <button id="execPhotoDownloadBtn" class="export-btn photos" style="display:none;" onclick="downloadAllExecPhotos()" title="현재 보이는 지점들의 실행력 점검 사진을 모두 압축해서 다운로드">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="3" fill="#2b6cb0"/><path d="M12 6v8m0 0l-3.2-3.2M12 14l3.2-3.2M6.5 17h11" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      사진 한번에 내려받기
     </button>
   </div>
   <div class="main" id="mainContent"></div>
@@ -9359,6 +9368,59 @@ function downloadBlob(blob, filename){
   document.body.appendChild(a); a.click();
   setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
 }
+// 파일명(원본 이름 또는 URL)에서 확장자를 뽑아낸다. 못 찾으면 기본값(.jpg)을 쓴다.
+function guessAttachmentExt(name){
+  const m = /\.[^./\\?#]+$/.exec(String(name||'').split('?')[0]);
+  return m ? m[0] : '.jpg';
+}
+// 실행력 점검 사진 취합 - 현재 화면에 보이는(=관리자가 선택한 지점 필터 기준) 모든 첨부파일을
+// "지점명1.jpg, 지점명2.jpg, ..." 형식으로 이름 붙여 zip으로 묶어 한 번에 내려받는다.
+// (data:URL, Supabase Storage의 https:// URL 둘 다 fetch()로 그대로 바이트를 가져올 수 있다.)
+async function downloadAllExecPhotos(){
+  if(SESSION.role!=='admin') return;
+  if(typeof JSZip==='undefined'){
+    alert('압축 파일 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
+    return;
+  }
+  const scoped = collectListScope(DB.execPhotos||[]);
+  const items = [];
+  scoped.forEach(r=>{
+    (r.photos||[]).forEach(p=>{
+      if(p && p.dataUrl) items.push({ branch: branchName(r.branchId), file: p });
+    });
+  });
+  if(items.length===0){ alert('다운로드할 사진(첨부파일)이 없습니다.'); return; }
+
+  const btn = document.getElementById('execPhotoDownloadBtn');
+  const btnOrigHtml = btn ? btn.innerHTML : null;
+  if(btn){ btn.disabled = true; btn.innerHTML = '압축 중...'; }
+  try{
+    const zip = new JSZip();
+    const counters = {};
+    let okCount = 0, failCount = 0;
+    for(const { branch, file } of items){
+      try{
+        const res = await fetch(file.dataUrl);
+        if(!res.ok) throw new Error('fetch failed: ' + res.status);
+        const arrBuf = await res.arrayBuffer();
+        const ext = guessAttachmentExt(file.name);
+        counters[branch] = (counters[branch]||0) + 1;
+        zip.file(`${branch}${counters[branch]}${ext}`, arrBuf);
+        okCount++;
+      }catch(e){
+        failCount++; // 이 파일 하나만 건너뛰고 나머지는 계속 압축
+      }
+    }
+    if(okCount===0){ alert('사진을 하나도 내려받지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'); return; }
+    const blob = await zip.generateAsync({type:'blob'});
+    downloadBlob(blob, `실행력점검사진_${todayStr()}.zip`);
+    if(failCount>0) alert(`${okCount}개 사진은 정상적으로 압축했지만, ${failCount}개는 내려받는 데 실패해서 제외했습니다.`);
+  }catch(e){
+    alert('사진 압축 파일 생성 중 오류가 발생했습니다: ' + e.message);
+  }finally{
+    if(btn){ btn.disabled = false; btn.innerHTML = btnOrigHtml; }
+  }
+}
 // 사진 한 장을 엑셀에 embedding 가능한 형태(base64 + 확장자)로 가져온다.
 // - 화면에 표시된 <img class="xlsx-photo">의 src가 이미 data:image/...;base64, 형태면 그대로 사용.
 // - 최근에는 DB 용량 절감을 위해 사진을 Supabase Storage 공개 URL로 저장하므로(2026.08~),
@@ -9550,6 +9612,10 @@ function updateExportToolbarVisibility(tab){
   const el = document.getElementById('exportToolbar');
   if(!el) return;
   el.style.display = (tab==='subscription') ? 'none' : '';
+  const photoBtn = document.getElementById('execPhotoDownloadBtn');
+  if(photoBtn){
+    photoBtn.style.display = (tab==='collectPhoto' && SESSION && SESSION.role==='admin') ? '' : 'none';
+  }
 }
 function updateInventoryNavLabel(){
   const el = document.getElementById('navInventoryDate');
