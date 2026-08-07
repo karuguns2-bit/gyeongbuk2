@@ -828,6 +828,7 @@ function buildSeedDataFromReal(){
     mistakeNotes: [], bestPractices: [], issueCases: [], suggestions: [],
     eduSchedules: { hq: eduSchedulesHq, inhouse: [], etc: eduSchedulesEtc },
     eduCompletion: { video: eduCompletionVideo, test: eduCompletionTest, aiRp: [] },
+    eduVideoRich: null,
     kakaoFriends, prospects: [], subB2bSales: [], policyQuizAttempts: [],
     kakaoContestInfo: JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO)),
     kakaoContestResultImage: null,
@@ -1275,6 +1276,9 @@ function migrateDB(){
   if(!DB.eduCompletion.video) DB.eduCompletion.video = [];
   if(!DB.eduCompletion.test) DB.eduCompletion.test = [];
   if(!DB.eduCompletion.aiRp) DB.eduCompletion.aiRp = [];
+  // 화상교육 이수율은 이제 "기준날짜/회차별 교육명"이 포함된 신규 서식 파일로 업로드하며,
+  // 업로드 시 이 필드에 회차별 상세 데이터가 저장된다(구서식 DB.eduCompletion.video는 리마인더용으로 함께 동기화됨).
+  if(DB.eduVideoRich===undefined) DB.eduVideoRich = null;
   if(!DB.kakaoFriends) DB.kakaoFriends = [];
   DB.kakaoFriends.forEach(r=>{ if(!r.date) r.date = r.weekStart; if(!r.weekStart && r.date) r.weekStart = getMondayStr(r.date); });
   if(!DB.prospects) DB.prospects = [];
@@ -2118,6 +2122,9 @@ function renameEmpIdEverywhere(oldId, newId){
       (DB.eduCompletion[cat]||[]).forEach(r=>{ if(r.empId===oldId) r.empId = newId; });
     });
   }
+  if(DB.eduVideoRich && DB.eduVideoRich.records){
+    DB.eduVideoRich.records.forEach(r=>{ if(r.empId===oldId) r.empId = newId; });
+  }
   if(SESSION && SESSION.empId===oldId) SESSION.empId = newId;
 }
 function loginHistoryLabel(empId){
@@ -2206,8 +2213,8 @@ function renderSystemAdmin(){
       <h3>교육 이수율 데이터 업로드</h3>
       <div class="form-row" style="align-items:flex-start;flex-wrap:wrap;">
         <div class="field">
-          <label>화상교육 이수율</label>
-          <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduCompletionFile(event, 'video')">
+          <label>화상교육 이수율 <span class="muted" style="font-weight:400;">(1~4차 회차별 서식)</span></label>
+          <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduVideoRichFile(event)">
         </div>
         <div class="field">
           <label>월간test 이수율</label>
@@ -2218,7 +2225,7 @@ function renderSystemAdmin(){
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduCompletionFile(event, 'aiRp')">
         </div>
       </div>
-      <div class="small-note">사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.</div>
+      <div class="small-note">월간test/AI R/P는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).${DB.eduVideoRich ? ` <b>현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}</b>` : ''}</div>
     </div>
 
     <div class="card">
@@ -7644,6 +7651,11 @@ function eduCompletionWording(cat){
     doneCountWord:'이수 완료', uploadTitle:'이수 현황 파일 업로드', uploadDesc:'사번/이름/이수여부(구분)' };
 }
 function renderEduCompletion(cat){
+  // 화상교육은 "기준날짜 + 회차별(1~4차) 교육명/이수여부"가 포함된 신규 서식 파일이
+  // 한 번이라도 업로드되면, 이후로는 회차별 상세를 한눈에 보여주는 전용 화면을 사용한다.
+  if(cat==='video' && DB.eduVideoRich && DB.eduVideoRich.sessions && DB.eduVideoRich.sessions.length>0){
+    return renderEduVideoRich();
+  }
   const isAdmin = SESSION.role==='admin';
   const myBranch = SESSION.branchId || DB.branches[0].id;
   const scopeBranch = isAdmin ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : null) : myBranch;
@@ -7765,6 +7777,206 @@ function handleEduCompletionFile(evt, cat){
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+// ---- 화상교육 이수율 (신규 서식): 기준날짜 + 회차별(1~4차) 교육명/이수여부가 포함된 파일 ----
+// 파일 구조(고정 템플릿, 담당자가 앞으로 매번 이 서식으로 업로드):
+//   제목행(사번 헤더 바로 위 행): 기준날짜(Date 셀) + 회차별 교육명(1차~n차, 5칸 간격으로 배치)
+//   헤더행: 담당명/SR/채널/지점명/사번/직책/사원명 + 1차~4차 요약 + 최종 + 회차별 상세블록(교육명/실시간/이수여부/이수율)
+//   데이터행: 사번 기준으로 DB.users와 매칭해서 혼매경북팀(경북2담당) 소속 인원만 반영
+// "사번" 헤더 텍스트를 앵커로 찾고, 나머지 컬럼은 실제 파일에서 확인된 상대 위치(사번 기준 오프셋)로 계산한다.
+// 이렇게 하면 회차 개수가 나중에 5차/6차로 늘어나도(제목행에 교육명이 채워지는 순간) 자동으로 인식된다.
+function parseEduVideoRichFile(rows){
+  if(!rows || rows.length<3) return null;
+
+  // 1) "사번" 헤더 셀 위치 탐색 (앞부분 몇 개 행 안에서)
+  let headerRowIdx = -1, empIdCol = -1;
+  for(let r=0; r<Math.min(rows.length, 8); r++){
+    const row = rows[r] || [];
+    const idx = row.findIndex(c=>/^사번$/.test(String(c==null?'':c).trim()));
+    if(idx>=0){ headerRowIdx = r; empIdCol = idx; break; }
+  }
+  if(empIdCol<0 || headerRowIdx<1) return null;
+
+  const nameCol = empIdCol + 2;      // 사원명
+  const summaryStart = empIdCol + 4; // 1차 요약 시작 (1차,2차,3차,4차)
+  const finalCol = empIdCol + 8;     // 최종
+  const detailStart = empIdCol + 10; // 회차별 상세블록(교육명 등) 시작, 5칸 간격
+
+  // 2) 기준날짜 + 회차별 교육명은 헤더행 바로 위(제목행)에 있다.
+  const titleRow = rows[headerRowIdx-1] || [];
+  const matrixWidth = rows.reduce((m,row)=> row ? Math.max(m,row.length) : m, titleRow.length);
+
+  let refDate = null;
+  for(let c=0; c<titleRow.length; c++){
+    const v = titleRow[c];
+    if(v instanceof Date && !isNaN(v.getTime())){ refDate = v; break; }
+  }
+  if(!refDate){
+    for(let c=0; c<titleRow.length; c++){
+      const v = titleRow[c];
+      if(typeof v==='string' && /^\d{4}-\d{1,2}-\d{1,2}/.test(v.trim())){ refDate = new Date(v.trim()); break; }
+    }
+  }
+  const refDateStr = refDate && !isNaN(refDate.getTime()) ? toDateStr(refDate) : todayStr();
+
+  const sessions = [];
+  for(let off=detailStart, no=1; off<matrixWidth; off+=5, no++){
+    const t = titleRow[off];
+    if(t==null || String(t).trim()==='') continue;
+    sessions.push({ no, title: String(t).trim() });
+  }
+  if(sessions.length===0) return null;
+
+  // 3) 데이터 시작 행: 헤더행 이후, 사번 칸에 실제 숫자값이 처음 나오는 행부터
+  let dataStart = -1;
+  for(let r=headerRowIdx+1; r<rows.length; r++){
+    const row = rows[r]; if(!row) continue;
+    const v = row[empIdCol];
+    if(v!=null && v!=='' && !isNaN(Number(v))){ dataStart = r; break; }
+  }
+  if(dataStart<0) return null;
+
+  const records = [];
+  for(let r=dataStart; r<rows.length; r++){
+    const row = rows[r]; if(!row) continue;
+    const rawId = row[empIdCol];
+    if(rawId==null || rawId==='') continue;
+    const empId = bareEmpId(rawId);
+    const user = DB.users.find(u=>u.empId===empId && u.role==='staff');
+    if(!user) continue; // 혼매경북팀/경북2담당 소속(DB.users)이 아니면 자동 제외
+    const sessionStatus = {};
+    sessions.forEach((s,i)=>{
+      const raw = row[summaryStart+i];
+      sessionStatus[s.no] = (raw==null || String(raw).trim()==='') ? null : String(raw).trim();
+    });
+    const finalRaw = row[finalCol];
+    records.push({
+      empId,
+      name: (row[nameCol]!=null && String(row[nameCol]).trim()!=='') ? String(row[nameCol]).trim() : user.name,
+      branchId: user.branchId,
+      sessionStatus,
+      final: (finalRaw==null || String(finalRaw).trim()==='') ? null : String(finalRaw).trim()
+    });
+  }
+
+  return { refDate: refDateStr, sessions, records };
+}
+function handleEduVideoRichFile(evt){
+  const file = evt.target.files && evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = e=>{
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, {type:'array', cellDates:true});
+      const sheetName = wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
+      const parsed = parseEduVideoRichFile(rows);
+      if(!parsed){
+        alert('파일 형식을 인식하지 못했습니다. "사번" 헤더와 회차별(1~4차) 교육명이 포함된 화상교육 이수현황 파일인지 확인해 주세요.');
+        return;
+      }
+      DB.eduVideoRich = parsed;
+      // 리마인더(로그인 알림)는 기존 DB.eduCompletion.video(간단 완료여부)를 참조하므로,
+      // 회차별 "최종" 값을 그대로 반영해 함께 동기화한다.
+      DB.eduCompletion.video = parsed.records.map(r=>({
+        empId: r.empId, name: r.name, branchId: r.branchId,
+        period: parsed.refDate, completed: r.final==='이수',
+        completedDate: r.final==='이수' ? parsed.refDate : null
+      }));
+      touchTabContent('eduVideo');
+      saveDB();
+      renderTab('eduVideo');
+      alert(`혼매경북팀(경북2담당) 소속 ${parsed.records.length}명의 화상교육 이수 현황이 반영되었습니다. (기준날짜: ${parsed.refDate}, 회차: ${parsed.sessions.map(s=>s.no+'차').join(', ')})`);
+    } catch(err){
+      alert('파일을 처리하는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+function renderEduVideoRich(){
+  const isAdmin = SESSION.role==='admin';
+  const myBranch = SESSION.branchId || DB.branches[0].id;
+  const scopeBranch = isAdmin ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : null) : myBranch;
+  const rich = DB.eduVideoRich;
+  const sessions = rich.sessions;
+
+  let staffList = DB.users.filter(u=>u.role==='staff');
+  if(scopeBranch) staffList = staffList.filter(u=>u.branchId===scopeBranch);
+
+  const records = staffList.map(u=>{
+    const rec = (rich.records||[]).find(r=>r.empId===u.empId);
+    const sessionStatus = {};
+    sessions.forEach(s=>{ sessionStatus[s.no] = rec ? (rec.sessionStatus[s.no]||null) : null; });
+    const incompleteSessions = sessions.filter(s=>sessionStatus[s.no]==='미이수');
+    const final = rec ? rec.final : null;
+    return { empId:u.empId, name:u.name, branchId:u.branchId, sessionStatus, incompleteSessions, final, hasData: !!rec };
+  }).sort((a,b)=>{
+    const aBad = a.incompleteSessions.length>0, bBad = b.incompleteSessions.length>0;
+    if(aBad!==bBad) return aBad ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  const total = records.length;
+  const fullyDoneCount = records.filter(r=>r.hasData && r.incompleteSessions.length===0).length;
+  const rate = total>0 ? (fullyDoneCount/total*100) : 0;
+
+  const branchPills = isAdmin ? `<div style="margin-bottom:14px;">` +
+    DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); renderTab('eduVideo')">${b.name}</span>`).join('') +
+    `<span class="branch-pill ${!scopeBranch?'active':''}" onclick="state.viewBranchId='ALL'; renderTab('eduVideo')">전체 보기</span>` +
+    `</div>` : '';
+
+  const statusBadge = (v)=>{
+    if(v==='이수') return `<span class="badge good">이수</span>`;
+    if(v==='미이수') return `<span class="badge bad">미이수</span>`;
+    return `<span class="muted">-</span>`;
+  };
+
+  const sessionHeaders = sessions.map(s=>`<th>${s.no}차<br><span class="muted" style="font-weight:400;font-size:11px;">${escapeHtml(s.title)}</span></th>`).join('');
+
+  const rows = records.map(r=>{
+    const summaryHtml = !r.hasData
+      ? `<span class="muted">데이터 없음</span>`
+      : (r.incompleteSessions.length>0
+        ? `<span class="badge bad">${r.incompleteSessions.map(s=>s.no+'차').join(', ')} 미이수</span>`
+        : `<span class="badge good">전체 이수</span>`);
+    const cells = sessions.map(s=>`<td>${statusBadge(r.sessionStatus[s.no])}</td>`).join('');
+    return `<tr>
+      <td>${branchName(r.branchId)}</td>
+      <td>${r.name} <span class="muted">(${r.empId})</span></td>
+      <td>${summaryHtml}</td>
+      <td>${statusBadge(r.final)}</td>
+      ${cells}
+    </tr>`;
+  }).join('') || `<tr><td colspan="${4+sessions.length}" class="muted">대상자가 없습니다.</td></tr>`;
+
+  const incompleteRecords = records.filter(r=>r.incompleteSessions.length>0);
+  const noDataNames = records.filter(r=>!r.hasData).map(r=>r.name);
+
+  const uploadHtml = isAdmin ? `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="small-note">📋 화상교육 이수율 파일 업로드는 <b>[시스템 관리]</b> 메뉴로 이동했습니다.</div>
+    </div>` : '';
+
+  return `
+    <div class="page-title">화상교육 이수율 확인</div>
+    <div class="page-desc">혼매경북팀(경북2담당) 소속 인원 기준 화상교육 현황입니다. (기준날짜: <b>${rich.refDate}</b>)</div>
+    ${branchPills}
+    <div class="card ai-box" style="margin-bottom:16px;">
+      <div class="ai-title">📊 이수율 현황 (기준날짜: ${rich.refDate})</div>
+      <div>전체 <b>${total}명</b> 중 전 회차 이수 <b>${fullyDoneCount}명</b> — 이수율 <b>${rate.toFixed(1)}%</b></div>
+      ${incompleteRecords.length>0 ? `<div style="margin-top:6px;">회차별 미이수자: ${incompleteRecords.map(r=>`${r.name}(${r.incompleteSessions.map(s=>s.no+'차').join(',')})`).join(', ')}</div>` : ''}
+      ${noDataNames.length>0 ? `<div style="margin-top:6px;" class="muted">데이터 없음: ${noDataNames.join(', ')}</div>` : ''}
+    </div>
+    ${uploadHtml}
+    <div class="card" style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>지점</th><th>이름(사번)</th><th>미이수 요약</th><th>최종</th>${sessionHeaders}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 // ---- 로그인 알림: 2일 전 교육 일정 안내 + 미이수 알림 ----
