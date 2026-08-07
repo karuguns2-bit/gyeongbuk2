@@ -3267,11 +3267,23 @@ function applyGoalsFileUpload(parsed){
   }
 
   const touchedBranches = new Set();
+  parsed.employeePerf.forEach(e=> touchedBranches.add(e.branchId));
+
+  // 이 파일은 해당 지점의 "이번 달 최신 전체 스냅샷"이다. 예전 방식은 "오늘 날짜" 기록만 지우고
+  // 그 전 날짜에 올렸던 기록은 그대로 남겨뒀는데, 그러면 이번 파일에는 아예 없거나(예: 담당자 변경)
+  // 실적이 0으로 줄어든 사람의 예전 실적이 계속 남아 있게 되어, 실제로는 이번 달 실적이 없는
+  // 담당자를 조회해도 지난 스냅샷의 실적이 남아있는 것처럼 잘못 매칭되어 보이는 원인이 됐다.
+  // 그래서 이번 달(period) 데이터는 지점 단위로 통째로 비우고 이번 파일 내용으로만 다시 채운다.
+  touchedBranches.forEach(bid=>{
+    if(DB.progress[bid]){
+      DB.progress[bid].entries = DB.progress[bid].entries.filter(en=> String(en.date||'').slice(0,7) !== period);
+    }
+  });
+  DB.salesData = DB.salesData.filter(r=> !(touchedBranches.has(r.branchId) && String(r.date||'').slice(0,7)===period));
+
   parsed.employeePerf.forEach(e=>{
-    touchedBranches.add(e.branchId);
     if(!DB.progress[e.branchId]) DB.progress[e.branchId] = {period: periodStr(), entries:[]};
     const p = DB.progress[e.branchId];
-    p.entries = p.entries.filter(en=> !(en.empId===e.empId && en.date===today));
     if(e.totalAmtWon>0) p.entries.push({empId:e.empId, date:today, amount:e.totalAmtWon});
 
     if(!DB.goalsWeeklyActuals) DB.goalsWeeklyActuals = {};
@@ -3279,12 +3291,9 @@ function applyGoalsFileUpload(parsed){
     if(!DB.goalsWeeklyActuals[period][e.branchId]) DB.goalsWeeklyActuals[period][e.branchId] = {};
     if(!DB.goalsWeeklyActuals[period][e.branchId][e.empId]) DB.goalsWeeklyActuals[period][e.branchId][e.empId] = {};
     DB.goalsWeeklyActuals[period][e.branchId][e.empId][weekIdx] = e.totalAmtWon;
-  });
 
-  DB.salesData = DB.salesData.filter(r=> !(touchedBranches.has(r.branchId) && r.date===today));
-  parsed.employeePerf.forEach(e=>{
-    (e.products||[]).forEach(p=>{
-      DB.salesData.push({branchId:e.branchId, empId:e.empId, empName:e.name, date:today, product:p.product, qty:p.qty, amount:p.amount});
+    (e.products||[]).forEach(p2=>{
+      DB.salesData.push({branchId:e.branchId, empId:e.empId, empName:e.name, date:today, product:p2.product, qty:p2.qty, amount:p2.amount});
     });
   });
 
@@ -4367,28 +4376,58 @@ function renderSales(){
   const topProducts = sortedProducts.slice(0,10);
   const totalAmt = Object.values(byProduct).reduce((s,v)=>s+v.amount,0);
 
+  // 제품군(카테고리) 비중: 제품명 끝의 "(카테고리)" 표기를 기준으로 묶는다. 담당자별 표의
+  // 제품군별 열 구성에도 그대로 재사용한다(현재 조회 범위에서 실제 판매된 제품군만, 금액 큰 순).
+  const categoryTotals = {};
+  rows.forEach(r=>{
+    const cat = productCategory(r.product);
+    categoryTotals[cat] = (categoryTotals[cat]||0) + r.amount;
+  });
+  const categoryEntries = Object.entries(categoryTotals).sort((a,b)=>b[1]-a[1]);
+  const categoryOrder = categoryEntries.map(([cat])=>cat);
+
+  // 담당자별: 이제 "최다 판매 제품" 1개만 보여주지 않고, 제품군별 판매 대수·금액을 각각 표시한다.
   const byEmp = {};
   rows.forEach(r=>{
-    byEmp[r.empId] = byEmp[r.empId] || {name:r.empName, products:{}, amount:0};
-    byEmp[r.empId].amount += r.amount;
-    byEmp[r.empId].products[r.product] = (byEmp[r.empId].products[r.product]||0) + r.amount;
+    if(!byEmp[r.empId]) byEmp[r.empId] = {name:r.empName, amount:0, byCategory:{}};
+    const e = byEmp[r.empId];
+    e.amount += r.amount;
+    const cat = productCategory(r.product);
+    if(!e.byCategory[cat]) e.byCategory[cat] = {qty:0, amount:0};
+    e.byCategory[cat].qty += r.qty;
+    e.byCategory[cat].amount += r.amount;
   });
   const empRows = Object.entries(byEmp).map(([empId, d])=>{
-    const top = Object.entries(d.products).sort((a,b)=>b[1]-a[1])[0];
-    return `<tr><td>${d.name}</td><td>${fmtKK(d.amount)}</td><td>${top?top[0]:'-'}</td></tr>`;
-  }).join('') || `<tr><td colspan="3" class="muted">데이터 없음</td></tr>`;
+    const cells = categoryOrder.map(cat=>{
+      const c = d.byCategory[cat];
+      return c ? `<td>${c.qty}대 · ${fmtKK(c.amount)}</td>` : `<td class="muted">-</td>`;
+    }).join('');
+    return `<tr><td>${d.name}</td><td>${fmtKK(d.amount)}</td>${cells}</tr>`;
+  }).join('') || `<tr><td colspan="${2+categoryOrder.length}" class="muted">데이터 없음</td></tr>`;
 
   // 매니저별 판매 비중: 담당자를 특정해서 보는 중이면(1명뿐이라 비중 차트가 무의미하므로) 생략한다.
   const empShareEntries = Object.entries(byEmp).sort((a,b)=>b[1].amount-a[1].amount);
   const showEmpShareChart = state.salesEmp==='ALL' && empShareEntries.length>0;
 
-  // 제품군(카테고리) 비중: 제품명 끝의 "(카테고리)" 표기를 기준으로 묶는다.
-  const byCategory = {};
-  rows.forEach(r=>{
-    const cat = productCategory(r.product);
-    byCategory[cat] = (byCategory[cat]||0) + r.amount;
-  });
-  const categoryEntries = Object.entries(byCategory).sort((a,b)=>b[1]-a[1]);
+  // 원형 그래프(도넛)는 범례에 "이름 (비중%)"을 함께 표시하고, 툴팁에도 비중%을 추가한다.
+  function pctLegendPlugin(){
+    return { position:'right', labels:{ boxWidth:12, font:{size:11}, generateLabels:(chart)=>{
+      const ds = chart.data.datasets[0];
+      const total = (ds.data||[]).reduce((s,v)=>s+(Number(v)||0),0);
+      return chart.data.labels.map((label,i)=>{
+        const val = Number(ds.data[i])||0;
+        const pct = total>0 ? (val/total*100).toFixed(1) : '0.0';
+        return { text:`${label} (${pct}%)`, fillStyle: ds.backgroundColor[i], strokeStyle: ds.backgroundColor[i], index:i };
+      });
+    }}};
+  }
+  function pctTooltip(){
+    return { callbacks:{ label:(ctx)=>{
+      const total = ctx.dataset.data.reduce((s,v)=>s+(Number(v)||0),0);
+      const pct = total>0 ? (ctx.parsed/total*100).toFixed(1) : '0.0';
+      return `${ctx.label}: ${fmtKK(ctx.parsed)} (${pct}%)`;
+    }}};
+  }
 
   setTimeout(()=>{
     const ctx = document.getElementById('productChart');
@@ -4412,7 +4451,7 @@ function renderSales(){
           labels: empShareEntries.map(([,d])=>d.name),
           datasets:[{ data: empShareEntries.map(([,d])=>d.amount), backgroundColor: chartColors(empShareEntries.length) }]
         },
-        options:{ plugins:{legend:{position:'right', labels:{boxWidth:12, font:{size:11}}}, tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${fmtKK(ctx.parsed)}`}}} }
+        options:{ plugins:{legend:pctLegendPlugin(), tooltip:pctTooltip()} }
       });
     }
     const catCtx = document.getElementById('categoryShareChart');
@@ -4424,7 +4463,7 @@ function renderSales(){
           labels: categoryEntries.map(([cat])=>cat),
           datasets:[{ data: categoryEntries.map(([,amt])=>amt), backgroundColor: chartColors(categoryEntries.length) }]
         },
-        options:{ plugins:{legend:{position:'right', labels:{boxWidth:12, font:{size:11}}}, tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${fmtKK(ctx.parsed)}`}}} }
+        options:{ plugins:{legend:pctLegendPlugin(), tooltip:pctTooltip()} }
       });
     }
   }, 0);
@@ -4447,8 +4486,10 @@ function renderSales(){
           ${concentrationNote}
         </div>
         <div class="divider"></div>
-        <h3>담당자별 최다 판매 제품</h3>
-        <table><thead><tr><th>이름</th><th>판매금액(KK)</th><th>최다 판매 제품</th></tr></thead><tbody>${empRows}</tbody></table>
+        <h3>담당자별 제품군 판매 상세 <small>(수량 · 금액(KK))</small></h3>
+        <div style="overflow-x:auto;">
+        <table><thead><tr><th>이름</th><th>판매금액(KK)</th>${categoryOrder.map(cat=>`<th>${cat}</th>`).join('')}</tr></thead><tbody>${empRows}</tbody></table>
+        </div>
       </div>`;
   } else {
     const empUser = DB.users.find(u=>u.empId===state.salesEmp);
