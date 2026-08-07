@@ -1632,7 +1632,7 @@ function renderHomeManagerCompetitivenessBanner(){
       <div style="font-weight:700;font-size:13px;">${m.manager}</div>
       <div class="stat-sub">${m.branchCount}개 지점</div>
       <div style="font-size:19px;font-weight:800;color:var(--primary);margin-top:2px;">MS ${m.msPct}%</div>
-      <div class="stat-sub" style="margin-top:4px;">LG ${fmtMillion(m.lgWon)}백만 · SS ${fmtMillion(m.ssWon)}백만</div>
+      <div class="stat-sub" style="margin-top:4px;">LG ${fmtKK(m.lgWon)} · SS ${fmtKK(m.ssWon)} · GAP ${gapCell(m.gapWon)}</div>
     </div>`).join('');
   return `
     <div class="card" style="margin-bottom:16px;">
@@ -3873,7 +3873,7 @@ function renderBranches(){
       <div class="progress-bar"><div style="width:${Math.min(r.pct,100)}%"></div></div>
       <div class="stat-sub" style="margin-top:8px;">목표 ${fmtWon(r.target)} · 실적 ${fmtWon(r.achieved)}</div>
       <div class="stat-sub">오늘 출근 ${r.present}/${r.total}명</div>
-      ${c ? `<div class="stat-sub" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">경쟁력 MS <b>${c.msPct}%</b> <span class="muted">(LG ${fmtMillion(c.lgWon)}백만 · SS ${fmtMillion(c.ssWon)}백만)</span></div>` : ''}
+      ${c ? `<div class="stat-sub" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">경쟁력 MS <b>${c.msPct}%</b> <span class="muted">(LG ${fmtKK(c.lgWon)} · SS ${fmtKK(c.ssWon)})</span> GAP ${gapCell(c.gapWon)}</div>` : ''}
     </div>
   `;
   }).join('');
@@ -4011,13 +4011,13 @@ function renderCompetitivenessSection(period){
     const mgrMs = (mgrLg+mgrSs)>0 ? Math.round(mgrLg/(mgrLg+mgrSs)*1000)/10 : 0;
     const rows = branchesOfMgr.map(b=>{
       const c = comp[b.id];
-      return `<tr><td>${b.name}</td><td>${fmtMillion(c.lgWon)}</td><td>${c.msPct}%</td><td>${fmtMillion(c.ssWon)}</td><td>${gapCell(Math.round(c.gapWon/1e6*10)/10)}</td></tr>`;
+      return `<tr><td>${b.name}</td><td>${fmtKK(c.lgWon)}</td><td>${c.msPct}%</td><td>${fmtKK(c.ssWon)}</td><td>${gapCell(c.gapWon)}</td></tr>`;
     }).join('') || `<tr><td colspan="5" class="muted">데이터 없음</td></tr>`;
     tableHtml = `
       <table>
         <thead><tr><th>지점명</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th></tr></thead>
         <tbody>
-          <tr style="font-weight:700;background:#fafafa;"><td>${mgrSel||'-'} 소계</td><td>${fmtMillion(mgrLg)}</td><td>${mgrMs}%</td><td>${fmtMillion(mgrSs)}</td><td>${gapCell(Math.round((mgrLg-mgrSs)/1e6*10)/10)}</td></tr>
+          <tr style="font-weight:700;background:#fafafa;"><td>${mgrSel||'-'} 소계</td><td>${fmtKK(mgrLg)}</td><td>${mgrMs}%</td><td>${fmtKK(mgrSs)}</td><td>${gapCell(mgrLg-mgrSs)}</td></tr>
           ${rows}
         </tbody>
       </table>`;
@@ -4037,7 +4037,7 @@ function renderCompetitivenessSection(period){
     tableHtml = c ? `
       <table>
         <thead><tr><th>지점명</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th></tr></thead>
-        <tbody><tr><td>${brName}</td><td>${fmtMillion(c.lgWon)}</td><td>${c.msPct}%</td><td>${fmtMillion(c.ssWon)}</td><td>${gapCell(Math.round(c.gapWon/1e6*10)/10)}</td></tr></tbody>
+        <tbody><tr><td>${brName}</td><td>${fmtKK(c.lgWon)}</td><td>${c.msPct}%</td><td>${fmtKK(c.ssWon)}</td><td>${gapCell(c.gapWon)}</td></tr></tbody>
       </table>` : `<div class="muted">${brName}의 ${period} 월 경쟁력 데이터가 없습니다.</div>`;
   } else {
     // 전체: 지점을 낱낱이 나열하지 않고 관리자별로 요약해서 표 길이를 줄인다(지점별 상세는
@@ -4046,8 +4046,8 @@ function renderCompetitivenessSection(period){
     chartTitleSuffix = '전체';
     const summaryRow = s ? `
       <tr style="font-weight:700;background:#fafafa;">
-        <td>이마트 전체(소계)</td><td>${fmtMillion(s.lgWon)}</td><td>${s.msPct}%</td>
-        <td>${fmtMillion(s.ssWon)}</td><td>${gapCell(Math.round(s.gapWon/1e6*10)/10)}</td><td></td>
+        <td>이마트 전체(소계)</td><td>${fmtKK(s.lgWon)}</td><td>${s.msPct}%</td>
+        <td>${fmtKK(s.ssWon)}</td><td>${gapCell(s.gapWon)}</td><td></td>
       </tr>` : '';
     const mgrRows = managers.map(mgr=>{
       const branchesOfMgr = DB.branches.filter(b=>b.manager===mgr && comp[b.id]);
@@ -4055,7 +4055,7 @@ function renderCompetitivenessSection(period){
       const lg = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].lgWon||0),0);
       const ss = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].ssWon||0),0);
       const ms = (lg+ss)>0 ? Math.round(lg/(lg+ss)*1000)/10 : 0;
-      return `<tr><td><b>${mgr}</b></td><td>${fmtMillion(lg)}</td><td>${ms}%</td><td>${fmtMillion(ss)}</td><td>${gapCell(Math.round((lg-ss)/1e6*10)/10)}</td><td class="muted">${branchesOfMgr.length}개 지점</td></tr>`;
+      return `<tr><td><b>${mgr}</b></td><td>${fmtKK(lg)}</td><td>${ms}%</td><td>${fmtKK(ss)}</td><td>${gapCell(lg-ss)}</td><td class="muted">${branchesOfMgr.length}개 지점</td></tr>`;
     }).join('');
     if(!s && !mgrRows) return '';
     tableHtml = `
@@ -4066,7 +4066,10 @@ function renderCompetitivenessSection(period){
       <div class="small-note" style="margin-top:6px;">지점별 상세는 위 [관리자별] 또는 [지점별] 필터에서 조회할 수 있습니다.</div>`;
   }
 
-  // ---- 표 아래: 제품군별 LG(자사) vs SS(경쟁사) 수량/금액 MS% 비교 그래프 (적당한 크기) ----
+  // ---- 표 아래: 제품군별 LG(자사) vs SS(경쟁사) 수량/금액 MS% 비교 그래프 ----
+  // 캔버스를 감싸는 컨테이너에 "고정 높이(220px)"를 명시하고 Chart.js도 maintainAspectRatio:false로
+  // 둬서, 관리자/지점을 바꿔 다시 그릴 때마다 그래프 영역 크기가 들쭉날쭉 변하지 않고 항상
+  // 동일한 크기를 유지하도록 한다(카테고리 개수가 달라져도 표 레이아웃이 흔들리지 않음).
   const catData = competitivenessCategoryAggregate(period, scopeBranchIds);
   setTimeout(()=>{
     const qtyCtx = document.getElementById('competQtyMsChart');
@@ -4075,7 +4078,7 @@ function renderCompetitivenessSection(period){
       competQtyMsChartInstance = new Chart(qtyCtx, {
         type:'bar',
         data:{ labels: catData.map(c=>c.category), datasets:[{ label:'자사(LG) 수량 MS%', data: catData.map(c=>c.qtyMsPct), backgroundColor:'#A50034' }] },
-        options:{ plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`MS ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true, max:100}} }
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`MS ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true, max:100}} }
       });
     }
     const amtCtx = document.getElementById('competAmtMsChart');
@@ -4084,34 +4087,41 @@ function renderCompetitivenessSection(period){
       competAmtMsChartInstance = new Chart(amtCtx, {
         type:'bar',
         data:{ labels: catData.map(c=>c.category), datasets:[{ label:'자사(LG) 금액 MS%', data: catData.map(c=>c.amtMsPct), backgroundColor:'#2b6cb0' }] },
-        options:{ plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`MS ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true, max:100}} }
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`MS ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true, max:100}} }
       });
     }
   }, 0);
 
   return `
     <div class="card" style="margin-top:16px;">
-      <h3>지점별 경쟁력 현황 <small>(${data.asOf ? data.asOf+' 기준 · ' : ''}${period} 월 · msis경쟁력 시트 기준 · 단위 백만원, MS=자사 점유율%, LG=자사 매출, SS=경쟁사 매출, GAP=LG−SS)</small></h3>
+      <h3>지점별 경쟁력 현황 <small>(${data.asOf ? data.asOf+' 기준 · ' : ''}${period} 월 · msis경쟁력 시트 기준 · 금액은 KK(백만원) 단위, MS=자사 점유율%, LG=자사 매출, SS=경쟁사 매출, GAP=LG−SS(마이너스는 빨간색))</small></h3>
       ${scopeButtonsHtml}
       ${selectorHtml}
       ${tableHtml}
       <div class="grid grid-2" style="margin-top:14px;">
-        <div>
+        <div class="card">
           <h4 style="margin:0 0 6px;font-size:13px;">제품군별 수량 MS% <small class="muted">(${chartTitleSuffix} · 타사 대비)</small></h4>
-          <canvas id="competQtyMsChart" height="140"></canvas>
+          <div style="position:relative;height:220px;">
+            <canvas id="competQtyMsChart"></canvas>
+          </div>
         </div>
-        <div>
+        <div class="card">
           <h4 style="margin:0 0 6px;font-size:13px;">제품군별 금액 MS% <small class="muted">(${chartTitleSuffix} · 타사 대비)</small></h4>
-          <canvas id="competAmtMsChart" height="140"></canvas>
+          <div style="position:relative;height:220px;">
+            <canvas id="competAmtMsChart"></canvas>
+          </div>
         </div>
       </div>
     </div>
   `;
 }
-function gapCell(gap){
-  const sign = gap>0 ? '+' : '';
-  const color = gap<0 ? 'var(--bad)' : 'var(--good)';
-  return `<span style="color:${color};font-weight:700;">${sign}${gap.toLocaleString('ko-KR')}</span>`;
+// GAP(LG−SS, 원 단위)을 KK 단위로 표기하고, 마이너스면 빨간색+마이너스 부호를 함께 보여준다.
+function gapCell(gapWon){
+  const kk = Math.round(((Number(gapWon)||0)/1000000)*10)/10;
+  const sign = kk>0 ? '+' : '';
+  const color = kk<0 ? 'var(--bad)' : 'var(--good)';
+  const label = kk.toLocaleString('ko-KR',{maximumFractionDigits:1, minimumFractionDigits:1});
+  return `<span style="color:${color};font-weight:700;">${sign}${label}KK</span>`;
 }
 
 /* =========================================================================
