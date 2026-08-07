@@ -4371,7 +4371,7 @@ function renderSales(){
   });
   const empRows = Object.entries(byEmp).map(([empId, d])=>{
     const top = Object.entries(d.products).sort((a,b)=>b[1]-a[1])[0];
-    return `<tr><td>${d.name}</td><td>${fmtWon(d.amount)}</td><td>${top?top[0]:'-'}</td></tr>`;
+    return `<tr><td>${d.name}</td><td>${fmtKK(d.amount)}</td><td>${top?top[0]:'-'}</td></tr>`;
   }).join('') || `<tr><td colspan="3" class="muted">데이터 없음</td></tr>`;
 
   // 매니저별 판매 비중: 담당자를 특정해서 보는 중이면(1명뿐이라 비중 차트가 무의미하므로) 생략한다.
@@ -4396,7 +4396,7 @@ function renderSales(){
           labels: topProducts.map(p=>p[0]),
           datasets:[{ label:'판매금액', data: topProducts.map(p=>p[1].amount), backgroundColor:'#A50034' }]
         },
-        options:{ indexAxis:'y', plugins:{legend:{display:false}} }
+        options:{ indexAxis:'y', plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>fmtKK(ctx.parsed.x)}}} }
       });
     }
     const empCtx = document.getElementById('empShareChart');
@@ -4408,7 +4408,7 @@ function renderSales(){
           labels: empShareEntries.map(([,d])=>d.name),
           datasets:[{ data: empShareEntries.map(([,d])=>d.amount), backgroundColor: chartColors(empShareEntries.length) }]
         },
-        options:{ plugins:{legend:{position:'right', labels:{boxWidth:12, font:{size:11}}}} }
+        options:{ plugins:{legend:{position:'right', labels:{boxWidth:12, font:{size:11}}}, tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${fmtKK(ctx.parsed)}`}}} }
       });
     }
     const catCtx = document.getElementById('categoryShareChart');
@@ -4420,7 +4420,7 @@ function renderSales(){
           labels: categoryEntries.map(([cat])=>cat),
           datasets:[{ data: categoryEntries.map(([,amt])=>amt), backgroundColor: chartColors(categoryEntries.length) }]
         },
-        options:{ plugins:{legend:{position:'right', labels:{boxWidth:12, font:{size:11}}}} }
+        options:{ plugins:{legend:{position:'right', labels:{boxWidth:12, font:{size:11}}}, tooltip:{callbacks:{label:(ctx)=>`${ctx.label}: ${fmtKK(ctx.parsed)}`}}} }
       });
     }
   }, 0);
@@ -4444,14 +4444,14 @@ function renderSales(){
         </div>
         <div class="divider"></div>
         <h3>담당자별 최다 판매 제품</h3>
-        <table><thead><tr><th>이름</th><th>판매금액</th><th>최다 판매 제품</th></tr></thead><tbody>${empRows}</tbody></table>
+        <table><thead><tr><th>이름</th><th>판매금액(KK)</th><th>최다 판매 제품</th></tr></thead><tbody>${empRows}</tbody></table>
       </div>`;
   } else {
     const empUser = DB.users.find(u=>u.empId===state.salesEmp);
     const feedback = empUser ? aiFeedbackForEmployee(empUser.branchId, empUser.empId, empUser.name, salesPeriod || currentGoalsPeriod()) : [];
     const detailRows = sortedProducts.map(([product, v])=>{
       const share = totalAmt>0 ? (v.amount/totalAmt*100) : 0;
-      return `<tr><td>${product}</td><td>${v.qty}</td><td>${fmtWon(v.amount)}</td><td>${share.toFixed(1)}%</td></tr>`;
+      return `<tr><td>${product}</td><td>${v.qty}</td><td>${fmtKK(v.amount)}</td><td>${share.toFixed(1)}%</td></tr>`;
     }).join('') || `<tr><td colspan="4" class="muted">판매 데이터가 없습니다.</td></tr>`;
     rightCardHtml = `
       <div class="card">
@@ -4462,13 +4462,13 @@ function renderSales(){
         </div>
         <div class="divider"></div>
         <h3>${empUser?empUser.name:''} 판매 제품 상세 <small>(전체 ${sortedProducts.length}개 품목)</small></h3>
-        <table><thead><tr><th>제품</th><th>수량</th><th>금액</th><th>비중</th></tr></thead><tbody>${detailRows}</tbody></table>
+        <table><thead><tr><th>제품</th><th>수량</th><th>금액(KK)</th><th>비중</th></tr></thead><tbody>${detailRows}</tbody></table>
       </div>`;
   }
 
   return `
     <div class="page-title">실적 / 제품 분석</div>
-    <div class="page-desc">${scopeBranch==='ALL' ? '전체 지점' : branchName(scopeBranch)} · ${salesPeriod ? salesPeriod+' 월 데이터' : '전체 기간 누적 데이터'} · 통합 보드.xlsx 실제 실적 데이터 기반 (관리자가 새 파일을 업로드하면 계속 추가됩니다)</div>
+    <div class="page-desc">${scopeBranch==='ALL' ? '전체 지점' : branchName(scopeBranch)} · ${salesPeriod ? salesPeriod+' 월 데이터' : '전체 기간 누적 데이터'} · 금액은 모두 KK(백만원) 단위 · "실판매 목표대비 실적조회" 시트 기반(관리자가 [시스템 관리]에서 목표/실적 파일을 새로 올리면 갱신됩니다)</div>
     ${branchSelectorHtml}
     ${periodSelectorHtml}
     ${empSelectorHtml}
