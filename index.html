@@ -844,6 +844,7 @@ function buildSeedDataFromReal(){
     execPhotoGuide: null,
     collectionNotices: {},
     policyQuizBank: JSON.parse(JSON.stringify(POLICY_QUIZ_BANK)),
+    policyQuizBankVersion: POLICY_QUIZ_BANK_VERSION,
     subscriptionData };
 }
 
@@ -939,22 +940,37 @@ const KAKAO_CONTEST_INFO = {
 };
 
 /* =========================================================================
-   1g. HAND-TRANSCRIBED "대형마트1팀 26년 8월 1주차 판촉 안내" +
-   "LG전자 이마트 8월 1주차 현장 판매 ACTION" 이미지 기반 빈칸채우기 문제 은행
-   (금주 주말 정책 숙지도 점검용, 10문제 중 응시 시 5문제 랜덤 출제)
+   1g. HAND-TRANSCRIBED "대형마트1팀 26년 8월 2주차 판촉 안내" + "LG전자 이마트 8월 2주차
+   현장 판매/구독 ACTION" 이미지 기반 객관식(4지선다) 문제 은행
+   (금주 주말 정책 숙지도 점검용, 20문제 중 응시 시 5문제 랜덤 출제)
+   각 문제는 options(보기 4개) + answers(정답, 보기 중 하나와 정확히 일치하는 텍스트 1개)로 구성.
+   기존 빈칸채우기(___) 형식도 계속 지원되지만(하위호환), 이 은행은 전량 객관식으로 교체됨.
    ========================================================================= */
 const POLICY_QUIZ_BANK = [
-  { id:'pq1', text:'SS사 물동불안여파로 제품별 배송이 8~___월로 지연되고 있다.', answers:['10','10월'] },
-  { id:'pq2', text:'유통(이마트)도 SS사 물동 문제로 8월 1주 ___ 우선 정책을 운영한다.', answers:['lg'] },
-  { id:'pq3', text:'TV(77SF8E) 배송 지연에 따른 자사 대응모델은 ___이다.', answers:['oled77b6x'] },
-  { id:'pq4', text:'★브랜드 금액대★(IT제외) 판촉 기간은 8/01~___ 이다.', answers:['8/03','8/3','08/03','8월3일','8월 3일','0803'] },
-  { id:'pq5', text:'이마티콘 행사는 200만원 이상 결제 시 ___만원 이마티콘을 증정한다(선착 1,000명).', answers:['3'] },
-  { id:'pq6', text:'다품목 연계 에누리는 최대 ___만원까지 혜택 적용이 가능하다.', answers:['60'] },
-  { id:'pq7', text:"'DIOS를 부탁해' 연계 에누리는 냉장고+TV/세탁기/김치냉장고 동시구매 시 ___만원 할인된다.", answers:['10'] },
-  { id:'pq8', text:"'휘바휘바' 연계 에누리는 에어컨(뷰1 멀티형)+제습기 동시구매 시 ___만원 할인된다.", answers:['20'] },
-  { id:'pq9', text:'8월 1주차 TV 판매 1순위 모델은 77/65C6F, 77/65B6X, ___이다.', answers:['85qned82bk'] },
-  { id:'pq10', text:'구독 판매 액션 중 정수기 월간 모델(WD722/723/724)은 ___만원 모바일상품권을 제공한다.', answers:['7'] }
+  { id:'pq1', text:'★브랜드 금액대★(IT제외) 판촉 기간은?', options:['8/01~8/26','8/06~8/13','8/07~8/10','8/06~8/10'], answers:['8/07~8/10'] },
+  { id:'pq2', text:'카드사 금액대 판촉에서 700만원 구간(대형·소형)의 할인 혜택은?', options:['20만원','30만원','45만원','50만원'], answers:['30만원'] },
+  { id:'pq3', text:'다품목 연계 에누리 혜택의 최대 한도는?', options:['15만원','30만원','45만원','60만원'], answers:['60만원'] },
+  { id:'pq4', text:'다품목 연계 에누리 ① 조합(TV+상품2)으로 옳은 것은?', options:['세탁기군/에어컨/노트북','김치냉장고/에어컨','냉장고/식세기','소형가전(주방/청소기/에어케어/스탠바이미&Go)'], answers:['세탁기군/에어컨/노트북'] },
+  { id:'pq5', text:"'DIOS를 부탁해' 연계 에누리는 냉장고와 무엇을 동시구매 시 적용되는가?", options:['TV/세탁기/김치냉장고','에어컨/제습기','식기세척기/쿠킹','스탠바이미/노트북'], answers:['TV/세탁기/김치냉장고'] },
+  { id:'pq6', text:"'DIOS를 부탁해' 연계 에누리의 할인 금액은?", options:['5만원','10만원','15만원','20만원'], answers:['10만원'] },
+  { id:'pq7', text:"'DIOS를 부탁해' 연계 에누리 적용 기간은?", options:['8/01~8/26','8/06~8/10','8/06~8/13','8/07~8/10'], answers:['8/06~8/13'] },
+  { id:'pq8', text:'에어컨 소진 집중 대상 중 잔여 1점(TR동탄)인 모델은?', options:['FQ18HDKHG2','FQ18GV5BA2','AS065PWHA','DQ256MWGA'], answers:['FQ18HDKHG2'] },
+  { id:'pq9', text:'TV 판매 1순위(e코드) 모델이 아닌 것은?', options:['77/65C6F','77/65B6X','85QNED82BK','MRGB 혼매 전용 모델'], answers:['MRGB 혼매 전용 모델'] },
+  { id:'pq10', text:'이마트 단독 TV 모델로 옳은 것은?', options:['65/48B6F','55B6K','75QNED70BK','OLED77/65B6X'], answers:['65/48B6F'] },
+  { id:'pq11', text:'대형TV+스탠바이미2 동시구독 반값 행사에서 스탠바이미2 기본 구독료는?', options:['14,400원','14,500원','28,900원','2,800원'], answers:['28,900원'] },
+  { id:'pq12', text:'대형TV+스탠바이미2 동시구독 반값 행사의 할인 후 구독료(할인금액)는?', options:['14,400원(14,500원 할인)','28,900원(할인 없음)','2,800원(500원 할인)','700원(700원 할인)'], answers:['14,400원(14,500원 할인)'] },
+  { id:'pq13', text:'스탠바이미2 반값 행사의 대상 스탠바이미 모델명은?', options:['27LX6TPGA.AKR','OLED65C5ENA','24GS65F','32SR83U'], answers:['27LX6TPGA.AKR'] },
+  { id:'pq14', text:'스탠바이미2 반값 행사 관련 유의사항으로 옳은 것은?', options:['OLED65C5ENA 모델은 OBS 전용이다','모든 올레드 모델에 스크린세이버 연출이 가능하다','패키지 해지해도 정상 구독료가 유지된다','전 채널이 아닌 온라인 전용 행사이다'], answers:['OLED65C5ENA 모델은 OBS 전용이다'] },
+  { id:'pq15', text:'냉장고 상냉장 진열/판매 집중 모델이 아닌 것은?', options:['T876MEE1S1','H876GBB111','G646GBB032','Z386GBB241'], answers:['Z386GBB241'] },
+  { id:'pq16', text:'세탁기 콤보 신모델로 판매 중인 모델은?', options:['FC2521SX6C(X)','WA2525GE/EGHF','SC5GMR42S','FH25ES/GS'], answers:['FC2521SX6C(X)'] },
+  { id:'pq17', text:"김치냉장고 '무드업'에 대한 설명으로 옳은 것은?", options:['전국 잔여 3대 소진 확인 대상이다','26년 신모델로 활성화 중이다','단종소진 대상 모델이다','구독판매 집중모델이다'], answers:['전국 잔여 3대 소진 확인 대상이다'] },
+  { id:'pq18', text:'식기세척기 금주 특가 운영 모델이 아닌 것은?', options:['DEE6BGE','DUE6BGHE','DUE6BGH1E','MLJ39EW'], answers:['MLJ39EW'] },
+  { id:'pq19', text:'PC 주력 판매 모델 16Z95U-G.AS50K의 판매 조건은?', options:['5만원 인하+사은품','10만원 인하+사은품','7만원 인하+사은품','14만원 인하'], answers:['5만원 인하+사은품'] },
+  { id:'pq20', text:'구독 판매 액션 중 정수기 월간 모델(WD722/723/724)의 혜택은?', options:['모바일상품권 7만원','구독료 2,000원 할인','구독료 700원 할인','사은품 파우치 제공'], answers:['모바일상품권 7만원'] }
 ];
+// 문제 은행 내용이 통째로 교체될 때마다 값을 올린다. DB.policyQuizBankVersion이 이 값과
+// 다르면(즉, 이전 주차 문제 은행이 저장돼 있으면) migrateDB에서 1회 자동으로 최신 은행으로 교체한다.
+const POLICY_QUIZ_BANK_VERSION = 2; // v2: '26년 8월 2주차 판촉 안내 기반 객관식 20문제로 전량 교체
 
 const SUBSCRIPTION_DATA = {
   asOf: '2026-07-29',
@@ -1328,6 +1344,12 @@ function migrateDB(){
     ]
   };
   if(!DB.policyQuizBank) DB.policyQuizBank = JSON.parse(JSON.stringify(POLICY_QUIZ_BANK));
+  // 문제 은행이 통째로 새 주차 내용으로 교체된 경우(POLICY_QUIZ_BANK_VERSION 상승), 관리자가
+  // 개별로 추가/수정한 이력이 없는 "구버전 그대로"인 DB만 최신 은행으로 1회 자동 교체한다.
+  if(DB.policyQuizBankVersion !== POLICY_QUIZ_BANK_VERSION){
+    DB.policyQuizBank = JSON.parse(JSON.stringify(POLICY_QUIZ_BANK));
+    DB.policyQuizBankVersion = POLICY_QUIZ_BANK_VERSION;
+  }
   DB.branches.forEach(b=>{
     if(!DB.schedule[b.id]) DB.schedule[b.id] = {};
     if(!DB.goals[b.id]) DB.goals[b.id] = {};
@@ -2318,14 +2340,17 @@ function renderSystemAdmin(){
         <div class="field">
           <label>화상교육 이수율 <span class="muted" style="font-weight:400;">(1~4차 회차별 서식)</span></label>
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduVideoRichFile(event)">
+          <div id="eduVideoUploadMsg" class="small-note"></div>
         </div>
         <div class="field">
           <label>월간test 이수율</label>
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduCompletionFile(event, 'test')">
+          <div id="eduTestUploadMsg" class="small-note"></div>
         </div>
         <div class="field">
           <label>AI R/P 실행 여부</label>
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduCompletionFile(event, 'aiRp')">
+          <div id="eduAiRpUploadMsg" class="small-note"></div>
         </div>
       </div>
       <div class="small-note">월간test/AI R/P는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).${DB.eduVideoRich ? ` <b>현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}</b>` : ''}</div>
@@ -3902,6 +3927,13 @@ function detectSubscriptionReportPeriod(rawRows){
   }
   return null;
 }
+// 시스템 관리의 모든 파일 업로드가 성공/실패를 같은 방식(초록/빨강 문구)으로 안내하도록
+// 공용 헬퍼로 통일한다. html 인자는 이미 만들어진 안내 문구(필요시 <b> 등 포함)를 그대로 받는다.
+function showUploadResult(elId, ok, html){
+  const el = document.getElementById(elId);
+  if(!el) return;
+  el.innerHTML = `<span style="color:${ok ? 'var(--good)' : 'var(--bad)'};">${ok ? '✅ ' : '⚠️ '}${html}</span>`;
+}
 function handleSubscriptionFile(evt){
   const file = evt.target.files[0];
   if(!file) return;
@@ -3922,13 +3954,15 @@ function handleSubscriptionFile(evt){
         const json = XLSX.utils.sheet_to_json(sheet, {defval:''});
         result = applySubscriptionFile(json);
       }
-      if(result.error){ msgEl.textContent = result.error; return; }
+      if(result.error){ showUploadResult('subUploadMsg', false, result.error); return; }
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [구독 실적] 데이터를 갱신했습니다 (${result.period})`);
-      msgEl.innerHTML = `<span style="color:var(--good);">${result.period} 구독 실적 반영 완료: ${result.branchCount}개 지점 · ${result.repCount}명</span>`;
+      // renderTab이 시스템 관리 화면 전체를 새로 그리므로(안내 문구 칸도 빈 상태로 초기화됨),
+      // 반드시 renderTab을 먼저 호출한 뒤에 안내 문구를 넣어야 화면에 실제로 보인다.
       renderTab('systemAdmin');
+      showUploadResult('subUploadMsg', true, `${result.period} 구독 실적 반영 완료: ${result.branchCount}개 지점 · ${result.repCount}명`);
     }catch(err){
-      msgEl.textContent = '파일을 읽는 중 오류가 발생했습니다: ' + err.message;
+      showUploadResult('subUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -3945,7 +3979,7 @@ function handleInventoryFile(evt){
       const sheetName = wb.SheetNames.find(n=>n.includes('재고')) || wb.SheetNames[0];
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
       const parsedInventory = parseInventorySheetRows(rows);
-      if(parsedInventory.length===0){ msgEl.textContent = '재고 데이터를 인식하지 못했습니다. 파일에 "점포명"(또는 지점명/매장명)과 "상품명"(또는 제품명) 컬럼이 있는지 확인해 주세요.'; return; }
+      if(parsedInventory.length===0){ showUploadResult('inventoryUploadMsg', false, '재고 데이터를 인식하지 못했습니다. 파일에 "점포명"(또는 지점명/매장명)과 "상품명"(또는 제품명) 컬럼이 있는지 확인해 주세요.'); return; }
       const count = applyInventorySnapshot(parsedInventory);
 
       // "소진리스트" 시트가 이 파일에 있으면 소진집중 대상 상품코드도 함께 갱신한다
@@ -3961,10 +3995,11 @@ function handleInventoryFile(evt){
 
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
-      msgEl.innerHTML = `<span style="color:var(--good);">재고 데이터 ${count}건 반영 완료${clearanceMsg}</span>`;
+      // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
+      showUploadResult('inventoryUploadMsg', true, `재고 데이터 ${count}건 반영 완료${clearanceMsg}`);
     }catch(err){
-      msgEl.textContent = '파일을 읽는 중 오류가 발생했습니다: ' + err.message;
+      showUploadResult('inventoryUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -4388,7 +4423,7 @@ function handleSalesFile(evt){
       const json = XLSX.utils.sheet_to_json(sheet, {defval:''});
       const result = mapSalesRows(json);
       if(result.rows.length===0){
-        document.getElementById('uploadMsg').textContent = '컬럼을 인식하지 못했습니다. 제품/수량/금액 등의 컬럼명을 확인해 주세요.';
+        showUploadResult('uploadMsg', false, '컬럼을 인식하지 못했습니다. 제품/수량/금액 등의 컬럼명을 확인해 주세요.');
         return;
       }
       DB.salesData = DB.salesData.concat(result.rows);
@@ -4397,10 +4432,12 @@ function handleSalesFile(evt){
       let msg = `${result.rows.length}건의 실적 데이터를 추가했습니다.`;
       if(result.newBranches.length>0) msg += ` 신규 지점 생성: ${result.newBranches.join(', ')}.`;
       if(result.newUsers.length>0) msg += ` 신규 계정 생성(초기 비밀번호 1234): ${result.newUsers.map(u=>`${u.name}(${u.empId})`).join(', ')}.`;
-      document.getElementById('uploadMsg').innerHTML = msg;
-      renderTab('sales');
+      // 업로드 버튼이 있는 [시스템 관리] 화면에 그대로 안내 문구를 보여준다
+      // (예전처럼 [실적/제품 분석] 화면으로 바로 넘어가면 안내 문구 칸 자체가 없어 안 보였음).
+      renderTab('systemAdmin');
+      showUploadResult('uploadMsg', true, msg);
     }catch(err){
-      document.getElementById('uploadMsg').textContent = '파일을 읽는 중 오류가 발생했습니다: ' + err.message;
+      showUploadResult('uploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -4854,11 +4891,12 @@ function handleIntegratedBoardFile(evt){
       if(result.newBranchCount) msg += ` 신규 지점 ${result.newBranchCount}개.`;
       if(result.newUserCount) msg += ` 신규 계정 ${result.newUserCount}명(초기 비밀번호 1234).`;
       if(result.warnings.length) msg += ' ⚠ ' + result.warnings.join(' ');
-      msgEl.innerHTML = msg;
       logActivity('update', `${SESSION.name}님(관리자)이 [통합 보드] 데이터를 갱신했습니다 (목표/경쟁력/실적/스케줄/재고)`);
+      // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab(state.tab);
+      showUploadResult('boardUploadMsg', true, msg);
     }catch(err){
-      msgEl.textContent = '파일 처리 중 오류: ' + err.message;
+      showUploadResult('boardUploadMsg', false, '파일 처리 중 오류: ' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -4913,7 +4951,13 @@ function invTag(product){
   return null;
 }
 function invFilterDefaults(){
-  return {store:'ALL', tag:'ALL', q:'', page:1, cat1List:[], statusList:[], saleStatusList:[]};
+  return {store:'ALL', tag:'ALL', q:'', page:1, cat1List:[], statusList:[], saleStatusList:[], clearanceOnly:false};
+}
+function toggleInvClearanceFilter(){
+  if(!state.invFilter) state.invFilter = invFilterDefaults();
+  state.invFilter.clearanceOnly = !state.invFilter.clearanceOnly;
+  state.invFilter.page = 1;
+  renderTab('inventory');
 }
 function invFilterPills(field, options){
   const key = field + 'List';
@@ -4956,12 +5000,19 @@ function renderInventory(){
   // 않고, 의미 없는 빈 값/"-" 표기는 필터 선택지에서 제외한다.
   const cat1s = [...new Set(taggedInventory.map(r=>r.cat2))].filter(v=>v && String(v).trim() && String(v).trim()!=='-').sort();
 
+  const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
+  const isClearanceRow = r=>r.code!=null && clearanceSet.has(Number(r.code));
+  // 다른 필터(매장/구분 등)를 적용하기 전, 행사/진열 전체 기준으로 소진집중 대상이 몇 건인지
+  // 미리 세어서 필터 버튼에 표시한다(현재 적용된 다른 필터와 무관하게 전체 규모를 보여줌).
+  const clearanceTotalCount = taggedInventory.filter(isClearanceRow).length;
+
   let rows = taggedInventory;
   if(f.store!=='ALL') rows = rows.filter(r=>r.store===f.store);
   if(f.cat1List.length) rows = rows.filter(r=>f.cat1List.includes(r.cat2));
   if(f.statusList.length) rows = rows.filter(r=>f.statusList.includes(r.status||'보유중'));
   if(f.saleStatusList.length) rows = rows.filter(r=>f.saleStatusList.includes(r.saleStatus||'판매가능'));
   if(f.tag && f.tag!=='ALL') rows = rows.filter(r=>invTag(r.product)===f.tag);
+  if(f.clearanceOnly) rows = rows.filter(isClearanceRow);
   if(f.q && f.q.trim()){
     const q = f.q.trim().toLowerCase();
     rows = rows.filter(r=> (r.product||'').toLowerCase().includes(q) || (r.model||'').toLowerCase().includes(q) || String(r.code||'').includes(q));
@@ -4973,8 +5024,7 @@ function renderInventory(){
   if(f.page > totalPages) f.page = totalPages;
   if(f.page < 1) f.page = 1;
   const pageRows = rows.slice((f.page-1)*INV_PAGE_SIZE, f.page*INV_PAGE_SIZE);
-  const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
-  const clearanceCountInView = rows.filter(r=>r.code!=null && clearanceSet.has(Number(r.code))).length;
+  const clearanceCountInView = rows.filter(isClearanceRow).length;
 
   const tableRows = pageRows.map(r=>{
     const tag = invTag(r.product);
@@ -4982,7 +5032,7 @@ function renderInventory(){
     const status = r.status || '보유중';
     const saleStatus = r.saleStatus || '판매가능';
     const isDisplay = tag==='진열';
-    const isClearance = r.code!=null && clearanceSet.has(Number(r.code));
+    const isClearance = isClearanceRow(r);
     return `<tr>
       <td>${r.store}</td>
       <td>${tag==='행사'?'<span class="badge warn">행사</span>':'<span class="badge">진열</span>'}</td>
@@ -5032,6 +5082,10 @@ function renderInventory(){
         <div class="field">
           <label>검색 (제품명/모델명/코드)</label>
           <input style="width:260px" value="${f.q||''}" placeholder="예: 스타일러, MW23GD, 2087685" onkeyup="if(event.key==='Enter') setInvFilter('q', this.value)" onchange="setInvFilter('q', this.value)">
+        </div>
+        <div class="field">
+          <label>소진집중</label>
+          <span class="branch-pill ${f.clearanceOnly?'active':''}" style="cursor:pointer;white-space:nowrap;" onclick="toggleInvClearanceFilter()">🔥 소진집중만 보기${clearanceTotalCount>0 ? ` (${clearanceTotalCount})` : ''}</span>
         </div>
       </div>
       <div style="margin-top:12px;">
@@ -7283,10 +7337,19 @@ function submitPolicyQuiz(){
   const qs = state.policyQuizQuestions || [];
   let correctCount = 0;
   const detail = qs.map(q=>{
-    const input = document.getElementById('pq_ans_' + q.id);
-    const raw = input ? input.value : '';
-    const norm = normalizeQuizAnswer(raw);
-    const isCorrect = q.answers.some(ans=>normalizeQuizAnswer(ans)===norm);
+    let raw, isCorrect;
+    if(q.options && q.options.length>0){
+      // 객관식: 선택된 라디오 버튼의 값(보기 텍스트)을 정답과 정확히 비교한다.
+      const checked = document.querySelector('input[name="pq_radio_' + q.id + '"]:checked');
+      raw = checked ? checked.value : '';
+      isCorrect = raw!=='' && q.answers.some(ans=>ans===raw);
+    } else {
+      // 빈칸채우기(하위호환): 정규화 후 텍스트 비교
+      const input = document.getElementById('pq_ans_' + q.id);
+      raw = input ? input.value : '';
+      const norm = normalizeQuizAnswer(raw);
+      isCorrect = q.answers.some(ans=>normalizeQuizAnswer(ans)===norm);
+    }
     if(isCorrect) correctCount++;
     return { id:q.id, text:q.text, userAnswer: raw, correct: isCorrect, correctAnswer: q.answers[0] };
   });
@@ -7306,15 +7369,40 @@ function submitPolicyQuiz(){
 function parseQuizAnswersInput(raw){
   return String(raw||'').split(',').map(s=>s.trim()).filter(s=>s.length>0);
 }
+// 보기(객관식 선택지) 4칸 입력값을 읽어 비어있지 않은 것만 배열로 반환한다.
+function readQuizOptionInputs(prefix){
+  const opts = [];
+  for(let i=1;i<=4;i++){
+    const el = document.getElementById(prefix + i);
+    const v = el ? el.value.trim() : '';
+    if(v) opts.push(v);
+  }
+  return opts;
+}
+// 신규/수정 폼 입력값을 검증해서 문제 객체({text, options?, answers})를 만들거나,
+// 실패 시 alert 후 null을 반환한다. 보기가 2개 이상 채워지면 객관식으로, 아니면
+// 기존처럼 빈칸(___) 채우기 형식으로 판단한다.
+function buildPolicyQuizQuestionFromForm(text, options, answers){
+  if(!text){ alert('문제 내용을 입력해 주세요.'); return null; }
+  if(options.length>0){
+    if(options.length<2){ alert('객관식 문제는 보기를 최소 2개 이상 입력해 주세요.'); return null; }
+    if(answers.length!==1){ alert('객관식 문제는 정답을 보기 중 하나와 정확히 일치하게 1개만 입력해 주세요.'); return null; }
+    if(!options.includes(answers[0])){ alert('정답이 보기 중 하나와 정확히 일치해야 합니다.'); return null; }
+    return { text, options, answers };
+  }
+  if(!text.includes('___')){ alert('빈칸 표시(___)가 포함된 문제를 입력하거나, 보기(객관식)를 2개 이상 입력해 주세요.'); return null; }
+  if(answers.length===0){ alert('정답을 최소 1개 이상 입력해 주세요.'); return null; }
+  return { text, answers };
+}
 function addPolicyQuizQuestion(){
   if(SESSION.role!=='admin') return;
   const text = document.getElementById('pqNewText').value.trim();
+  const options = readQuizOptionInputs('pqNewOpt');
   const answers = parseQuizAnswersInput(document.getElementById('pqNewAnswers').value);
-  if(!text){ alert('문제 내용을 입력해 주세요.'); return; }
-  if(!text.includes('___')){ alert('빈칸 표시(___)가 포함된 문제를 입력해 주세요.'); return; }
-  if(answers.length===0){ alert('정답을 최소 1개 이상 입력해 주세요.'); return; }
+  const q = buildPolicyQuizQuestionFromForm(text, options, answers);
+  if(!q) return;
   if(!DB.policyQuizBank) DB.policyQuizBank = [];
-  DB.policyQuizBank.push({ id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7), text, answers });
+  DB.policyQuizBank.push(Object.assign({ id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7) }, q));
   touchTabContent('policyQuiz');
   saveDB();
   renderTab('policyQuiz');
@@ -7333,12 +7421,13 @@ function savePolicyQuizQuestion(id){
   const q = (DB.policyQuizBank||[]).find(x=>x.id===id);
   if(!q) return;
   const text = document.getElementById('pqEditText_' + id).value.trim();
+  const options = readQuizOptionInputs('pqEditOpt_' + id + '_');
   const answers = parseQuizAnswersInput(document.getElementById('pqEditAnswers_' + id).value);
-  if(!text){ alert('문제 내용을 입력해 주세요.'); return; }
-  if(!text.includes('___')){ alert('빈칸 표시(___)가 포함된 문제를 입력해 주세요.'); return; }
-  if(answers.length===0){ alert('정답을 최소 1개 이상 입력해 주세요.'); return; }
-  q.text = text;
-  q.answers = answers;
+  const updated = buildPolicyQuizQuestionFromForm(text, options, answers);
+  if(!updated) return;
+  q.text = updated.text;
+  q.answers = updated.answers;
+  if(updated.options) q.options = updated.options; else delete q.options;
   saveDB();
   state.policyQuizEditingId = null;
   renderTab('policyQuiz');
@@ -7395,22 +7484,27 @@ function renderPolicyQuiz(){
     const bank = DB.policyQuizBank || [];
     const bankRows = bank.map((q,idx)=>{
       if(state.policyQuizEditingId === q.id){
+        const optRows = [0,1,2,3].map(i=>`<input id="pqEditOpt_${q.id}_${i+1}" value="${escapeHtml((q.options||[])[i]||'')}" placeholder="보기 ${i+1}" style="width:100%;margin-bottom:4px;">`).join('');
         return `
           <tr>
             <td colspan="4">
               <div class="form-row">
-                <div class="field" style="flex:1;min-width:260px;"><label>문제 (빈칸은 ___ 로 표시)</label><textarea id="pqEditText_${q.id}" rows="2" style="width:100%;">${escapeHtml(q.text)}</textarea></div>
-                <div class="field" style="flex:1;min-width:200px;"><label>정답 (쉼표로 구분, 여러 개 가능)</label><input id="pqEditAnswers_${q.id}" value="${escapeHtml(q.answers.join(', '))}" style="width:100%;"></div>
+                <div class="field" style="flex:1;min-width:260px;"><label>문제</label><textarea id="pqEditText_${q.id}" rows="2" style="width:100%;">${escapeHtml(q.text)}</textarea></div>
+                <div class="field" style="flex:1;min-width:220px;"><label>보기 (객관식인 경우만, 2개 이상)</label>${optRows}</div>
+                <div class="field" style="flex:1;min-width:200px;"><label>정답 (객관식: 보기 중 하나와 동일한 텍스트 1개 / 빈칸채우기: 쉼표로 구분, 여러 개 가능)</label><input id="pqEditAnswers_${q.id}" value="${escapeHtml(q.answers.join(', '))}" style="width:100%;"></div>
               </div>
               <button class="btn btn-primary btn-sm" onclick="savePolicyQuizQuestion('${q.id}')">저장</button>
               <button class="btn btn-sm" onclick="cancelEditPolicyQuizQuestion()">취소</button>
             </td>
           </tr>`;
       }
+      const optSummary = q.options && q.options.length>0
+        ? `<div class="muted" style="font-size:12px;margin-top:2px;">보기: ${q.options.map(o=>escapeHtml(o)).join(' / ')}</div>`
+        : '';
       return `
         <tr>
           <td style="width:32px;">${idx+1}</td>
-          <td>${escapeHtml(q.text)}</td>
+          <td>${escapeHtml(q.text)}${optSummary}</td>
           <td class="muted">${escapeHtml(q.answers.join(', '))}</td>
           <td style="white-space:nowrap;">
             <button class="btn btn-sm" onclick="startEditPolicyQuizQuestion('${q.id}')">수정</button>
@@ -7427,17 +7521,25 @@ function renderPolicyQuiz(){
           <tbody>${bankRows}</tbody>
         </table>
         <div class="form-row" style="margin-top:14px;">
-          <div class="field" style="flex:1;min-width:260px;"><label>새 문제 (빈칸은 ___ 로 표시)</label><textarea id="pqNewText" rows="2" style="width:100%;" placeholder="예: 8월 1주차 판촉 기간은 8/01~___ 이다."></textarea></div>
-          <div class="field" style="flex:1;min-width:200px;"><label>정답 (쉼표로 구분, 여러 개 가능)</label><input id="pqNewAnswers" style="width:100%;" placeholder="예: 8/03, 8/3, 8월3일"></div>
+          <div class="field" style="flex:1;min-width:260px;"><label>새 문제</label><textarea id="pqNewText" rows="2" style="width:100%;" placeholder="객관식 예: 판촉 기간은?  /  빈칸채우기 예: 판촉 기간은 8/01~___ 이다."></textarea></div>
+          <div class="field" style="flex:1;min-width:220px;">
+            <label>보기 (객관식인 경우만 입력, 2~4개)</label>
+            <input id="pqNewOpt1" placeholder="보기 1" style="width:100%;margin-bottom:4px;">
+            <input id="pqNewOpt2" placeholder="보기 2" style="width:100%;margin-bottom:4px;">
+            <input id="pqNewOpt3" placeholder="보기 3" style="width:100%;margin-bottom:4px;">
+            <input id="pqNewOpt4" placeholder="보기 4" style="width:100%;">
+          </div>
+          <div class="field" style="flex:1;min-width:200px;"><label>정답 (객관식: 보기 중 하나와 동일한 텍스트 1개 / 빈칸채우기: 쉼표로 구분, 여러 개 가능)</label><input id="pqNewAnswers" style="width:100%;" placeholder="예: 8/03, 8/3, 8월3일"></div>
         </div>
-        <button class="btn btn-primary" onclick="addPolicyQuizQuestion()">문제 추가</button>
+        <div class="small-note muted" style="margin-top:6px;">보기를 2개 이상 입력하면 객관식 문제로, 보기를 비워두고 문제에 ___ 를 포함하면 빈칸채우기 문제로 등록됩니다.</div>
+        <button class="btn btn-primary" onclick="addPolicyQuizQuestion()" style="margin-top:8px;">문제 추가</button>
       </div>`;
   }
 
   if(SESSION.role!=='staff'){
     return `
       <div class="page-title">금주 주말 정책 숙지도 점검</div>
-      <div class="page-desc">주말 판촉/정책 자료를 바탕으로 한 빈칸채우기 숙지도 점검입니다. (응시는 개별 판매사원 계정으로만 가능합니다.) 주차를 선택하면 해당 주차의 점검 현황을 볼 수 있고, 별도로 선택하지 않으면 가장 최근에 등록된 주차 현황이 표시됩니다.</div>
+      <div class="page-desc">주말 판촉/정책 자료를 바탕으로 한 객관식/빈칸채우기 숙지도 점검입니다. (응시는 개별 판매사원 계정으로만 가능합니다.) 주차를 선택하면 해당 주차의 점검 현황을 볼 수 있고, 별도로 선택하지 않으면 가장 최근에 등록된 주차 현황이 표시됩니다.</div>
       ${weekSelectorHtml}
       ${summaryHtml}
       ${adminSection}
@@ -7449,11 +7551,24 @@ function renderPolicyQuiz(){
   let bodyHtml = '';
 
   if(state.policyQuizStep==='taking' && state.policyQuizQuestions){
-    const qHtml = state.policyQuizQuestions.map((q,i)=>`
+    const qHtml = state.policyQuizQuestions.map((q,i)=>{
+      if(q.options && q.options.length>0){
+        const optsHtml = q.options.map((opt,oi)=>`
+          <label style="display:block;font-weight:400;margin:4px 0;cursor:pointer;">
+            <input type="radio" name="pq_radio_${q.id}" value="${escapeHtml(opt)}" style="margin-right:6px;">${escapeHtml(opt)}
+          </label>`).join('');
+        return `
+          <div class="field" style="margin-bottom:14px;">
+            <label>${i+1}. ${escapeHtml(q.text)}</label>
+            ${optsHtml}
+          </div>`;
+      }
+      return `
       <div class="field" style="margin-bottom:14px;">
         <label>${i+1}. ${q.text}</label>
         <input id="pq_ans_${q.id}" placeholder="빈칸에 들어갈 답을 입력하세요" style="width:260px;">
-      </div>`).join('');
+      </div>`;
+    }).join('');
     bodyHtml = `
       <div class="card">
         <h3>퀴즈 응시 (${state.policyQuizQuestions.length}문제)</h3>
@@ -7489,7 +7604,7 @@ function renderPolicyQuiz(){
 
   return `
     <div class="page-title">금주 주말 정책 숙지도 점검</div>
-    <div class="page-desc">이번 주말 판촉/정책 자료를 바탕으로 핵심 키워드를 빈칸에 채워 넣는 숙지도 점검입니다. (아래 현황은 주차별로 선택해서 볼 수 있습니다. 내 퀴즈 응시는 항상 이번 주 기준입니다.)</div>
+    <div class="page-desc">이번 주말 판촉/정책 자료를 바탕으로 한 객관식(일부 빈칸채우기) 숙지도 점검입니다. (아래 현황은 주차별로 선택해서 볼 수 있습니다. 내 퀴즈 응시는 항상 이번 주 기준입니다.)</div>
     ${weekSelectorHtml}
     ${summaryHtml}
     ${bodyHtml}
@@ -7931,10 +8046,13 @@ function handleEduCompletionFile(evt, cat){
       DB.eduCompletion[cat] = parsed;
       touchTabContent(eduTabName(cat));
       saveDB();
-      renderTab(eduTabName(cat));
-      alert(`혼매경북팀(경북2담당) 소속 ${parsed.length}명의 이수 현황이 반영되었습니다.`);
+      // 업로드 결과 안내는 업로드 버튼이 있는 [시스템 관리] 화면에 그대로 표시한다
+      // (예전처럼 결과 확인 화면으로 바로 넘어가면 안내 문구가 즉시 사라져 안 보였음).
+      renderTab('systemAdmin');
+      showUploadResult(cat==='test' ? 'eduTestUploadMsg' : 'eduAiRpUploadMsg', true, `혼매경북팀(경북2담당) 소속 ${parsed.length}명의 이수 현황이 반영되었습니다.`);
     } catch(err){
-      alert('파일을 처리하는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
+      renderTab('systemAdmin');
+      showUploadResult(cat==='test' ? 'eduTestUploadMsg' : 'eduAiRpUploadMsg', false, '파일을 처리하는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
     }
   };
   reader.readAsArrayBuffer(file);
@@ -8035,7 +8153,7 @@ function handleEduVideoRichFile(evt){
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
       const parsed = parseEduVideoRichFile(rows);
       if(!parsed){
-        alert('파일 형식을 인식하지 못했습니다. "사번" 헤더와 회차별(1~4차) 교육명이 포함된 화상교육 이수현황 파일인지 확인해 주세요.');
+        showUploadResult('eduVideoUploadMsg', false, '파일 형식을 인식하지 못했습니다. "사번" 헤더와 회차별(1~4차) 교육명이 포함된 화상교육 이수현황 파일인지 확인해 주세요.');
         return;
       }
       DB.eduVideoRich = parsed;
@@ -8050,10 +8168,12 @@ function handleEduVideoRichFile(evt){
       }));
       touchTabContent('eduVideo');
       saveDB();
-      renderTab('eduVideo');
-      alert(`혼매경북팀(경북2담당) 소속 ${parsed.records.length}명의 화상교육 이수 현황이 반영되었습니다. (기준날짜: ${parsed.refDate}, 회차: ${parsed.sessions.map(s=>s.no+'차').join(', ')})`);
+      // 업로드 결과 안내는 업로드 버튼이 있는 [시스템 관리] 화면에 그대로 표시한다
+      // (renderTab이 화면을 새로 그리므로 반드시 먼저 호출한 뒤에 안내 문구를 넣어야 보인다).
+      renderTab('systemAdmin');
+      showUploadResult('eduVideoUploadMsg', true, `혼매경북팀(경북2담당) 소속 ${parsed.records.length}명의 화상교육 이수 현황이 반영되었습니다. (기준날짜: ${parsed.refDate}, 회차: ${parsed.sessions.map(s=>s.no+'차').join(', ')})`);
     } catch(err){
-      alert('파일을 처리하는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
+      showUploadResult('eduVideoUploadMsg', false, '파일을 처리하는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
     }
   };
   reader.readAsArrayBuffer(file);
@@ -8434,17 +8554,18 @@ function handleKakaoFriendsFile(evt){
       const sheetName = wb.SheetNames[0];
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
       const parsed = parseKakaoFriendsWideRows(rows) || parseKakaoFriendsRows(rows);
-      if(parsed.length===0){ if(msgEl) msgEl.textContent = '데이터를 인식하지 못했습니다. 지점/주차(또는 날짜)/플친수 컬럼이 있는지 확인해 주세요.'; return; }
+      if(parsed.length===0){ showUploadResult('kakaoFriendsUploadMsg', false, '데이터를 인식하지 못했습니다. 지점/주차(또는 날짜)/플친수 컬럼이 있는지 확인해 주세요.'); return; }
       const keyOf = r => r.branchId + '|' + r.weekStart;
       const newKeys = new Set(parsed.map(keyOf));
       DB.kakaoFriends = (DB.kakaoFriends||[]).filter(r=> !newKeys.has(keyOf(r))).concat(parsed);
       touchTabContent('kakaoFriends');
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 관리] 데이터를 갱신했습니다`);
-      if(msgEl) msgEl.innerHTML = `<span style="color:var(--good);">${parsed.length}건의 플친 데이터가 반영되었습니다.</span>`;
+      // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
+      showUploadResult('kakaoFriendsUploadMsg', true, `${parsed.length}건의 플친 데이터가 반영되었습니다.`);
     } catch(err){
-      if(msgEl) msgEl.textContent = '파일을 처리하는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.';
+      showUploadResult('kakaoFriendsUploadMsg', false, '파일을 처리하는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
     }
   };
   reader.readAsArrayBuffer(file);
