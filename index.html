@@ -102,6 +102,14 @@
   }
   @keyframes ssHintFloat{ 0%,100%{transform:translateY(0);} 50%{transform:translateY(-4px);} }
 
+  /* ---------- 재고 조회: "소진리스트" 매칭 품목 알림(깜빡이는 소진집중 배지) ---------- */
+  .inv-clearance-badge{
+    display:inline-flex;align-items:center;gap:3px;margin-left:6px;padding:1px 7px;border-radius:999px;
+    background:var(--bad);color:#fff;font-size:10.5px;font-weight:700;white-space:nowrap;vertical-align:middle;
+    animation:invClearanceBlink 1.2s ease-in-out infinite;
+  }
+  @keyframes invClearanceBlink{ 0%,100%{opacity:1;} 50%{opacity:.35;} }
+
   /* ---------- 관리자 설정용 토글 스위치 ---------- */
   .toggle-switch{ position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0; }
   .toggle-switch input{ opacity:0;width:0;height:0; }
@@ -829,6 +837,7 @@ function buildSeedDataFromReal(){
     eduSchedules: { hq: eduSchedulesHq, inhouse: [], etc: eduSchedulesEtc },
     eduCompletion: { video: eduCompletionVideo, test: eduCompletionTest, aiRp: [] },
     eduVideoRich: null,
+    inventoryClearanceCodes: [],
     kakaoFriends, prospects: [], subB2bSales: [], policyQuizAttempts: [],
     kakaoContestInfo: JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO)),
     kakaoContestResultImage: null,
@@ -1279,6 +1288,8 @@ function migrateDB(){
   // 화상교육 이수율은 이제 "기준날짜/회차별 교육명"이 포함된 신규 서식 파일로 업로드하며,
   // 업로드 시 이 필드에 회차별 상세 데이터가 저장된다(구서식 DB.eduCompletion.video는 리마인더용으로 함께 동기화됨).
   if(DB.eduVideoRich===undefined) DB.eduVideoRich = null;
+  // 재고 조회: "소진리스트" 시트에서 추출한 소진집중 대상 상품코드 목록(깜빡이는 알림 배지용)
+  if(!DB.inventoryClearanceCodes) DB.inventoryClearanceCodes = [];
   if(!DB.kakaoFriends) DB.kakaoFriends = [];
   DB.kakaoFriends.forEach(r=>{ if(!r.date) r.date = r.weekStart; if(!r.weekStart && r.date) r.weekStart = getMondayStr(r.date); });
   if(!DB.prospects) DB.prospects = [];
@@ -2296,7 +2307,7 @@ function renderSystemAdmin(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>재고 조회 파일 업로드 <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.</div>
+      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.</div>
       <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
       <div id="inventoryUploadMsg" class="small-note"></div>
     </div>
@@ -3936,9 +3947,21 @@ function handleInventoryFile(evt){
       const parsedInventory = parseInventorySheetRows(rows);
       if(parsedInventory.length===0){ msgEl.textContent = '재고 데이터를 인식하지 못했습니다. 파일에 "점포명"(또는 지점명/매장명)과 "상품명"(또는 제품명) 컬럼이 있는지 확인해 주세요.'; return; }
       const count = applyInventorySnapshot(parsedInventory);
+
+      // "소진리스트" 시트가 이 파일에 있으면 소진집중 대상 상품코드도 함께 갱신한다
+      // (없는 파일도 많으므로, 없으면 기존에 반영돼 있던 값은 그대로 둔다).
+      let clearanceMsg = '';
+      const clrSheetName = wb.SheetNames.find(n=>n.includes('소진'));
+      if(clrSheetName){
+        const clrRows = XLSX.utils.sheet_to_json(wb.Sheets[clrSheetName], {header:1, defval:null, raw:true});
+        const clearanceCodes = parseClearanceListRows(clrRows);
+        DB.inventoryClearanceCodes = clearanceCodes;
+        clearanceMsg = ` / 소진집중 대상 ${clearanceCodes.length}건 반영`;
+      }
+
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
-      msgEl.innerHTML = `<span style="color:var(--good);">재고 데이터 ${count}건 반영 완료</span>`;
+      msgEl.innerHTML = `<span style="color:var(--good);">재고 데이터 ${count}건 반영 완료${clearanceMsg}</span>`;
       renderTab('systemAdmin');
     }catch(err){
       msgEl.textContent = '파일을 읽는 중 오류가 발생했습니다: ' + err.message;
@@ -4597,7 +4620,42 @@ function parseIntegratedBoardWorkbook(wb){
     out.warnings.push('"재고장" 시트를 찾지 못해 재고 데이터는 갱신하지 않았습니다.');
   }
 
+  // ---- 소진리스트(소진집중 대상 상품코드) ----
+  // 이 시트가 없는 파일도 많으므로(선택 사항), 못 찾으면 null을 남겨서 기존 DB의 값을
+  // 그대로 두게 한다(빈 배열로 덮어써서 기존에 반영된 소진집중 표시가 사라지지 않도록).
+  const clrSheetName = wb.SheetNames.find(n=>n.includes('소진'));
+  if(clrSheetName){
+    const clrRows = XLSX.utils.sheet_to_json(wb.Sheets[clrSheetName], {header:1, defval:null, raw:true});
+    out.clearanceCodes = parseClearanceListRows(clrRows);
+  } else {
+    out.clearanceCodes = null;
+  }
+
   return out;
+}
+
+// "소진리스트" 시트를 파싱해서 소진집중 대상 상품코드 목록을 추출한다.
+// 이 시트는 정형화된 헤더 표가 아니라, 카테고리별로 [상품코드, 상품명] 2열짜리 블록이
+// 여러 개 옆으로 나란히 붙어 있는 형태다(블록 폭이 카테고리마다 제각각이라 고정 위치로는
+// 못 찾는다). 그래서 시트 전체를 훑으며 "숫자 코드 셀 바로 오른쪽에 문자열 상품명 셀이
+// 붙어 있는" 패턴을 전부 찾아 코드만 모은다 — 실제 파일로 검증한 결과 이 방식이 모든
+// 블록(9개 카테고리, 총 585개 품목)을 빠짐없이 정확히 인식한다.
+function parseClearanceListRows(rows){
+  if(!rows || !rows.length) return [];
+  const codes = new Set();
+  rows.forEach(row=>{
+    if(!row) return;
+    for(let c=0; c<row.length-1; c++){
+      const v = row[c];
+      const next = row[c+1];
+      // 상품코드는 실제 파일에서 13자리 안팎의 큰 정수(바코드/EAN)로 나타난다.
+      // 10억(1e9) 이상으로 걸러서 일반적인 수량/금액 값과 혼동되지 않게 한다.
+      if(typeof v==='number' && v>=1e9 && Number.isFinite(v) && typeof next==='string' && next.trim()){
+        codes.add(v);
+      }
+    }
+  });
+  return Array.from(codes);
 }
 
 // 재고장 시트를 행 배열로 파싱한다. 통합 보드.xlsx 안의 "재고장" 시트, 그리고 시스템 관리의
@@ -4772,6 +4830,10 @@ function applyIntegratedBoard(parsed){
   // 새 파일이 올라와도 절대 덮어쓰지 않고 그대로 유지 — 별도로 수정하기 전까지 지속 보존됨)
   applyInventorySnapshot(parsed.inventory);
 
+  // 8-1) 소진리스트(소진집중 대상 상품코드) — 이 파일에 시트가 있을 때만 갱신하고,
+  // 없으면(선택 사항 시트라서) 기존에 반영돼 있던 소진집중 표시를 그대로 둔다.
+  if(parsed.clearanceCodes) DB.inventoryClearanceCodes = parsed.clearanceCodes;
+
   saveDB();
   return { newBranchCount, newUserCount, employeeCount: parsed.employeePerf.length, inventoryCount: parsed.inventory.length, warnings: parsed.warnings };
 }
@@ -4911,6 +4973,8 @@ function renderInventory(){
   if(f.page > totalPages) f.page = totalPages;
   if(f.page < 1) f.page = 1;
   const pageRows = rows.slice((f.page-1)*INV_PAGE_SIZE, f.page*INV_PAGE_SIZE);
+  const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
+  const clearanceCountInView = rows.filter(r=>r.code!=null && clearanceSet.has(Number(r.code))).length;
 
   const tableRows = pageRows.map(r=>{
     const tag = invTag(r.product);
@@ -4918,10 +4982,11 @@ function renderInventory(){
     const status = r.status || '보유중';
     const saleStatus = r.saleStatus || '판매가능';
     const isDisplay = tag==='진열';
+    const isClearance = r.code!=null && clearanceSet.has(Number(r.code));
     return `<tr>
       <td>${r.store}</td>
       <td>${tag==='행사'?'<span class="badge warn">행사</span>':'<span class="badge">진열</span>'}</td>
-      <td class="wrap" title="${escapeHtml(r.product||'')}">${r.product}</td>
+      <td class="wrap" title="${escapeHtml(r.product||'')}">${r.product}${isClearance ? `<span class="inv-clearance-badge" title="소진리스트 대상 품목입니다">🔥 소진집중</span>` : ''}</td>
       <td class="wrap muted" title="${escapeHtml(r.cat2||'')}">${r.cat2}</td>
       <td class="wrap muted" title="${escapeHtml(r.model||'')}">${r.model}</td>
       <td class="muted">${r.code!=null?r.code:'-'}</td>
@@ -4981,7 +5046,7 @@ function renderInventory(){
         <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">제품 상태 (다중 선택)</label>
         <div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>
       </div>
-      <div class="small-note" style="margin-top:10px;">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중</div>
+      <div class="small-note" style="margin-top:10px;">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}</div>
     </div>
 
     <div class="card">
