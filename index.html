@@ -2394,9 +2394,17 @@ function renderSystemAdmin(){
   if(!isSystemAdmin()){
     return `<div class="page-title">시스템 관리</div><div class="page-desc">관리자만 접근할 수 있는 화면입니다.</div>`;
   }
+  const nowWeekIdx = currentGoalsWeekIndex();
   return `
     <div class="page-title">시스템 관리</div>
     <div class="page-desc">관리자 전용 화면입니다. 계정(매니저/사원) 관리, 신규 계정 생성, 각종 데이터 업로드를 이 화면에서 한 번에 처리할 수 있습니다.</div>
+
+    <div class="card" style="margin-bottom:16px;background:#fff7f9;border-color:#f0c7d4;">
+      <h3>📁 목표/실적 파일 업로드 <small>("목표" 시트 + "실판매 목표대비 실적조회" 시트 포함 .xlsx)</small></h3>
+      <div class="muted" style="margin-bottom:10px;">"목표" 시트(구독목표/판매 금액 목표 표)와 "실판매 목표대비 실적조회" 시트가 들어있는 파일을 그대로 올리면, 지점별 GROSS 목표·구독 금액 목표·팀원별 누적 실적이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리] 페이지 데이터로 한 번에 갱신됩니다. 오늘(${todayStr()})은 ${nowWeekIdx}주차로 인식되어, 주차별 달성율 계산용 실적 스냅샷으로 함께 기록됩니다. 지난 달로 넘어가면 지난 달 데이터는 그대로 보존되고, 이번 달 실적만 새로 올리면 됩니다.</div>
+      <input type="file" id="goalsFileInput" accept=".xlsx,.xls" onchange="handleGoalsFile(event)">
+      <div id="goalsUploadMsg" class="small-note"></div>
+    </div>
 
     <div class="card" style="margin-bottom:16px;">
       <h3>스크린세이버 설정</h3>
@@ -3661,7 +3669,9 @@ function handleGoalsFile(evt){
       let msg = `반영 완료 — 지점 GROSS 목표 ${result.branchTargetCount}건, 구독 목표 ${result.subTargetCount}건, 실적 ${result.employeeCount}명.`;
       if(result.warnings.length) msg += ' ⚠ ' + result.warnings.join(' ');
       logActivity('update', `${SESSION.name}님(관리자)이 [목표 관리] 파일을 갱신했습니다 (GROSS 목표/구독 목표/실적)`);
-      renderTab('goals');
+      // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
+      // 업로드 입력이 [시스템 관리] 화면에 있으므로, 다른 업로드들과 동일하게 그 화면에 머무른다.
+      renderTab('systemAdmin');
       showUploadResult('goalsUploadMsg', true, msg);
     }catch(err){
       showUploadResult('goalsUploadMsg', false, '파일 처리 중 오류: ' + err.message);
@@ -3766,10 +3776,10 @@ function renderGoals(){
       <td>${a.name} <span class="muted">(${a.empId})</span></td>
       <td>
         ${editable
-          ? `<input type="number" style="width:120px" value="${a.target}" onchange="updateAllocation('${branchId}','${a.empId}', this.value)">`
-          : fmtWon(a.target)}
+          ? `<input type="number" step="0.1" style="width:110px" value="${wonToKKRaw(a.target)}" onchange="updateAllocation('${branchId}','${a.empId}', this.value)"> KK`
+          : fmtKK(a.target)}
       </td>
-      <td>${fmtWon(achieved)}</td>
+      <td>${fmtKK(achieved)}</td>
       <td>${pct.toFixed(1)}% ${pctBadge(pct)}</td>
       <td><div class="progress-bar"><div style="width:${Math.min(pct,100)}%"></div></div></td>
     </tr>`;
@@ -3782,9 +3792,9 @@ function renderGoals(){
     const cells = wk.map(w=>{
       const style = w.isCurrent ? 'background:#fff7e0;' : '';
       const body = w.known
-        ? `실적 ${fmtWon(w.actual)}<br><b>${w.pct}%</b> ${pctBadge(w.pct)}`
+        ? `실적 ${fmtKK(w.actual)}<br><b>${w.pct}%</b> ${pctBadge(w.pct)}`
         : `<span class="muted">미집계</span>`;
-      return `<td style="${style}font-size:12px;line-height:1.6;">목표 ${fmtWon(w.target)}<br>${body}</td>`;
+      return `<td style="${style}font-size:12px;line-height:1.6;">목표 ${fmtKK(w.target)}<br>${body}</td>`;
     }).join('');
     return `<tr><td>${a.name}</td>${cells}</tr>`;
   }).join('');
@@ -3806,8 +3816,8 @@ function renderGoals(){
         : `${a.subQtyTarget||0}건`}</td>
       <td>${editable
         ? `<input type="number" step="0.1" style="width:100px" value="${a.subAmtTarget||0}" onchange="updateAllocSubTarget('${branchId}','${a.empId}','subAmtTarget', this.value)">`
-        : `${a.subAmtTarget||0}백만원`}</td>
-      <td class="muted">${actual.qty}건 / ${actual.amt}백만원</td>
+        : `${a.subAmtTarget||0}KK`}</td>
+      <td class="muted">${actual.qty}건 / ${actual.amt}KK</td>
       <td>${(a.subAmtTarget||0)>0 ? `${amtPct.toFixed(1)}% ${pctBadge(amtPct)}` : '-'}</td>
     </tr>`;
   }).join('');
@@ -3818,13 +3828,7 @@ function renderGoals(){
     ${branchSelectorHtml}
     ${periodSelectorHtml}
 
-    ${isAdmin ? `
-    <div class="card" style="margin-bottom:16px;background:#fff7f9;border-color:#f0c7d4;">
-      <h3>📁 목표/실적 파일 업로드 <small>("목표" 시트 + "실판매 목표대비 실적조회" 시트 포함 .xlsx)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"목표" 시트(구독목표/판매 금액 목표 표)와 "실판매 목표대비 실적조회" 시트가 들어있는 파일을 그대로 올리면, 지점별 GROSS 목표·구독 금액 목표·팀원별 누적 실적이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) 데이터로 한 번에 갱신됩니다. 오늘(${todayStr()})은 ${nowWeekIdx}주차로 인식되어, 주차별 달성율 계산용 실적 스냅샷으로 함께 기록됩니다. 지난 달로 넘어가면 지난 달 데이터는 그대로 보존되고, 이번 달 실적만 새로 올리면 됩니다.</div>
-      <input type="file" id="goalsFileInput" accept=".xlsx,.xls" onchange="handleGoalsFile(event)">
-      <div id="goalsUploadMsg" class="small-note"></div>
-    </div>` : ''}
+    ${isAdmin ? `<div class="card" style="margin-bottom:16px;"><div class="small-note">📁 목표/실적 파일 업로드는 <b>[시스템 관리]</b> 화면 맨 위 업로드 항목으로 이동했습니다.</div></div>` : ''}
 
     <div class="card ai-box" style="margin-bottom:16px;">
       <div class="ai-title">📌 목표 산정 기준 안내</div>
@@ -3881,7 +3885,7 @@ function renderGoals(){
       </div>
       <div class="form-row">
         <div class="field">
-          <label>구독 판매 금액 목표 (백만원)</label>
+          <label>구독 판매 금액 목표 (KK)</label>
           <input id="subAmtTargetInput" type="number" step="0.1" style="width:150px" value="${g.subAmtTarget||0}" ${canSetSubTarget?'':'disabled'}>
         </div>
       </div>
@@ -3889,10 +3893,10 @@ function renderGoals(){
 
       <h3 style="margin-top:20px;">팀원별 구독 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
       <table>
-        <thead><tr><th>이름</th><th>구독 건수 목표</th><th>구독 금액 목표(백만원)</th><th>구독 실적(건수/금액)</th><th>금액 달성률</th></tr></thead>
+        <thead><tr><th>이름</th><th>구독 건수 목표</th><th>구독 금액 목표(KK)</th><th>구독 실적(건수/금액)</th><th>금액 달성률</th></tr></thead>
         <tbody>${subAllocRows}</tbody>
       </table>
-      <div class="muted" style="margin-top:8px;">배분 합계: 건수 <b>${subAllocSumQty}건</b> / 금액 <b>${subAllocSumAmt}백만원</b> — 지점 목표 대비 잔여: 건수 <b style="color:${(g.subQtyTarget-subAllocSumQty)<0?'var(--bad)':'var(--text)'}">${g.subQtyTarget-subAllocSumQty}건</b> / 금액 <b style="color:${(g.subAmtTarget-subAllocSumAmt)<0?'var(--bad)':'var(--text)'}">${Math.round((g.subAmtTarget-subAllocSumAmt)*10)/10}백만원</b></div>
+      <div class="muted" style="margin-top:8px;">배분 합계: 건수 <b>${subAllocSumQty}건</b> / 금액 <b>${subAllocSumAmt}KK</b> — 지점 목표 대비 잔여: 건수 <b style="color:${(g.subQtyTarget-subAllocSumQty)<0?'var(--bad)':'var(--text)'}">${g.subQtyTarget-subAllocSumQty}건</b> / 금액 <b style="color:${(g.subAmtTarget-subAllocSumAmt)<0?'var(--bad)':'var(--text)'}">${Math.round((g.subAmtTarget-subAllocSumAmt)*10)/10}KK</b></div>
       <div class="small-note">※ 팀원별로 각자 이름에 맞는 구독 건수/금액 목표를 직접 입력할 수 있습니다. 실적은 &quot;구독 실적&quot; 메뉴의 최근 데이터를 이름 기준으로 매칭한 값입니다.</div>
     </div>
   `;
@@ -3940,11 +3944,12 @@ function updateBranchTarget(branchId){
   g.target = Math.round(kk * 1000000);
   saveDB(); renderTab('goals');
 }
+// 배분 목표 입력란도 KK(=백만원) 단위로 표시되므로, 저장 시 실제 저장 단위인 "원"으로 환산한다.
 function updateAllocation(branchId, empId, val){
   if(!canManageBranchGoals(branchId)) return;
   const period = state.goalsPeriod || currentGoalsPeriod();
   const a = getGoals(branchId, period).allocations.find(x=>x.empId===empId);
-  if(a){ a.target = Number(val)||0; saveDB(); renderTab('goals'); }
+  if(a){ a.target = Math.round((Number(val)||0) * 1000000); saveDB(); renderTab('goals'); }
 }
 /* =========================================================================
    7b. RENDER: WORK SCHEDULE (근무 일정 확인/편집)
@@ -4827,7 +4832,7 @@ function renderSales(){
 
     ${canUpload ? `
     <div class="card" style="margin-bottom:16px;">
-      <div class="small-note">📋 실적 파일 업로드는 <b>[목표 관리]</b> 페이지의 "목표/실적 파일 업로드"로 이동했습니다.</div>
+      <div class="small-note">📋 실적 파일 업로드는 <b>[시스템 관리]</b> 화면 맨 위 "목표/실적 파일 업로드"로 이동했습니다.</div>
     </div>` : ''}
 
     <div class="grid grid-2" style="margin-bottom:16px;">
