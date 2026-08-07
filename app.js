@@ -1411,13 +1411,17 @@ function empAchieved(branchId, empId, period){
 // 나머지는 버려야 실적/제품 분석 화면·차트·AI 피드백이 중복 합산되지 않는다. 서로 다른 달의
 // 행은 그대로 남겨두므로(그 달들을 함께 볼 때는 정상적으로 합산됨) "전체 기간" 조회에는 영향 없다.
 function latestSalesRowsPerMonth(rows){
-  const map = {};
+  // 사번+월별로 "가장 최근 업로드 날짜"의 스냅샷 전체만 남긴다. 제품별로 따로 최신 날짜를
+  // 고르면 안 된다 — 파일 업로드 1건이 그 날짜 기준 "월 누적 전체" 제품 목록을 담고 있으므로,
+  // 날짜가 다른 스냅샷끼리 제품을 섞어서 합치면(예: A업로드일엔 있던 제품이 B업로드일엔 0이라
+  // 빠졌을 때) 서로 다른 시점의 금액이 중복 합산되어 부풀려진다.
+  const latestDate = {};
   rows.forEach(r=>{
-    const key = r.empId + '||' + r.product + '||' + String(r.date||'').slice(0,7);
-    const cur = map[key];
-    if(!cur || String(r.date||'') > String(cur.date||'')) map[key] = r;
+    const key = r.empId + '||' + String(r.date||'').slice(0,7);
+    const d = String(r.date||'');
+    if(!latestDate[key] || d > latestDate[key]) latestDate[key] = d;
   });
-  return Object.values(map);
+  return rows.filter(r=> String(r.date||'') === latestDate[r.empId + '||' + String(r.date||'').slice(0,7)]);
 }
 function branchTarget(branchId, period){ return getGoals(branchId, period).target; }
 function empTarget(branchId, empId, period){
