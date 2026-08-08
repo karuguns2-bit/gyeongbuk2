@@ -3963,20 +3963,19 @@ function renderBranches(){
   const att = DB.attendance[detailBranch];
   const attRows = att.records.map(r=>`<tr><td>${r.name}</td><td>${statusBadge(r.status)}</td><td>${r.checkin}</td><td>${r.checkout}</td></tr>`).join('');
 
-  // 지점별 달성률 비교: 지점이 14개나 되므로 세로 막대보다 가로 막대가 라벨을 읽기 쉽고,
-  // 컨테이너를 고정 높이(220px)로 둬서 예전보다 더 컴팩트하게 축소한다.
+  // 지점별 달성률 비교: 세로 막대(컬럼) 그래프로 표시한다(가로형에서 요청에 따라 원복).
   setTimeout(()=>{
     const ctx = document.getElementById('branchCompareChart');
     if(!ctx) return;
     if(branchChartInstance) branchChartInstance.destroy();
-    const sorted = [...rows].sort((a,b)=>a.pct-b.pct);
+    const sorted = [...rows].sort((a,b)=>b.pct-a.pct);
     branchChartInstance = new Chart(ctx, {
       type:'bar',
       data:{
         labels: sorted.map(r=>r.b.name),
         datasets:[{ label:'달성률(%)', data: sorted.map(r=>Number(r.pct.toFixed(1))), backgroundColor:'#A50034' }]
       },
-      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`달성률 ${ctx.parsed.x}%`}}}, scales:{x:{beginAtZero:true}} }
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`달성률 ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true}} }
     });
   }, 0);
 
@@ -3987,7 +3986,7 @@ function renderBranches(){
     <div class="grid grid-3" style="margin-bottom:16px;">${cards}</div>
     <div class="card" style="margin-bottom:16px;">
       <h3>지점별 달성률 비교</h3>
-      <div style="position:relative;height:220px;">
+      <div style="position:relative;height:260px;">
         <canvas id="branchCompareChart"></canvas>
       </div>
     </div>
