@@ -508,10 +508,18 @@ const POLICY_QUIZ_BANK_VERSION = 2; // v2: '26년 8월 2주차 판촉 안내 기
 // 이 값들은 최초 1회 DB.policyQuizWeeklyBanks/DB.policyQuizWeekMeta로 이관하는 데만 쓰인다.
 const POLICY_QUIZ_CURRENT_WEEK_KEY = '2026-08-03'; // 8/3(월)~8/9(일) — 8월2주차 주말을 대비한 점검
 const POLICY_QUIZ_CURRENT_WEEK_LABEL = '26년 8월2주차';
-const POLICY_QUIZ_CURRENT_WEEK_DEADLINE = '2026-08-08'; // 이 날짜까지만 응시 가능, 이후 응시 차단
+// "주말 정책 숙지도 점검"은 그 주 토요일+일요일에 응시하라는 취지인데, 마감일이 실수로
+// 토요일(8/8)까지로만 설정되어 있었다. 그러면 일요일(8/9)에 문제를 다 풀고 제출해도
+// submitPolicyQuiz()의 마감 체크에 걸려 알림만 뜨고 응시 기록이 저장되지 않아, 정작 시험을
+// 본 사람이 "미응시(미이수)"로 계속 남는 버그가 됐다. 주(week) 정의 자체가 일요일까지이므로
+// 마감일도 일요일(8/9)까지로 맞춘다.
+const POLICY_QUIZ_CURRENT_WEEK_DEADLINE = '2026-08-09'; // 이 날짜까지만 응시 가능, 이후 응시 차단
 // 문제은행을 "주차별 구조"로 이관하는 마이그레이션의 버전. 이미 이관된 DB(값이 같음)는 다시
 // 건드리지 않아서, 이관 이후 관리자가 추가/수정한 문제나 주차 설정이 덮어써지지 않게 한다.
 const POLICY_QUIZ_STRUCTURE_VERSION = 1;
+// 위 마감일 버그를 이미 겪은(=DB에 옛날 값 8/8이 그대로 저장된) 라이브 DB를 1회 자동 보정하기
+// 위한 별도 버전 플래그. 관리자가 그 사이 직접 다른 마감일로 바꿔놨다면 건드리지 않는다.
+const POLICY_QUIZ_DEADLINE_FIX_VERSION = 1;
 
 const SUBSCRIPTION_DATA = {
   asOf: '2026-07-29',
@@ -816,6 +824,19 @@ function loadLoginStatsIfNeeded(){
   });
 }
 
+// "주말 정책 숙지도 점검" 마감일 버그(§POLICY_QUIZ_CURRENT_WEEK_DEADLINE 옆 주석 참고) 1회 보정.
+// 이미 저장된 DB에 옛날의 잘못된 마감일(8/8, 토요일까지만)이 그대로 남아있으면 "주말"(토+일)
+// 취지에 맞는 8/9(일요일)로 자동 교정한다. 관리자가 이미 다른 값으로 바꿔놨다면(=저장된 값이
+// 옛날 잘못된 값과 다르면) 건드리지 않는다. migrateDB()에서 호출되지만, 의존성이 적어 별도
+// 함수로 분리해 독립적으로 테스트할 수 있게 했다.
+function applyPolicyQuizDeadlineFix(){
+  if(DB.policyQuizDeadlineFixVersion === POLICY_QUIZ_DEADLINE_FIX_VERSION) return;
+  const wkMeta = DB.policyQuizWeekMeta && DB.policyQuizWeekMeta[POLICY_QUIZ_CURRENT_WEEK_KEY];
+  if(wkMeta && wkMeta.deadline === '2026-08-08'){
+    wkMeta.deadline = '2026-08-09';
+  }
+  DB.policyQuizDeadlineFixVersion = POLICY_QUIZ_DEADLINE_FIX_VERSION;
+}
 function migrateDB(){
   // fills in fields for DBs saved before a feature was added.
   // (여러 사용자가 거의 동시에 로그인할 때마다 실제 변경사항이 없는데도
@@ -943,6 +964,7 @@ function migrateDB(){
     }
     DB.policyQuizStructureVersion = POLICY_QUIZ_STRUCTURE_VERSION;
   }
+  applyPolicyQuizDeadlineFix();
   if(!DB.policyQuizWeeklyBanks) DB.policyQuizWeeklyBanks = {};
   if(!DB.policyQuizWeekMeta) DB.policyQuizWeekMeta = {};
   DB.branches.forEach(b=>{
@@ -1328,9 +1350,22 @@ function renderTab(tab){
   // innerHTML을 통째로 교체하면 매번 스크롤이 맨 위로 튀어 "필터를 누를 때마다 화면이
   // 움직인다"는 문제가 생겼다. 같은 탭을 다시 그리는 경우(=필터 변경)에는 스크롤 위치를
   // 기억했다가 그대로 복원하고, 실제로 다른 탭으로 이동할 때만 맨 위로 보낸다.
+  //
+  // 다만 raw scrollTop 픽셀 값만 그대로 복원하는 방식은 "지점별 경쟁력 현황"처럼 필터에 따라
+  // 표의 행 수가 크게 달라지는 화면에서는 부족하다 — 필터를 바꿔 콘텐츠 전체 높이가 줄어들면
+  // 브라우저가 예전 scrollTop 값을 새 최대 스크롤 위치로 강제로 clamp해버려서, 실제로는
+  // "복원"했는데도 화면이 위로 튀어 보이는 문제가 남는다. 그래서 항상 존재하는 안정적인 기준
+  // 요소(#competCard 등 anchorSelector)가 있으면, raw pixel 대신 그 요소가 뷰포트에서 보이던
+  // 위치를 그대로 유지하도록 스크롤을 보정한다(콘텐츠 높이가 바뀌어도 시각적으로 안 움직임).
   const isSameTab = (state.tab === tab);
   const mainForScroll = document.getElementById('mainContent');
   const savedScrollTop = (isSameTab && mainForScroll) ? mainForScroll.scrollTop : 0;
+  const scrollAnchorSelector = '#competCard';
+  let scrollAnchorViewportTop = null;
+  if(isSameTab && mainForScroll){
+    const anchorBefore = document.querySelector(scrollAnchorSelector);
+    if(anchorBefore) scrollAnchorViewportTop = anchorBefore.getBoundingClientRect().top;
+  }
   state.tab = tab;
   if(tab!=='home' && typeof noticeTimer!=='undefined' && noticeTimer){ clearInterval(noticeTimer); noticeTimer=null; }
   const main = document.getElementById('mainContent');
@@ -1378,7 +1413,19 @@ function renderTab(tab){
   if(tab!=='notices') state.noticeBoardEditId = null;
   if(tab!=='infoReports') state.infoReportEditId = null;
   if(tab!=='subB2bSales') state.b2bEditId = null;
-  if(isSameTab && main) main.scrollTop = savedScrollTop;
+  if(isSameTab && main){
+    if(scrollAnchorViewportTop!==null){
+      const anchorAfter = document.querySelector(scrollAnchorSelector);
+      if(anchorAfter){
+        const delta = anchorAfter.getBoundingClientRect().top - scrollAnchorViewportTop;
+        main.scrollTop = main.scrollTop + delta;
+      } else {
+        main.scrollTop = savedScrollTop;
+      }
+    } else {
+      main.scrollTop = savedScrollTop;
+    }
+  }
   afterRenderHooks(tab);
 }
 
@@ -3350,12 +3397,31 @@ function parseGoalsFileWorkbook(wb){
   return out;
 }
 
-// 오늘 날짜(YYYY-MM-DD) 기준 "이번 달 몇 주차"인지 계산한다: 1~7일=1주차, 8~14일=2주차,
-// 15~21일=3주차, 22~28일=4주차, 29일 이후=5주차(최대 5주차로 고정).
+// 오늘 날짜(YYYY-MM-DD) 기준 "이번 달 몇 주차"인지 계산한다. 요일과 무관하게 항상
+// 1~9일=1주차, 10~16일=2주차, 17~23일=3주차, 24일~월말=4주차로 고정한다(매달 정확히
+// 4주차까지만 존재하도록, 남는 날짜는 1주차/4주차에 나눠 포함시킨다).
 function currentGoalsWeekIndex(dateStr){
   const s = dateStr || todayStr();
   const day = Number(String(s).slice(8,10)) || 1;
-  return Math.min(5, Math.max(1, Math.ceil(day/7)));
+  if(day<=9) return 1;
+  if(day<=16) return 2;
+  if(day<=23) return 3;
+  return 4;
+}
+// 주어진 period(YYYY-MM)의 각 주차가 며칠부터 며칠까지인지 계산한다 — currentGoalsWeekIndex와
+// 동일한 경계(1~9/10~16/17~23/24~월말)를 사용하며, "N주차 (M/D~D)" 형태의 표시용 라벨도 만든다.
+function goalsWeekBounds(period, weekIdx){
+  const parts = String(period||currentGoalsPeriod()).split('-').map(Number);
+  const y = parts[0], m = parts[1];
+  const lastDay = new Date(y, m, 0).getDate(); // Date의 month는 0-based라 그대로 넘기면 "이번 달의 마지막 날"이 된다
+  const bounds = [[1,9],[10,16],[17,23],[24,lastDay]];
+  const idx = Math.min(4, Math.max(1, weekIdx||1)) - 1;
+  return { start: bounds[idx][0], end: bounds[idx][1] };
+}
+function goalsWeekLabel(period, weekIdx){
+  const b = goalsWeekBounds(period, weekIdx);
+  const m = Number(String(period||currentGoalsPeriod()).split('-')[1]);
+  return `${weekIdx}주차 (${m}/${b.start}~${b.end})`;
 }
 
 // 파싱된 목표/실적 파일 내용을 실제 DB에 반영한다.
@@ -3468,11 +3534,12 @@ function handleGoalsFile(evt){
   reader.readAsArrayBuffer(file);
 }
 
-// 주차별 목표 자동배분: 1주차 55% / 2주차 25% / 3주차 10% / 4주차 5% / 5주차 5%.
+// 주차별 목표 자동배분: 1주차 55% / 2주차 25% / 3주차 10% / 4주차 10%(달마다 정확히 4주차까지만
+// 존재하도록 주차 경계를 재정의하면서, 기존 4주차 5%+5주차 5%를 4주차 10%로 합쳤다).
 // 이미 지난 주차의 실적이 확인되면(=주차별 스냅샷이 있으면), 그 주차의 미달성분(목표-실적,
 // 음수면 0)을 이후 남은 주차들에 원래 비중 그대로 재분배한다. 아직 실적 스냅샷이 없는(=아직
 // 안 지난) 주차는 재배분 대상에서 제외한다.
-const GOALS_WEEK_RATIOS = [0.55, 0.25, 0.10, 0.05, 0.05];
+const GOALS_WEEK_RATIOS = [0.55, 0.25, 0.10, 0.10];
 function goalsWeeklyActualsFor(branchId, empId, period){
   period = period || currentGoalsPeriod();
   return (DB.goalsWeeklyActuals && DB.goalsWeeklyActuals[period] && DB.goalsWeeklyActuals[period][branchId] && DB.goalsWeeklyActuals[period][branchId][empId]) || {};
@@ -3483,19 +3550,20 @@ function computeWeeklyGoalBreakdown(totalTarget, weeklyActualCum, nowWeekIdx){
   const adjusted = base.slice();
   const result = [];
   let prevCum = 0;
-  for(let w=1; w<=5; w++){
+  const numWeeks = GOALS_WEEK_RATIOS.length; // 4주
+  for(let w=1; w<=numWeeks; w++){
     const cumRaw = weeklyActualCum[w];
     const known = (cumRaw!=null);
     const cum = known ? Number(cumRaw) : null;
     const weekActual = known ? Math.max(0, cum - prevCum) : null;
     if(known) prevCum = cum;
-    if(known && w<5){
+    if(known && w<numWeeks){
       const target = adjusted[w-1];
       const shortfall = Math.max(0, target - weekActual);
       if(shortfall>0){
         const remainRatioSum = GOALS_WEEK_RATIOS.slice(w).reduce((s,r)=>s+r,0);
         if(remainRatioSum>0){
-          for(let k=w; k<5; k++){
+          for(let k=w; k<numWeeks; k++){
             adjusted[k] += Math.round(shortfall * (GOALS_WEEK_RATIOS[k]/remainRatioSum));
           }
         }
@@ -3655,10 +3723,10 @@ function renderGoals(){
     </div>
 
     <div class="card" style="margin-bottom:16px;">
-      <h3>주차별 목표 달성 현황 <small>(1주 55% / 2주 25% / 3주 10% / 4주 5% / 5주 5% 자동 배분 · 미달성분은 다음 주차에 비중대로 재배분)</small></h3>
+      <h3>주차별 목표 달성 현황 <small>(1주 55% / 2주 25% / 3주 10% / 4주 10% 자동 배분 · 미달성분은 다음 주차에 비중대로 재배분)</small></h3>
       <div style="overflow-x:auto;">
       <table>
-        <thead><tr><th>이름</th><th>1주차</th><th>2주차</th><th>3주차</th><th>4주차</th><th>5주차</th></tr></thead>
+        <thead><tr><th>이름</th><th>${goalsWeekLabel(period,1)}</th><th>${goalsWeekLabel(period,2)}</th><th>${goalsWeekLabel(period,3)}</th><th>${goalsWeekLabel(period,4)}</th></tr></thead>
         <tbody>${weeklyRows}</tbody>
       </table>
       </div>
@@ -4124,11 +4192,20 @@ function renderCompetitivenessSection(period){
   const chartHeight = 260;
 
   return `
-    <div class="card" style="margin-top:16px;">
+    <div class="card" id="competCard" style="margin-top:16px;">
       <h3>지점별 경쟁력 현황 <small>(${data.asOf ? data.asOf+' 기준 · ' : ''}${period} 월 · msis경쟁력 시트 기준 · 금액은 KK(백만원) 단위, MS=자사 점유율%, LG=자사 매출, SS=경쟁사 매출, GAP=LG−SS(마이너스는 빨간색))</small></h3>
       ${scopeButtonsHtml}
-      ${selectorHtml}
-      ${tableHtml}
+      <!-- 전체/관리자별/지점별 필터마다 표 행 수가 크게 달라지면(예: 전체=관리자 요약 5~6행,
+           지점별=1행) 페이지 전체 높이가 줄어들어 브라우저가 스크롤 위치를 새 최대값으로
+           강제로 clamp해버린다 — 이게 "필터를 누르면 화면이 움직인다" 버그의 실제 원인이다
+           (renderTab의 scrollTop 복원 로직 자체는 정상 동작해도, 복원하려는 위치가 새 콘텐츠
+           높이를 벗어나면 브라우저가 그 위치로 스크롤을 허용하지 않는다). 그래서 표 영역에
+           가장 큰 경우(전체 보기)에 맞춘 min-height를 둬서 필터를 바꿔도 카드 전체 높이가
+           거의 변하지 않게 만들어 근본적으로 clamp가 발생하지 않도록 한다. -->
+      <div style="min-height:340px;">
+        ${selectorHtml}
+        ${tableHtml}
+      </div>
       <div class="grid grid-2" style="margin-top:14px;">
         <div class="card">
           <h4 style="margin:0 0 6px;font-size:13px;">제품군별 수량 비교 <small class="muted">(${chartTitleSuffix} · 자사 vs 타사)</small></h4>
