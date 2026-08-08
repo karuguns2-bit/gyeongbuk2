@@ -1323,6 +1323,14 @@ function enableDragDropForFileInputs(){
 }
 
 function renderTab(tab){
+  // 필터/드롭다운을 바꿀 때(예: 지점별 경쟁력 현황의 관리자·지점 선택)도 내부적으로 같은 탭을
+  // 다시 renderTab()으로 그리는데, #mainContent가 자체 스크롤 영역(overflow-y:auto)이라
+  // innerHTML을 통째로 교체하면 매번 스크롤이 맨 위로 튀어 "필터를 누를 때마다 화면이
+  // 움직인다"는 문제가 생겼다. 같은 탭을 다시 그리는 경우(=필터 변경)에는 스크롤 위치를
+  // 기억했다가 그대로 복원하고, 실제로 다른 탭으로 이동할 때만 맨 위로 보낸다.
+  const isSameTab = (state.tab === tab);
+  const mainForScroll = document.getElementById('mainContent');
+  const savedScrollTop = (isSameTab && mainForScroll) ? mainForScroll.scrollTop : 0;
   state.tab = tab;
   if(tab!=='home' && typeof noticeTimer!=='undefined' && noticeTimer){ clearInterval(noticeTimer); noticeTimer=null; }
   const main = document.getElementById('mainContent');
@@ -1370,6 +1378,7 @@ function renderTab(tab){
   if(tab!=='notices') state.noticeBoardEditId = null;
   if(tab!=='infoReports') state.infoReportEditId = null;
   if(tab!=='subB2bSales') state.b2bEditId = null;
+  if(isSameTab && main) main.scrollTop = savedScrollTop;
   afterRenderHooks(tab);
 }
 
@@ -3607,10 +3616,8 @@ function renderGoals(){
     ${branchSelectorHtml}
     ${periodSelectorHtml}
 
-    ${isAdmin ? `<div class="card" style="margin-bottom:16px;"><div class="small-note">📁 목표/실적 파일 업로드는 <b>[시스템 관리]</b> 화면 맨 위 업로드 항목으로 이동했습니다.</div></div>` : ''}
-
     <div class="card ai-box" style="margin-bottom:16px;">
-      <div class="ai-title">📌 목표 산정 기준 안내</div>
+      <div class="ai-title">📌 데이터 조회시 참고사항</div>
       <div style="font-size:12.5px;line-height:1.75;">
         <div style="margin-bottom:8px;"><b>1. GROSS 목표</b> : 평가, 판매 목표 달성 수당 등에 반영되는 목표(실제 판매 금액에서 20~30% 편차 발생됨)<br>※구독 판매 목표도 GROSS 금액으로 산정됨</div>
         <div style="margin-bottom:8px;"><b>2.</b> MSIS에 매장에서 등록하는 매출/경쟁력은 참고 지표로 활용됨<br>※경쟁력 실제 유통 DATA 比 -1% ~ -5% 편차 발생 할 수 있음</div>
@@ -3869,7 +3876,7 @@ function renderBranches(){
         <h3 style="margin:0">${r.b.name} ${r.b.id===state.viewBranchId?'<span class="tag">선택됨</span>':''}</h3>
         ${pctBadge(r.pct)}
       </div>
-      <div class="stat-num">${r.pct.toFixed(1)}%</div>
+      <div class="stat-num"><span style="font-size:13px;font-weight:600;color:var(--text-sub);">목표달성율</span> ${r.pct.toFixed(1)}%</div>
       <div class="progress-bar"><div style="width:${Math.min(r.pct,100)}%"></div></div>
       <div class="stat-sub" style="margin-top:8px;">목표 ${fmtWon(r.target)} · 실적 ${fmtWon(r.achieved)}</div>
       <div class="stat-sub">오늘 출근 ${r.present}/${r.total}명</div>
@@ -3883,22 +3890,25 @@ function renderBranches(){
   const detailRows = g.allocations.map(a=>{
     const achieved = empAchieved(detailBranch, a.empId, period);
     const pct = pctOf(achieved, a.target);
-    return `<tr><td>${a.name}</td><td>${fmtWon(a.target)}</td><td>${fmtWon(achieved)}</td><td>${pct.toFixed(1)}% ${pctBadge(pct)}</td></tr>`;
+    return `<tr><td>${a.name}</td><td>${fmtKK(a.target)}</td><td>${fmtKK(achieved)}</td><td>${pct.toFixed(1)}% ${pctBadge(pct)}</td></tr>`;
   }).join('');
   const att = DB.attendance[detailBranch];
   const attRows = att.records.map(r=>`<tr><td>${r.name}</td><td>${statusBadge(r.status)}</td><td>${r.checkin}</td><td>${r.checkout}</td></tr>`).join('');
 
+  // 지점별 달성률 비교: 지점이 14개나 되므로 세로 막대보다 가로 막대가 라벨을 읽기 쉽고,
+  // 컨테이너를 고정 높이(220px)로 둬서 예전보다 더 컴팩트하게 축소한다.
   setTimeout(()=>{
     const ctx = document.getElementById('branchCompareChart');
     if(!ctx) return;
     if(branchChartInstance) branchChartInstance.destroy();
+    const sorted = [...rows].sort((a,b)=>a.pct-b.pct);
     branchChartInstance = new Chart(ctx, {
       type:'bar',
       data:{
-        labels: rows.map(r=>r.b.name),
-        datasets:[{ label:'달성률(%)', data: rows.map(r=>r.pct.toFixed(1)), backgroundColor:'#A50034' }]
+        labels: sorted.map(r=>r.b.name),
+        datasets:[{ label:'달성률(%)', data: sorted.map(r=>Number(r.pct.toFixed(1))), backgroundColor:'#A50034' }]
       },
-      options:{ plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`달성률 ${ctx.parsed.x}%`}}}, scales:{x:{beginAtZero:true}} }
     });
   }, 0);
 
@@ -3909,12 +3919,14 @@ function renderBranches(){
     <div class="grid grid-3" style="margin-bottom:16px;">${cards}</div>
     <div class="card" style="margin-bottom:16px;">
       <h3>지점별 달성률 비교</h3>
-      <canvas id="branchCompareChart" height="90"></canvas>
+      <div style="position:relative;height:220px;">
+        <canvas id="branchCompareChart"></canvas>
+      </div>
     </div>
     <div class="grid grid-2">
       <div class="card">
-        <h3>${branchName(detailBranch)} · 목표 배분 상세 <small>(조회 전용)</small></h3>
-        <table><thead><tr><th>이름</th><th>목표</th><th>실적</th><th>달성률</th></tr></thead><tbody>${detailRows}</tbody></table>
+        <h3>${branchName(detailBranch)} · 목표 배분 상세 <small>(조회 전용 · KK단위)</small></h3>
+        <table><thead><tr><th>이름</th><th>목표(KK)</th><th>실적(KK)</th><th>달성률</th></tr></thead><tbody>${detailRows}</tbody></table>
       </div>
       <div class="card">
         <h3>${branchName(detailBranch)} · 오늘 근태</h3>
@@ -4067,18 +4079,27 @@ function renderCompetitivenessSection(period){
   }
 
   // ---- 표 아래: 제품군별 LG(자사) vs SS(경쟁사) 수량/금액 MS% 비교 그래프 ----
-  // 캔버스를 감싸는 컨테이너에 "고정 높이(220px)"를 명시하고 Chart.js도 maintainAspectRatio:false로
+  // 캔버스를 감싸는 컨테이너에 "고정 높이"를 명시하고 Chart.js도 maintainAspectRatio:false로
   // 둬서, 관리자/지점을 바꿔 다시 그릴 때마다 그래프 영역 크기가 들쭉날쭉 변하지 않고 항상
   // 동일한 크기를 유지하도록 한다(카테고리 개수가 달라져도 표 레이아웃이 흔들리지 않음).
+  // 자사(LG) vs 타사(SS)를 나란히 비교하기 쉽도록, MS% 단일 막대 대신 엑셀처럼 가로 그룹
+  // 막대(자사/타사 각각 한 막대씩)로 그린다.
   const catData = competitivenessCategoryAggregate(period, scopeBranchIds);
+  const catDataAmtKK = catData.map(c=>({ category:c.category, lg: Math.round((c.lgAmtWon/1000000)*10)/10, ss: Math.round((c.ssAmtWon/1000000)*10)/10 }));
   setTimeout(()=>{
     const qtyCtx = document.getElementById('competQtyMsChart');
     if(qtyCtx){
       if(competQtyMsChartInstance) competQtyMsChartInstance.destroy();
       competQtyMsChartInstance = new Chart(qtyCtx, {
         type:'bar',
-        data:{ labels: catData.map(c=>c.category), datasets:[{ label:'자사(LG) 수량 MS%', data: catData.map(c=>c.qtyMsPct), backgroundColor:'#A50034' }] },
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`MS ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true, max:100}} }
+        data:{
+          labels: catData.map(c=>c.category),
+          datasets:[
+            { label:'자사(LG) 수량', data: catData.map(c=>c.lgQty), backgroundColor:'#A50034' },
+            { label:'타사(SS) 수량', data: catData.map(c=>c.ssQty), backgroundColor:'#adb5bd' }
+          ]
+        },
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}, scales:{x:{beginAtZero:true}} }
       });
     }
     const amtCtx = document.getElementById('competAmtMsChart');
@@ -4086,11 +4107,21 @@ function renderCompetitivenessSection(period){
       if(competAmtMsChartInstance) competAmtMsChartInstance.destroy();
       competAmtMsChartInstance = new Chart(amtCtx, {
         type:'bar',
-        data:{ labels: catData.map(c=>c.category), datasets:[{ label:'자사(LG) 금액 MS%', data: catData.map(c=>c.amtMsPct), backgroundColor:'#2b6cb0' }] },
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`MS ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true, max:100}} }
+        data:{
+          labels: catDataAmtKK.map(c=>c.category),
+          datasets:[
+            { label:'자사(LG) 금액(KK)', data: catDataAmtKK.map(c=>c.lg), backgroundColor:'#A50034' },
+            { label:'타사(SS) 금액(KK)', data: catDataAmtKK.map(c=>c.ss), backgroundColor:'#adb5bd' }
+          ]
+        },
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}, tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${ctx.parsed.x}KK`}}}, scales:{x:{beginAtZero:true}} }
       });
     }
   }, 0);
+
+  // 카테고리 개수와 무관하게 항상 같은 높이로 고정한다(필터를 바꿔도 그래프 영역 크기가
+  // 흔들리지 않아야 한다는 요청 반영 — 안에서 스크롤이 필요하면 canvas가 알아서 줄어든다).
+  const chartHeight = 260;
 
   return `
     <div class="card" style="margin-top:16px;">
@@ -4100,14 +4131,14 @@ function renderCompetitivenessSection(period){
       ${tableHtml}
       <div class="grid grid-2" style="margin-top:14px;">
         <div class="card">
-          <h4 style="margin:0 0 6px;font-size:13px;">제품군별 수량 MS% <small class="muted">(${chartTitleSuffix} · 타사 대비)</small></h4>
-          <div style="position:relative;height:220px;">
+          <h4 style="margin:0 0 6px;font-size:13px;">제품군별 수량 비교 <small class="muted">(${chartTitleSuffix} · 자사 vs 타사)</small></h4>
+          <div style="position:relative;height:${chartHeight}px;">
             <canvas id="competQtyMsChart"></canvas>
           </div>
         </div>
         <div class="card">
-          <h4 style="margin:0 0 6px;font-size:13px;">제품군별 금액 MS% <small class="muted">(${chartTitleSuffix} · 타사 대비)</small></h4>
-          <div style="position:relative;height:220px;">
+          <h4 style="margin:0 0 6px;font-size:13px;">제품군별 금액 비교(KK) <small class="muted">(${chartTitleSuffix} · 자사 vs 타사)</small></h4>
+          <div style="position:relative;height:${chartHeight}px;">
             <canvas id="competAmtMsChart"></canvas>
           </div>
         </div>
@@ -4610,7 +4641,7 @@ function renderSales(){
 
   let branchSelectorHtml = '';
   if(SESSION.role==='admin'){
-    branchSelectorHtml = `<div style="margin-bottom:14px;">` +
+    branchSelectorHtml = `<div style="margin-bottom:8px;">` +
       DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); state.salesEmp='ALL'; renderTab('sales')">${b.name}</span>`).join('') +
       `<span class="branch-pill ${scopeBranch==='ALL'?'active':''}" onclick="state.viewBranchId='ALL'; state.salesEmp='ALL'; renderTab('sales')">전체</span>` +
       `</div>`;
@@ -4621,7 +4652,7 @@ function renderSales(){
   if(!state.salesEmp) state.salesEmp = 'ALL';
   if(state.salesEmp!=='ALL' && !empOptions.find(u=>u.empId===state.salesEmp)) state.salesEmp = 'ALL';
   const empSelectorHtml = `
-    <div class="form-row" style="margin-bottom:10px;">
+    <div class="form-row" style="margin-bottom:8px;">
       <div class="field">
         <label>담당자(매니저) 선택</label>
         <select style="width:220px" onchange="setSalesEmp(this.value)">
@@ -4638,7 +4669,7 @@ function renderSales(){
   ])).sort().reverse();
   if(state.salesPeriod===undefined) state.salesPeriod = periodStr();
   const salesPeriod = state.salesPeriod; // null = 전체 기간
-  const periodSelectorHtml = `<div style="margin-bottom:14px;">` +
+  const periodSelectorHtml = `<div style="margin-bottom:8px;">` +
     `<span class="branch-pill ${salesPeriod===null?'active':''}" onclick="setSalesPeriod(null)">전체 기간(누적)</span>` +
     salesMonthOptions.map(p=>`<span class="branch-pill ${p===salesPeriod?'active':''}" onclick="setSalesPeriod('${p}')">${p}${p===periodStr()?' (이번달)':''}</span>`).join('') +
     `</div>`;
@@ -4723,7 +4754,7 @@ function renderSales(){
           labels: topProducts.map(p=>p[0]),
           datasets:[{ label:'판매금액', data: topProducts.map(p=>p[1].amount), backgroundColor:'#A50034' }]
         },
-        options:{ indexAxis:'y', plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>fmtKK(ctx.parsed.x)}}} }
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>fmtKK(ctx.parsed.x)}}} }
       });
     }
     const empCtx = document.getElementById('empShareChart');
@@ -4735,7 +4766,7 @@ function renderSales(){
           labels: empShareEntries.map(([,d])=>d.name),
           datasets:[{ data: empShareEntries.map(([,d])=>d.amount), backgroundColor: chartColors(empShareEntries.length) }]
         },
-        options:{ plugins:{legend:pctLegendPlugin(), tooltip:pctTooltip()} }
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:pctLegendPlugin(), tooltip:pctTooltip()} }
       });
     }
     const catCtx = document.getElementById('categoryShareChart');
@@ -4747,7 +4778,7 @@ function renderSales(){
           labels: categoryEntries.map(([cat])=>cat),
           datasets:[{ data: categoryEntries.map(([,amt])=>amt), backgroundColor: chartColors(categoryEntries.length) }]
         },
-        options:{ plugins:{legend:pctLegendPlugin(), tooltip:pctTooltip()} }
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:pctLegendPlugin(), tooltip:pctTooltip()} }
       });
     }
   }, 0);
@@ -4771,7 +4802,7 @@ function renderSales(){
         </div>
         <div class="divider"></div>
         <h3>담당자별 제품군 판매 상세 <small>(수량 · 금액(KK))</small></h3>
-        <div style="overflow-x:auto;">
+        <div style="overflow:auto;max-height:280px;">
         <table><thead><tr><th>이름</th><th>판매금액(KK)</th>${categoryOrder.map(cat=>`<th>${cat}</th>`).join('')}</tr></thead><tbody>${empRows}</tbody></table>
         </div>
       </div>`;
@@ -4791,7 +4822,9 @@ function renderSales(){
         </div>
         <div class="divider"></div>
         <h3>${empUser?empUser.name:''} 판매 제품 상세 <small>(전체 ${sortedProducts.length}개 품목)</small></h3>
+        <div style="overflow:auto;max-height:280px;">
         <table><thead><tr><th>제품</th><th>수량</th><th>금액(KK)</th><th>비중</th></tr></thead><tbody>${detailRows}</tbody></table>
+        </div>
       </div>`;
   }
 
@@ -4802,28 +4835,23 @@ function renderSales(){
     ${periodSelectorHtml}
     ${empSelectorHtml}
 
-    ${canUpload ? `
-    <div class="card" style="margin-bottom:16px;">
-      <div class="small-note">📋 실적 파일 업로드는 <b>[시스템 관리]</b> 화면 맨 위 "목표/실적 파일 업로드"로 이동했습니다.</div>
-    </div>` : ''}
-
-    <div class="grid grid-2" style="margin-bottom:16px;">
+    <div class="grid grid-2" style="margin-bottom:12px;">
       <div class="card">
         <h3>제품별 판매 Top 10 (금액 기준) <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
-        <canvas id="productChart" height="220"></canvas>
+        <div style="position:relative;height:200px;"><canvas id="productChart"></canvas></div>
       </div>
       ${rightCardHtml}
     </div>
 
-    <div class="grid grid-2" style="margin-bottom:16px;">
+    <div class="grid grid-2">
       ${showEmpShareChart ? `
       <div class="card">
         <h3>매니저별 판매 비중</h3>
-        <canvas id="empShareChart" height="220"></canvas>
+        <div style="position:relative;height:190px;"><canvas id="empShareChart"></canvas></div>
       </div>` : ''}
       <div class="card">
         <h3>제품군 비중 <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
-        <canvas id="categoryShareChart" height="220"></canvas>
+        <div style="position:relative;height:190px;"><canvas id="categoryShareChart"></canvas></div>
       </div>
     </div>
   `;
