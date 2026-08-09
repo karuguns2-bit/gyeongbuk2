@@ -5852,9 +5852,11 @@ function syncContestGiftName(){
   giftEl.value = opt ? opt.gift : '';
   // "로니 런칭 기념 사은품"처럼 매장에서 직접 수령하는 항목은 실제 배송 주소가 없으므로,
   // 해당 항목 선택 시 주소칸에 안내 문구를 자동으로 채워준다 (다른 항목은 기존처럼 직접 주소 검색).
-  if(opt && opt.address){
-    const addrEl = document.getElementById('cgAddress');
-    if(addrEl) addrEl.value = opt.address;
+  const addrEl = document.getElementById('cgAddress');
+  if(addrEl){
+    // "로니 런칭 기념 사은품"처럼 매장 수령 항목은 안내 문구를 유지하고,
+    // 그 외 항목으로 바꾸면 이전에 남아있던 안내 문구를 지우고 다시 주소 검색이 가능한 빈 상태로 되돌린다.
+    addrEl.value = (opt && opt.address) ? opt.address : '';
   }
   announceContestGiftRemaining(opt);
 }
@@ -5864,9 +5866,12 @@ function syncContestGiftNameFor(selectId, giftId, addressId, recordId){
   if(!sel || !giftEl) return;
   const opt = CONTEST_GIFT_TYPE_OPTIONS.find(o=>o.value===sel.value);
   giftEl.value = opt ? opt.gift : '';
-  if(opt && opt.address && addressId){
+  if(addressId){
     const addrEl = document.getElementById(addressId);
-    if(addrEl) addrEl.value = opt.address;
+    if(addrEl){
+      // 새 등록 폼과 동일하게, 매장 수령 항목이 아니면 안내 문구를 지우고 빈 상태로 되돌려 주소 검색이 가능하게 한다.
+      addrEl.value = (opt && opt.address) ? opt.address : '';
+    }
   }
   announceContestGiftRemaining(opt, recordId);
 }
