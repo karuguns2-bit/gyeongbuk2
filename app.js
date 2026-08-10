@@ -4540,7 +4540,10 @@ function saveClearanceBaseline(){
   const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
   const rows = {};
   (DB.inventory||[]).forEach(r=>{
-    if(r.code!=null && clearanceSet.has(Number(r.code))){
+    // 재고 조회 화면의 "🔥 소진집중" 표시와 동일한 기준: 소진리스트 코드이면서 행사(행)/진열(진)
+    // 재고인 것만 소진집중으로 집계한다(같은 코드라도 일반 재고는 제외 — 그래야 화면에 보이는
+    // "소진집중 N건" 숫자와 기준선 건수가 일치한다).
+    if(r.code!=null && clearanceSet.has(Number(r.code)) && invTag(r.product)){
       rows[invRowKey(r)] = Number(r.qty)||0;
     }
   });
@@ -4652,8 +4655,9 @@ function handleInventoryFile(evt){
         const baseParsed = parseInventorySheetRows(baseRawRows);
         const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
         const baseRows = {};
+        // 재고 조회 화면의 "🔥 소진집중" 표시와 동일하게 행사(행)/진열(진) 재고만 소진집중으로 집계
         baseParsed.forEach(r=>{
-          if(r.code!=null && clearanceSet.has(Number(r.code))) baseRows[invRowKey(r)] = Number(r.qty)||0;
+          if(r.code!=null && clearanceSet.has(Number(r.code)) && invTag(r.product)) baseRows[invRowKey(r)] = Number(r.qty)||0;
         });
         DB.inventoryClearanceBaseline = { date: baselineSheetInfo.d.dateStr, rows: baseRows, setAt: new Date().toISOString(), setBy: SESSION.name };
         baselineMsg = ` / "${baselineSheetInfo.name}" 시트로 소진 카운팅 기준선(${baselineSheetInfo.d.dateStr}, ${Object.keys(baseRows).length}건) 자동 저장`;
