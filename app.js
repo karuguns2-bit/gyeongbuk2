@@ -3619,7 +3619,11 @@ function renderGoals(){
     </div>`;
 
   const allocSum = g.allocations.reduce((s,a)=>s+a.target,0);
-  const remaining = g.target - allocSum;
+  // 팀원별 목표 배분의 합계/잔여 기준은 GROSS 목표금액이 아니라 "MSIS실판매 등록 기준
+  // 예상 목표치"(GROSS×1.25)로 계산한다 — 팀원 목표는 이 예상 목표치를 기준으로 나눠서
+  // 배분해야 하기 때문. 지점 달성율/진행율(branchAchievedPct)은 기존대로 GROSS 목표 기준 유지.
+  const msisExpectedTarget = g.target * 1.25;
+  const remaining = msisExpectedTarget - allocSum;
   const branchAchievedWon = branchAchieved(branchId, period);
   const branchAchievedPct = pctOf(branchAchievedWon, g.target);
 
@@ -3711,11 +3715,12 @@ function renderGoals(){
           <div class="muted" style="font-size:10.5px;line-height:1.45;margin-top:6px;white-space:normal;word-break:keep-all;">※GROSS금액과 편차가 작거나 클수도 있으므로, 참고지표로만 활용 바랍니다</div>
         </div>
       </div>
-      <div class="muted" style="margin-top:10px;">배분 합계: ${fmtKK(allocSum)} / 잔여: <b style="color:${remaining<0?'var(--bad)':'var(--text)'}">${fmtKK(remaining)}</b></div>
+      <div class="muted" style="margin-top:10px;">배분 합계: ${fmtKK(allocSum)} / MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 대비 잔여: <b style="color:${remaining<0?'var(--bad)':'var(--text)'}">${fmtKK(remaining)}</b></div>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
       <h3>2. 팀원별 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
+      <div class="small-note" style="margin-bottom:10px;">※ MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 기준으로 팀원별 목표를 나눠서 설정해 주세요.</div>
       <table>
         <thead><tr><th>이름</th><th>배분 목표</th><th>누적 실적</th><th>달성률</th><th style="width:120px">진행률</th></tr></thead>
         <tbody>${allocRows}</tbody>
