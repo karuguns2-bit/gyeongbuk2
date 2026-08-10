@@ -882,6 +882,14 @@ function migrateDB(){
   if(!DB.issueCases) DB.issueCases = [];
   if(!DB.suggestions) DB.suggestions = [];
   if(!DB.contestGifts) DB.contestGifts = [];
+  // 로니 런칭 기념 사은품 한정수량이 12건→24건으로 늘어나며 문구도 함께 바뀌었으므로,
+  // 기존에 "(12건 선착순 한정)" 문구로 등록돼 있던 건들도 새 문구 기준으로 계속 집계·표시되도록
+  // contestType 값을 새 문구로 맞춰준다(기존 등록건을 24건 집계에 포함시키기 위함).
+  DB.contestGifts.forEach(r=>{
+    if(r.contestType==='26년 8월 로니 런칭 기념 사은품(12건 선착순 한정)'){
+      r.contestType = '26년 8월 로니 런칭 기념 사은품(24건 선착순 한정)';
+    }
+  });
   if(!DB.subTierContestGifts) DB.subTierContestGifts = [];
   // 장기 미사용 시 자동 전환되는 스크린세이버 사용 여부 (관리자가 시스템 관리에서 설정, 기본값 사용함)
   if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
@@ -5925,8 +5933,8 @@ const CONTEST_GIFT_TYPE_OPTIONS = [
   { value:'26년 8월 구독특별 사은품', gift:'[가이타이너]슈라우프 와이드 그릴' },
   { value:'26년 8월 에어컨 구독 특별사은품', gift:'[셰퍼]에어브리즈 14인치 선풍기' },
   // 매장에서 직접 수령하는 항목이라 실제 배송 주소가 없으므로, 선택 시 주소칸에 안내 문구를 자동으로 채워준다.
-  // 선착순 12개 한정 사은품이므로 limit을 지정해 등록 시마다 잔여수량 안내/소진 시 등록 차단에 사용한다.
-  { value:'26년 8월 로니 런칭 기념 사은품(12건 선착순 한정)', gift:'[아티] 내열용기 직사각 5종세트', address:'매장으로 배송', limit:12 }
+  // 선착순 24개 한정 사은품이므로 limit을 지정해 등록 시마다 잔여수량 안내/소진 시 등록 차단에 사용한다.
+  { value:'26년 8월 로니 런칭 기념 사은품(24건 선착순 한정)', gift:'[아티] 내열용기 직사각 5종세트', address:'매장으로 배송', limit:24 }
 ];
 // 선착순 한정수량 항목의 누적 지급 수량(판매 건수 qty 합산)을 계산한다. 전 지점 취합 기준(각 지점별이 아니라 전체 합계).
 // excludeId를 넘기면 해당 레코드는 집계에서 제외한다(수정 화면에서 자기 자신의 기존 qty를 이중 차감하지 않기 위함).
