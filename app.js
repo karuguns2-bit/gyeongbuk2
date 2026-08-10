@@ -4395,6 +4395,107 @@ function showUploadResult(elId, ok, html){
   if(!el) return;
   el.innerHTML = `<span style="color:${ok ? 'var(--good)' : 'var(--bad)'};">${ok ? '✅ ' : '⚠️ '}${html}</span>`;
 }
+// ---- 재고 조회 파일 업로드: "재고장" 시트 파싱 & 스냅샷 반영 / "소진리스트" 시트 파싱 ----
+// 파일마다 헤더 문구가 살짝 다를 수 있어(점포명/지점명/매장명 등) 아래 별칭 목록으로 유연하게 매칭한다.
+function normalizeInvHeader(v){
+  return String(v==null ? '' : v).replace(/\s+/g,'').trim();
+}
+const INV_HEADER_ALIASES = {
+  store: ['점포명','지점명','매장명','점포','지점'],
+  product: ['상품명','제품명','상품','제품'],
+  cat1: ['구분1','구분','대분류'],
+  cat2: ['구분2','소분류','상세구분'],
+  model: ['모델명','모델'],
+  code: ['상품코드','코드','바코드'],
+  qty: ['현재수량','수량','재고수량'],
+  amountWon: ['현재금액','금액','재고금액']
+};
+// 파일 맨 위에 안내 문구 등 다른 행이 섞여 있을 수 있으므로, 위에서부터 최대 10행까지 훑어
+// "점포명"류 + "상품명"류 컬럼이 함께 있는 행을 진짜 헤더 행으로 판단한다.
+function findInvHeaderRowIndex(rows){
+  const maxScan = Math.min(rows.length, 10);
+  for(let i=0;i<maxScan;i++){
+    const row = rows[i] || [];
+    const normalized = row.map(normalizeInvHeader);
+    const hasStore = normalized.some(h=>INV_HEADER_ALIASES.store.includes(h));
+    const hasProduct = normalized.some(h=>INV_HEADER_ALIASES.product.includes(h));
+    if(hasStore && hasProduct) return i;
+  }
+  return -1;
+}
+function parseInventorySheetRows(rows){
+  if(!Array.isArray(rows) || rows.length===0) return [];
+  const headerIdx = findInvHeaderRowIndex(rows);
+  if(headerIdx===-1) return [];
+  const header = (rows[headerIdx]||[]).map(normalizeInvHeader);
+  const colIndex = {};
+  Object.keys(INV_HEADER_ALIASES).forEach(key=>{
+    colIndex[key] = header.findIndex(h=>INV_HEADER_ALIASES[key].includes(h));
+  });
+  const toNum = v => (v===null || v===undefined || v==='') ? null : Number(v);
+  const toStr = v => (v===null || v===undefined) ? '' : String(v).trim();
+  const out = [];
+  for(let i=headerIdx+1;i<rows.length;i++){
+    const row = rows[i];
+    if(!row) continue;
+    const store = colIndex.store>=0 ? toStr(row[colIndex.store]) : '';
+    const product = colIndex.product>=0 ? toStr(row[colIndex.product]) : '';
+    if(!store || !product) continue; // 점포명/상품명 없는 빈 행은 건너뜀
+    out.push({
+      store, product,
+      cat1: colIndex.cat1>=0 ? toStr(row[colIndex.cat1]) : '',
+      cat2: colIndex.cat2>=0 ? toStr(row[colIndex.cat2]) : '',
+      model: colIndex.model>=0 ? toStr(row[colIndex.model]) : '',
+      code: colIndex.code>=0 ? toNum(row[colIndex.code]) : null,
+      qty: colIndex.qty>=0 ? (toNum(row[colIndex.qty]) || 0) : 0,
+      amountWon: colIndex.amountWon>=0 ? toNum(row[colIndex.amountWon]) : null
+    });
+  }
+  return out;
+}
+// 새로 올라온 재고 스냅샷을 기존 DB.inventory에 반영한다.
+// 매장+상품코드+모델명+상품명(=invRowKey)이 같은 기존 행이 있으면 매니저가 직접 입력한
+// 구분(cat1)·상태·판매상태·비고·진열일자·진열소진일자와 기존 id는 그대로 유지하고,
+// 수량/금액 등 나머지 값만 새 파일 기준으로 갱신한다. 새 상품은 기본값으로 새로 추가된다.
+function applyInventorySnapshot(parsedInventory){
+  const prevByKey = {};
+  (DB.inventory||[]).forEach(r=>{ prevByKey[invRowKey(r)] = r; });
+  const next = parsedInventory.map(r=>{
+    const prev = prevByKey[invRowKey(r)];
+    if(prev){
+      return {
+        ...r,
+        id: prev.id,
+        cat1: (prev.cat1!=null && prev.cat1!=='') ? prev.cat1 : r.cat1,
+        note: prev.note || '',
+        status: prev.status || '보유중',
+        saleStatus: prev.saleStatus || '판매가능',
+        displayDate: prev.displayDate || '',
+        displaySoldOutDate: prev.displaySoldOutDate || ''
+      };
+    }
+    return { ...r, note:'', status:'보유중', saleStatus:'판매가능', displayDate:'', displaySoldOutDate:'' };
+  });
+  DB.inventory = next;
+  return next.length;
+}
+// "소진리스트" 시트는 헤더 없이 상품코드/상품명 쌍이 여러 블록으로 반복되는 형태라
+// (블록 사이 빈 칸 개수가 일정하지 않음) 각 행을 훑으며 "숫자 다음에 바로 문자열이
+// 오는" 자리를 상품코드/상품명 쌍으로 인식해서 상품코드만 모은다.
+function parseClearanceListRows(rows){
+  const codes = [];
+  (rows||[]).forEach(row=>{
+    if(!row) return;
+    for(let i=0;i<row.length-1;i++){
+      const codeVal = row[i];
+      const nameVal = row[i+1];
+      if(typeof codeVal==='number' && codeVal>1000 && typeof nameVal==='string' && nameVal.trim()!==''){
+        codes.push(codeVal);
+      }
+    }
+  });
+  return [...new Set(codes)];
+}
 function handleInventoryFile(evt){
   const file = evt.target.files[0];
   if(!file) return;
