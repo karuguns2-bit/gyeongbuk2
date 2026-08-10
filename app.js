@@ -4589,6 +4589,16 @@ function clearanceDepletionStats(){
   const pct = Math.round((depleted/total)*1000)/10;
   return { date: baseline.date, total, depleted, pct };
 }
+// 시트 이름에서 "8월 1일"처럼 월/일을 추출한다. "8월 1일 재고장"/"8월1일재고장" 등 공백 유무는
+// 모두 허용. 못 찾으면 null (날짜가 없는 일반 "재고장" 시트로 취급).
+function extractInvSheetDate(sheetName){
+  const m = String(sheetName||'').match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
+  if(!m) return null;
+  const month = Number(m[1]), day = Number(m[2]);
+  if(!month || !day) return null;
+  const year = new Date().getFullYear();
+  return { month, day, dateStr: `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`, sortKey: month*100+day };
+}
 function handleInventoryFile(evt){
   const file = evt.target.files[0];
   if(!file) return;
@@ -4598,14 +4608,33 @@ function handleInventoryFile(evt){
     try{
       const raw = new Uint8Array(e.target.result);
       const wb = XLSX.read(raw, {type:'array'});
-      const sheetName = wb.SheetNames.find(n=>n.includes('재고')) || wb.SheetNames[0];
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
+
+      // "재고"가 이름에 들어간 시트가 여러 개면(예: "8월 1일 재고장"/"8월 10일 재고장") 각 시트명에서
+      // 날짜를 추출해, 가장 늦은 날짜의 시트를 "현재 재고" 스냅샷으로 반영하고, 아직 소진집중 기준선이
+      // 저장돼 있지 않을 때만 가장 이른 날짜의 시트를 기준선으로 자동 저장한다(이미 기준선이 있으면
+      // 그대로 유지 — 매번 재업로드해도 기준선은 바뀌지 않고 최신 시트만 갱신됨).
+      const invSheetNames = wb.SheetNames.filter(n=>n.includes('재고'));
+      const datedSheets = invSheetNames
+        .map(n=>({ name:n, d:extractInvSheetDate(n) }))
+        .filter(x=>x.d)
+        .sort((a,b)=>a.d.sortKey - b.d.sortKey);
+
+      let currentSheetName, baselineSheetInfo = null;
+      if(datedSheets.length >= 2){
+        currentSheetName = datedSheets[datedSheets.length-1].name;
+        baselineSheetInfo = datedSheets[0];
+      } else {
+        currentSheetName = invSheetNames[0] || wb.SheetNames[0];
+      }
+
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[currentSheetName], {header:1, defval:null, raw:true});
       const parsedInventory = parseInventorySheetRows(rows);
       if(parsedInventory.length===0){ showUploadResult('inventoryUploadMsg', false, '재고 데이터를 인식하지 못했습니다. 파일에 "점포명"(또는 지점명/매장명)과 "상품명"(또는 제품명) 컬럼이 있는지 확인해 주세요.'); return; }
-      const count = applyInventorySnapshot(parsedInventory);
 
       // "소진리스트" 시트가 이 파일에 있으면 소진집중 대상 상품코드도 함께 갱신한다
       // (없는 파일도 많으므로, 없으면 기존에 반영돼 있던 값은 그대로 둔다).
+      // 기준선을 새로 잡을 때 "그 시점의 소진집중 코드" 기준으로 걸러야 하므로 반드시
+      // applyInventorySnapshot/기준선 계산보다 먼저 갱신한다.
       let clearanceMsg = '';
       const clrSheetName = wb.SheetNames.find(n=>n.includes('소진'));
       if(clrSheetName){
@@ -4614,6 +4643,23 @@ function handleInventoryFile(evt){
         DB.inventoryClearanceCodes = clearanceCodes;
         clearanceMsg = ` / 소진집중 대상 ${clearanceCodes.length}건 반영`;
       }
+
+      // 기준선이 아직 없고, 이 파일에 더 이른 날짜의 재고장 시트가 함께 있으면 그 시트로 기준선을
+      // 자동 저장한다(가장 먼저 올린 파일에 기준일+비교일 시트가 함께 들어있는 경우를 위함).
+      let baselineMsg = '';
+      if(baselineSheetInfo && !DB.inventoryClearanceBaseline){
+        const baseRawRows = XLSX.utils.sheet_to_json(wb.Sheets[baselineSheetInfo.name], {header:1, defval:null, raw:true});
+        const baseParsed = parseInventorySheetRows(baseRawRows);
+        const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
+        const baseRows = {};
+        baseParsed.forEach(r=>{
+          if(r.code!=null && clearanceSet.has(Number(r.code))) baseRows[invRowKey(r)] = Number(r.qty)||0;
+        });
+        DB.inventoryClearanceBaseline = { date: baselineSheetInfo.d.dateStr, rows: baseRows, setAt: new Date().toISOString(), setBy: SESSION.name };
+        baselineMsg = ` / "${baselineSheetInfo.name}" 시트로 소진 카운팅 기준선(${baselineSheetInfo.d.dateStr}, ${Object.keys(baseRows).length}건) 자동 저장`;
+      }
+
+      const count = applyInventorySnapshot(parsedInventory);
 
       // 소진집중 기준선이 저장돼 있으면, 기준선 대비 소진된(수량 0 또는 파일에서 사라진) 품목의
       // 구분(상태)을 자동으로 "소진완료"로 표시한다 (applyInventorySnapshot이 끝나 DB.inventory와
@@ -4625,7 +4671,7 @@ function handleInventoryFile(evt){
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
-      showUploadResult('inventoryUploadMsg', true, `재고 데이터 ${count}건 반영 완료${clearanceMsg}${depletionMsg}`);
+      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${clearanceMsg}${baselineMsg}${depletionMsg}`);
     }catch(err){
       showUploadResult('inventoryUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
