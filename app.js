@@ -2127,7 +2127,7 @@ function renderSystemAdmin(){
           <div id="eduAiRpUploadMsg" class="small-note"></div>
         </div>
       </div>
-      <div class="small-note">월간test/AI R/P는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).${DB.eduVideoRich ? ` <b>현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}</b>` : ''}</div>
+      <div class="small-note">월간test는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>AI R/P는 "대상자요약" 파일(사번/이름/지점/상태/제출횟수/총점 컬럼) 그대로 올리면 됩니다 — <b>상태</b> 컬럼이 "완료"면 실행완료, 그 외("미완료" 등)면 미실행으로 매칭되고, 제출횟수·총점도 함께 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).${DB.eduVideoRich ? ` <b>현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}</b>` : ''}</div>
     </div>
 
     <div class="card">
@@ -6093,8 +6093,27 @@ const SUB_TIER_CONTEST_BANNER_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEU
 const SUB_TIER_CONTEST_OPTIONS = [
   { value:'구독 4품목 계약 시', gift:'앤루시 에어스톰R 리모컨 써큘레이터' },
   { value:'결제금액 기준 800만원 금액대', gift:'[제너] 클로제 IH 스텐냄비 3종 세트' },
-  { value:'결제금액 기준 1,000만원대 금액대', gift:'[에스트] 세라믹 후라이팬 2종 세트' }
+  { value:'결제금액 기준 1,000만원대 금액대', gift:'[에스트] 세라믹 후라이팬 2종 세트' },
+  // 선착순 14건 한정 사은품이므로 limit을 지정해 등록 시마다 잔여수량 안내/소진 시 등록 차단에 사용한다
+  // (구독연동사은품 취합 페이지의 "로니 런칭 기념 사은품"과 동일한 방식).
+  { value:'에어컨 진열 판매 연동사은품(14건 한정)', gift:'[바이마르]엔틱 스테인레스 2단 찜솥(매장입고)', limit:14 }
 ];
+// 선착순 한정수량 항목의 누적 등록 건수(행 1건 = 1개, qty 필드가 없는 페이지라 건수를 그대로 센다)를
+// 계산한다. 전 지점 취합 기준. excludeId를 넘기면 해당 레코드는 집계에서 제외한다(수정 화면에서
+// 자기 자신을 이중으로 세지 않기 위함).
+function subTierContestIssuedCount(contestTypeValue, excludeId){
+  return (DB.subTierContestGifts||[]).reduce((sum,r)=>{
+    if(!r || r.contestType!==contestTypeValue) return sum;
+    if(excludeId!=null && r.id===excludeId) return sum;
+    return sum + 1;
+  }, 0);
+}
+// 선택된 옵션이 선착순 한정 항목이면 남은 수량을 계산해 알림으로 안내한다.
+function announceSubTierContestRemaining(opt, excludeId){
+  if(!opt || opt.limit==null) return;
+  const remaining = Math.max(0, opt.limit - subTierContestIssuedCount(opt.value, excludeId));
+  alert(`현재 잔여수량은 ${remaining}개입니다.`);
+}
 function syncContestGiftName(){
   const sel = document.getElementById('cgContestType');
   const giftEl = document.getElementById('cgGiftName');
@@ -6642,12 +6661,13 @@ function saveEditContestGift(id){
 function syncSubTierGiftName(){
   syncSubTierGiftNameFor('stcContestType','stcGiftName');
 }
-function syncSubTierGiftNameFor(selectId, giftId){
+function syncSubTierGiftNameFor(selectId, giftId, recordId){
   const sel = document.getElementById(selectId);
   const giftInput = document.getElementById(giftId);
   if(!sel || !giftInput) return;
   const opt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===sel.value);
   giftInput.value = opt ? opt.gift : '';
+  announceSubTierContestRemaining(opt, recordId);
 }
 // 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
 // canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
@@ -6689,7 +6709,7 @@ function renderSubTierContest(){
         : '없음';
       return `
     <tr>
-      <td><select id="stce_${r.id}_contestType" style="width:190px" onchange="syncSubTierGiftNameFor('stce_${r.id}_contestType','stce_${r.id}_giftName')">
+      <td><select id="stce_${r.id}_contestType" style="width:190px" onchange="syncSubTierGiftNameFor('stce_${r.id}_contestType','stce_${r.id}_giftName','${r.id}')">
         <option value="">선택하세요</option>
         ${SUB_TIER_CONTEST_OPTIONS.map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===r.contestType?'selected':''}>${escapeHtml(o.value)}</option>`).join('')}
       </select></td>
@@ -6720,8 +6740,8 @@ function renderSubTierContest(){
   }).join('') || `<tr><td colspan="7" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
-    <div class="page-title">구독4품목↑/금액대별 사은품 취합</div>
-    <div class="page-desc">구독 4품목 이상 계약 또는 결제금액 기준 사은품 컨테스트 건을 취합·관리합니다.</div>
+    <div class="page-title">구독4품목↑/금액대별 사은품/에어컨 진열판매 연동사은품 취합</div>
+    <div class="page-desc">구독 4품목 이상 계약, 결제금액 기준, 에어컨 진열판매 연동 사은품 컨테스트 건을 취합·관리합니다.</div>
 
     ${renderCollectionNotice('subTierContest','subTierContest')}
 
@@ -6800,6 +6820,11 @@ function submitSubTierContest(){
   const msgEl = document.getElementById('stcMsg');
 
   if(!contestType){ if(msgEl) msgEl.textContent = '컨테스트 항목을 선택해 주세요.'; return; }
+  const contestOpt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===contestType);
+  if(contestOpt && contestOpt.limit!=null && subTierContestIssuedCount(contestOpt.value) >= contestOpt.limit){
+    alert(`선착순 한정수량 ${contestOpt.limit}개 소진 완료로 더 이상 신청 할 수 없습니다.`);
+    return;
+  }
   const oversized = evidenceFiles.find(f=>f.size > 5*1024*1024);
   if(oversized){ if(msgEl) msgEl.textContent = `"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`; return; }
 
@@ -6834,6 +6859,11 @@ function saveEditSubTierContest(id){
   const newFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
 
   if(!contestType){ alert('컨테스트 항목을 선택해 주세요.'); return; }
+  const contestOpt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===contestType);
+  if(contestOpt && contestOpt.limit!=null && subTierContestIssuedCount(contestOpt.value, id) >= contestOpt.limit){
+    alert(`선착순 한정수량 ${contestOpt.limit}개 소진 완료로 더 이상 신청 할 수 없습니다.`);
+    return;
+  }
   const oversized = newFiles.find(f=>f.size > 5*1024*1024);
   if(oversized){ alert(`"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
 
@@ -8396,7 +8426,9 @@ function renderEduCompletion(cat){
     return { empId:u.empId, name:u.name, branchId:u.branchId,
       completed: rec ? !!rec.completed : false,
       completedDate: rec ? rec.completedDate : null,
-      period: rec ? rec.period : null };
+      period: rec ? rec.period : null,
+      submitCount: rec && rec.submitCount!=null ? rec.submitCount : null,
+      score: rec && rec.score!=null ? rec.score : null };
   }).sort((a,b)=> a.completed===b.completed ? a.name.localeCompare(b.name) : (a.completed?1:-1));
 
   const total = records.length;
@@ -8413,14 +8445,17 @@ function renderEduCompletion(cat){
   // 이수/미이수를 뒤집는 버튼을 제공하지 않는다(값이 잘못됐다면 최신 파일을 다시 올려서 갱신).
   // AI R/P "실행여부"는 파일 업로드가 아닌 관리자 수기 관리 항목이라 토글 버튼을 그대로 유지한다.
   const showToggleBtn = isAdmin && cat==='aiRp';
+  const showAiRpCols = cat==='aiRp';
   const rows = records.map(r=>`
     <tr>
       <td>${branchName(r.branchId)}</td>
       <td>${r.name} <span class="muted">(${r.empId})</span></td>
       <td>${r.completed ? `<span class="badge good">${w.done}</span>` : `<span class="badge bad">${w.notDone}</span>`}</td>
       <td class="muted">${r.completedDate||'-'}</td>
+      ${showAiRpCols ? `<td class="muted">${r.submitCount!=null ? r.submitCount+'회' : '-'}</td>` : ''}
+      ${showAiRpCols ? `<td class="muted">${r.score!=null ? r.score : '-'}</td>` : ''}
       ${showToggleBtn ? `<td><button class="btn btn-sm" onclick="toggleEduCompletion('${cat}','${r.empId}')">${r.completed?`${w.notDone}로 변경`:`${w.done}로 변경`}</button></td>` : ''}
-    </tr>`).join('') || `<tr><td colspan="${showToggleBtn?5:4}" class="muted">대상자가 없습니다.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="${4+(showAiRpCols?2:0)+(showToggleBtn?1:0)}" class="muted">대상자가 없습니다.</td></tr>`;
 
   const uploadHtml = isAdmin ? `
     <div class="card" style="margin-bottom:16px;">
@@ -8440,7 +8475,7 @@ function renderEduCompletion(cat){
     ${uploadHtml}
     <div class="card">
       <table>
-        <thead><tr><th>지점</th><th>이름</th><th>${w.rateWord.includes('실행')?'실행여부':'이수여부'}</th><th>${w.rateWord.includes('실행')?'실행일':'이수일'}</th>${showToggleBtn?'<th></th>':''}</tr></thead>
+        <thead><tr><th>지점</th><th>이름</th><th>${w.rateWord.includes('실행')?'실행여부':'이수여부'}</th><th>${w.rateWord.includes('실행')?'실행일':'이수일'}</th>${showAiRpCols?'<th>제출횟수</th><th>총점</th>':''}${showToggleBtn?'<th></th>':''}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -8459,6 +8494,46 @@ function toggleEduCompletion(cat, empId){
   rec.completedDate = rec.completed ? todayStr() : null;
   saveDB();
   renderTab(eduTabName(cat));
+}
+// AI R/P 실행 여부 업로드 파일 전용 파서
+// (예: "LG 로봇청소기 로니(RONi) AI R/P_대상자요약.csv" — 사번당 1행 요약 파일).
+// 실제 파일 헤더: 프로젝트/상태/회사/영업팀/채널/지점/이름/사번/직책/제출횟수/상담스타일/총점/제출일/...
+// "상태" 컬럼 값이 정확히 "완료"면 실행완료로, 그 외("미완료" 등)는 미실행으로 매칭하고,
+// 제출횟수·총점(완료 건만 값이 있음)도 함께 저장한다.
+function parseEduAiRpRows(rows){
+  if(!rows || rows.length<2) return [];
+  const header = (rows[0]||[]).map(h=>String(h==null?'':h).trim());
+  const findCol = (re)=> header.findIndex(h=>re.test(h));
+  const empIdCol = findCol(/사번/);
+  const nameCol = findCol(/이름|성명/);
+  const statusCol = findCol(/^상태$/);
+  const submitCountCol = findCol(/제출\s*횟수/);
+  const scoreCol = findCol(/총점/);
+  if(empIdCol<0) return [];
+  const out = [];
+  for(let r=1; r<rows.length; r++){
+    const row = rows[r]; if(!row) continue;
+    const rawId = row[empIdCol];
+    if(rawId==null || rawId==='') continue;
+    const empId = bareEmpId(rawId);
+    const user = DB.users.find(u=>u.empId===empId && u.role==='staff');
+    if(!user) continue; // 혼매경북팀/경북2담당 소속(DB.users)이 아니면 자동 제외
+    const rawStatus = statusCol>=0 ? String(row[statusCol]==null?'':row[statusCol]).trim() : '';
+    const completed = rawStatus === '완료';
+    const submitCount = submitCountCol>=0 ? (Number(row[submitCountCol])||0) : 0;
+    const scoreRaw = scoreCol>=0 ? row[scoreCol] : null;
+    const score = (scoreRaw!=null && String(scoreRaw).trim()!=='') ? Number(scoreRaw) : null;
+    // 실행일은 (다른 이수현황 카테고리와 동일하게) 파일 안의 제출일 텍스트를 파싱하는 대신
+    // 업로드한 날짜를 그대로 사용한다 — CSV에서 날짜/시간 텍스트가 엑셀 일련번호로 잘못
+    // 변환되는 경우가 있어, 굳이 파싱하지 않는 편이 더 안전하다.
+    out.push({
+      empId, name: (nameCol>=0 && row[nameCol]) ? String(row[nameCol]).trim() : user.name,
+      branchId: user.branchId, period: null,
+      completed, completedDate: completed ? todayStr() : null,
+      submitCount, score
+    });
+  }
+  return out;
 }
 function parseEduCompletionRows(rows){
   if(!rows || rows.length<2) return [];
@@ -8498,7 +8573,7 @@ function handleEduCompletionFile(evt, cat){
       const wb = XLSX.read(data, {type:'array'});
       const sheetName = wb.SheetNames[0];
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
-      const parsed = parseEduCompletionRows(rows);
+      const parsed = cat==='aiRp' ? parseEduAiRpRows(rows) : parseEduCompletionRows(rows);
       DB.eduCompletion[cat] = parsed;
       touchTabContent(eduTabName(cat));
       saveDB();
