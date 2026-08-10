@@ -912,6 +912,7 @@ function migrateDB(){
   if(DB.eduVideoRich===undefined) DB.eduVideoRich = null;
   // 재고 조회: "소진리스트" 시트에서 추출한 소진집중 대상 상품코드 목록(깜빡이는 알림 배지용)
   if(!DB.inventoryClearanceCodes) DB.inventoryClearanceCodes = [];
+  if(DB.inventoryClearanceBaseline===undefined) DB.inventoryClearanceBaseline = null;
   if(!DB.kakaoFriends) DB.kakaoFriends = [];
   DB.kakaoFriends.forEach(r=>{ if(!r.date) r.date = r.weekStart; if(!r.weekStart && r.date) r.weekStart = getMondayStr(r.date); });
   if(!DB.prospects) DB.prospects = [];
@@ -2086,9 +2087,25 @@ function renderSystemAdmin(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>재고 조회 파일 업로드 <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.</div>
+      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 단, 아래 "소진집중 소진율 카운팅 기준선"이 저장되어 있으면, 기준선 대비 수량이 0이 되었거나 이번 파일에서 아예 사라진 소진집중 품목은 구분(상태)이 자동으로 "소진완료"로 표시됩니다(이 경우에 한해 매니저가 다시 수정하기 전까지 자동 반영).</div>
       <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
       <div id="inventoryUploadMsg" class="small-note"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>소진집중 소진율 카운팅 기준선 <small>(관리자가 원하는 시점에 저장 · 이후 재고 파일을 새로 올릴 때마다 이 기준과 비교해 소진완료/소진율을 계산)</small></h3>
+      <div class="muted" style="margin-bottom:10px;">
+        지금 반영되어 있는(가장 최근 업로드) 재고 데이터의 소진집중 품목별 수량을 기준선으로 저장합니다. 저장 시점 이후 새 재고 파일을 올리면, 기준선 대비 수량이 0이 되었거나 파일에서 아예 사라진(단종/철수 등) 소진집중 품목은 자동으로 "소진완료"로 표시되고, 소진 대수·소진율이 재고 조회 화면에 함께 표시됩니다.
+        ${DB.inventoryClearanceBaseline ? `<br>현재 저장된 기준선: <b>${DB.inventoryClearanceBaseline.date}</b> 기준 · ${Object.keys(DB.inventoryClearanceBaseline.rows||{}).length}건` : '<br>아직 저장된 기준선이 없습니다.'}
+      </div>
+      <div class="form-row" style="align-items:flex-end;">
+        <div class="field">
+          <label>소진 카운팅 기준 일자(시작일)</label>
+          <input type="date" id="clearanceBaselineDateInput" value="${DB.inventoryClearanceBaseline ? DB.inventoryClearanceBaseline.date : ''}">
+        </div>
+        <button class="btn btn-primary" onclick="saveClearanceBaseline()">현재 상태를 기준선으로 저장</button>
+      </div>
+      <div id="clearanceBaselineMsg" class="small-note"></div>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
@@ -4509,6 +4526,69 @@ function parseClearanceListRows(rows){
   });
   return [...new Set(codes)];
 }
+// ---- 소진집중 소진율 카운팅 기준선 ----
+// 관리자가 원하는 시점에 "현재 재고 상태를 기준선으로 저장"하면, 그 시점의 소진집중 품목별
+// 수량(매장+상품코드+모델명+상품명 = invRowKey 기준)을 스냅샷으로 남겨둔다. 이후 재고 파일을
+// 새로 올릴 때마다 이 기준선과 비교해서 몇 건이 소진(수량 0 또는 파일에서 아예 사라짐)됐는지,
+// 소진율이 몇 %인지 계산한다. 기준선 자체는 새 파일을 올려도 바뀌지 않고, 관리자가 다시
+// "기준선으로 저장"을 눌러야만 갱신된다.
+function saveClearanceBaseline(){
+  if(SESSION.role!=='admin'){ alert('기준선 저장은 관리자만 가능합니다.'); return; }
+  const dateInput = document.getElementById('clearanceBaselineDateInput');
+  const dateStr = dateInput ? dateInput.value : '';
+  if(!dateStr){ showUploadResult('clearanceBaselineMsg', false, '소진 카운팅 기준 일자(시작일)를 입력해 주세요.'); return; }
+  const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
+  const rows = {};
+  (DB.inventory||[]).forEach(r=>{
+    if(r.code!=null && clearanceSet.has(Number(r.code))){
+      rows[invRowKey(r)] = Number(r.qty)||0;
+    }
+  });
+  const rowCount = Object.keys(rows).length;
+  if(rowCount===0 && !confirm('현재 소진집중으로 표시된 재고 항목이 없습니다. 그래도 빈 기준선으로 저장할까요?')) return;
+  DB.inventoryClearanceBaseline = { date: dateStr, rows, setAt: new Date().toISOString(), setBy: SESSION.name };
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [소진집중 소진율] 기준선을 ${dateStr} 기준으로 저장했습니다(${rowCount}건)`);
+  renderTab('systemAdmin');
+  showUploadResult('clearanceBaselineMsg', true, `소진 카운팅 기준선을 ${dateStr} 기준, ${rowCount}건으로 저장했습니다.`);
+}
+// 새 재고 파일이 반영된 직후 호출: 기준선에 있던 소진집중 품목 중 지금 수량이 0 이하인 것들을
+// 자동으로 "소진완료" 상태로 표시한다. 기준선에 없던(기준선 저장 이후 새로 소진집중에 추가된)
+// 품목이나, 매니저가 이미 "소진완료"로 표시해 둔 품목은 건드리지 않는다(중복 카운트 방지).
+// 반환값은 이번 업로드로 새로 "소진완료" 처리된 건수.
+function applyClearanceDepletion(){
+  const baseline = DB.inventoryClearanceBaseline;
+  if(!baseline || !baseline.rows) return 0;
+  let count = 0;
+  (DB.inventory||[]).forEach(r=>{
+    const key = invRowKey(r);
+    if(Object.prototype.hasOwnProperty.call(baseline.rows, key)){
+      if((Number(r.qty)||0) <= 0 && r.status!=='소진완료'){
+        r.status = '소진완료';
+        count++;
+      }
+    }
+  });
+  return count;
+}
+// 기준선 대비 현재까지 몇 건이 소진됐는지/소진율을 계산한다. 기준선에 있던 품목이 이번 파일에서
+// 아예 사라진 경우(단종/철수 등)도 소진된 것으로 집계한다.
+function clearanceDepletionStats(){
+  const baseline = DB.inventoryClearanceBaseline;
+  if(!baseline || !baseline.rows) return null;
+  const keys = Object.keys(baseline.rows);
+  const total = keys.length;
+  if(total===0) return { date: baseline.date, total:0, depleted:0, pct:0 };
+  const currentByKey = {};
+  (DB.inventory||[]).forEach(r=>{ currentByKey[invRowKey(r)] = r; });
+  let depleted = 0;
+  keys.forEach(key=>{
+    const cur = currentByKey[key];
+    if(!cur || (Number(cur.qty)||0) <= 0) depleted++;
+  });
+  const pct = Math.round((depleted/total)*1000)/10;
+  return { date: baseline.date, total, depleted, pct };
+}
 function handleInventoryFile(evt){
   const file = evt.target.files[0];
   if(!file) return;
@@ -4535,11 +4615,17 @@ function handleInventoryFile(evt){
         clearanceMsg = ` / 소진집중 대상 ${clearanceCodes.length}건 반영`;
       }
 
+      // 소진집중 기준선이 저장돼 있으면, 기준선 대비 소진된(수량 0 또는 파일에서 사라진) 품목의
+      // 구분(상태)을 자동으로 "소진완료"로 표시한다 (applyInventorySnapshot이 끝나 DB.inventory와
+      // DB.inventoryClearanceCodes가 모두 최신 상태로 반영된 뒤에 실행해야 정확히 판정된다).
+      const depletedCount = applyClearanceDepletion();
+      const depletionMsg = depletedCount>0 ? ` / 소진집중 ${depletedCount}건 소진완료 자동 반영` : '';
+
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
-      showUploadResult('inventoryUploadMsg', true, `재고 데이터 ${count}건 반영 완료${clearanceMsg}`);
+      showUploadResult('inventoryUploadMsg', true, `재고 데이터 ${count}건 반영 완료${clearanceMsg}${depletionMsg}`);
     }catch(err){
       showUploadResult('inventoryUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
@@ -5258,6 +5344,7 @@ function renderInventory(){
   if(f.page < 1) f.page = 1;
   const pageRows = rows.slice((f.page-1)*INV_PAGE_SIZE, f.page*INV_PAGE_SIZE);
   const clearanceCountInView = rows.filter(isClearanceRow).length;
+  const clearanceStats = clearanceDepletionStats();
 
   const tableRows = pageRows.map(r=>{
     const tag = invTag(r.product);
@@ -5333,7 +5420,7 @@ function renderInventory(){
         <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">제품 상태 (다중 선택)</label>
         <div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>
       </div>
-      <div class="small-note" style="margin-top:10px;">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}</div>
+      <div class="small-note" style="margin-top:10px;">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}${clearanceStats ? ` · 소진 카운팅 기준일(시작일) <b>${clearanceStats.date}</b> · 소진완료 <b>${clearanceStats.depleted}대</b> / ${clearanceStats.total}건 (소진율 <b>${clearanceStats.pct}%</b>)` : ''}</div>
     </div>
 
     <div class="card">
