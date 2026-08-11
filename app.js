@@ -3864,6 +3864,12 @@ function smPctFmt(pct){
   const sign = pct>0 ? '+' : '';
   return `${sign}${(Math.round(pct*10)/10).toLocaleString('ko-KR',{maximumFractionDigits:1})}%`;
 }
+// 달성율처럼 "증감"이 아니라 "수준(절대 비율)"을 나타내는 값은 +기호를 붙이면 성장한 것처럼
+// 오해를 줄 수 있어, 부호 없이 순수 퍼센트로만 표기한다.
+function smPctPlain(pct){
+  if(pct==null || !isFinite(pct)) return '-';
+  return `${(Math.round(pct*10)/10).toLocaleString('ko-KR',{maximumFractionDigits:1})}%`;
+}
 function smPctColor(pct){
   if(pct==null || !isFinite(pct)) return 'inherit';
   return pct>=0 ? 'var(--good)' : 'var(--bad)';
@@ -4017,34 +4023,70 @@ function renderSalesMaster(){
     scopeLabel = '전체(SUBTOTAL)';
   }
 
-  // ---- 3) 지점별 GROSS 총판/실판 전년 누적 · 전년 동기 비교 ----
+  // ---- 3) 지점별 GROSS 총판/실판 전년 대비 신장율 (그래프) ----
   const idxP = pan.metricIndex, idxS = sil.metricIndex;
-  function cmpRow(label, pIdx, sIdx, kind){
-    const pv = panRow ? smMetric(panRow, pIdx) : null;
-    const sv = silRow ? smMetric(silRow, sIdx) : null;
-    return `<tr><td>${label}</td><td>${kind==='raw'?smRaw(pv):smKK(pv)}</td><td>${kind==='raw'?smRaw(sv):smKK(sv)}</td></tr>`;
+  // 누적_전년/누적_전월/동기_전년/동기_전월은 전부 파일이 그대로 준 "절대값(KK)"이라 믿을 수
+  // 있는 값이므로, 신장율(=(금년-전년)/전년*100)은 여기서 직접 계산해서 보여준다(제품별
+  // 전년비처럼 파일이 이미 가공해 놓은 표기가 아니라서 별도 해석/추정이 필요 없음).
+  function smGrowthPct(prev, cur){
+    if(prev==null || cur==null || !isFinite(prev) || !isFinite(cur) || prev===0) return null;
+    return (cur-prev)/Math.abs(prev)*100;
   }
+  const panCumPrev = panRow ? smNum(smMetric(panRow, idxP.cumPrevYear)) : null;
+  const panCumCur = panRow ? smNum(smMetric(panRow, idxP.cumThisYear)) : null;
+  const silCumPrev = silRow ? smNum(smMetric(silRow, idxS.cumPrevYear)) : null;
+  const silCumCur = silRow ? smNum(smMetric(silRow, idxS.cumThisYear)) : null;
+  const panSamePrev = panRow ? smNum(smMetric(panRow, idxP.samePrevYear)) : null;
+  const panSameCur = panRow ? smNum(smMetric(panRow, idxP.sameThisYear)) : null;
+  const silSamePrev = silRow ? smNum(smMetric(silRow, idxS.samePrevYear)) : null;
+  const silSameCur = silRow ? smNum(smMetric(silRow, idxS.sameThisYear)) : null;
+  const panCumGrowth = smGrowthPct(panCumPrev, panCumCur);
+  const silCumGrowth = smGrowthPct(silCumPrev, silCumCur);
+  const panSameGrowth = smGrowthPct(panSamePrev, panSameCur);
+  const silSameGrowth = smGrowthPct(silSamePrev, silSameCur);
+
+  setTimeout(()=>{
+    const ctx = document.getElementById('smCumChart');
+    if(ctx){
+      if(window.__smCumChartInstance) window.__smCumChartInstance.destroy();
+      window.__smCumChartInstance = new Chart(ctx, {
+        type:'bar',
+        data:{
+          labels:['전년 누적','금년 누적','전년 동기','금년 동기'],
+          datasets:[
+            { label:'총판(KK)', data:[panCumPrev||0, panCumCur||0, panSamePrev||0, panSameCur||0], backgroundColor:'#A50034' },
+            { label:'실판(KK)', data:[silCumPrev||0, silCumCur||0, silSamePrev||0, silSameCur||0], backgroundColor:'#adb5bd' }
+          ]
+        },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
+      });
+    }
+  }, 0);
+
   const cumCompareHtml = `
     <div class="card" style="margin-bottom:14px;">
-      <h3>GROSS 총판/실판 전년 누적 · 전년 동기 비교 <small>(${scopeLabel} · KK)</small></h3>
-      <table>
-        <thead><tr><th>구분</th><th>총판</th><th>실판</th></tr></thead>
-        <tbody>
-          ${cmpRow('전년 누적(누적_전년)', idxP.cumPrevYear, idxS.cumPrevYear)}
-          ${cmpRow('금년 누적(누적_전월)', idxP.cumThisYear, idxS.cumThisYear)}
-          ${cmpRow('전년 동기(동기_전년)', idxP.samePrevYear, idxS.samePrevYear)}
-          ${cmpRow('금년 동기(동기_전월)', idxP.sameThisYear, idxS.sameThisYear)}
-        </tbody>
-      </table>
+      <h3>GROSS 총판/실판 전년 대비 신장율 <small>(${scopeLabel} · KK)</small></h3>
+      <div style="position:relative;height:260px;">
+        <canvas id="smCumChart"></canvas>
+      </div>
+      <div style="margin-top:12px;font-size:13px;display:flex;gap:28px;flex-wrap:wrap;">
+        <div>누적 신장율 — 총판: <b style="color:${smPctColor(panCumGrowth)}">${smPctFmt(panCumGrowth)}</b> · 실판: <b style="color:${smPctColor(silCumGrowth)}">${smPctFmt(silCumGrowth)}</b></div>
+        <div>동기 신장율 — 총판: <b style="color:${smPctColor(panSameGrowth)}">${smPctFmt(panSameGrowth)}</b> · 실판: <b style="color:${smPctColor(silSameGrowth)}">${smPctFmt(silSameGrowth)}</b></div>
+      </div>
     </div>`;
 
-  // ---- 4) 목표 대비 伸 총판/실판 비교 ----
+  // ---- 4) 목표 대비 달성율 · 총판/실판 비교 ----
+  // "목표 구분"(영업 Ver/M-L Ver)별로 목표(伸이 아니라) 달성율을 함께 보여준다. achieveIdxs가
+  // targetIdxs보다 짧을 수 있어(실판 시트는 버전 구분 없이 달성율이 1개뿐) 부족하면 마지막
+  // 값을 그대로 재사용한다(파일 자체가 버전별로 따로 안 나눠 놓은 것뿐, 값 자체는 유효함).
   function targetRows(sheetData, row){
     const idx = sheetData.metricIndex;
     return idx.targetIdxs.map((tIdx,i)=>{
-      const gIdx = idx.targetGrowthIdxs[i];
+      const aIdx = idx.achieveIdxs[i]!=null ? idx.achieveIdxs[i] : idx.achieveIdxs[idx.achieveIdxs.length-1];
       const label = sheetData.metricKeys[tIdx];
-      return { label, target: row?smMetric(row,tIdx):null, growth: row?smMetric(row,gIdx):null };
+      const achieveRaw = (row && aIdx!=null) ? smMetric(row,aIdx) : null;
+      const achievePct = (typeof achieveRaw==='number') ? achieveRaw*100 : null;
+      return { label, target: row?smMetric(row,tIdx):null, achievePct };
     });
   }
   const panTargets = targetRows(pan, panRow);
@@ -4055,25 +4097,42 @@ function renderSalesMaster(){
     const pt = panTargets[i], st = silTargets[i];
     targetRowsHtml += `<tr>
       <td>${(pt&&pt.label)||(st&&st.label)||'-'}</td>
-      <td>${pt?smKK(pt.target):'-'}</td><td>${pt?smRaw(pt.growth):'-'}</td>
-      <td>${st?smKK(st.target):'-'}</td><td>${st?smRaw(st.growth):'-'}</td>
+      <td>${pt?smKK(pt.target):'-'}</td><td>${pt&&pt.achievePct!=null?smPctPlain(pt.achievePct):'-'}</td>
+      <td>${st?smKK(st.target):'-'}</td><td>${st&&st.achievePct!=null?smPctPlain(st.achievePct):'-'}</td>
     </tr>`;
   }
-  function achieveCells(sheetData, row){
-    const idx = sheetData.metricIndex;
-    return idx.achieveIdxs.map(aIdx=>`<span style="margin-right:10px;">${sheetData.metricKeys[aIdx]}: <b>${smRaw(row?smMetric(row,aIdx):null)}</b></span>`).join('');
-  }
+
+  setTimeout(()=>{
+    const ctx = document.getElementById('smAchieveChart');
+    if(ctx){
+      if(window.__smAchieveChartInstance) window.__smAchieveChartInstance.destroy();
+      window.__smAchieveChartInstance = new Chart(ctx, {
+        type:'bar',
+        data:{
+          labels: panTargets.map((t,i)=> (t&&t.label) || (silTargets[i]&&silTargets[i].label) || `구분${i+1}`),
+          datasets:[
+            { label:'총판 달성율(%)', data: panTargets.map(t=>t.achievePct!=null?Math.round(t.achievePct*10)/10:0), backgroundColor:'#A50034' },
+            { label:'실판 달성율(%)', data: silTargets.map(t=>t.achievePct!=null?Math.round(t.achievePct*10)/10:0), backgroundColor:'#adb5bd' }
+          ]
+        },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
+      });
+    }
+  }, 0);
+
   const targetCompareHtml = `
     <div class="card" style="margin-bottom:14px;">
-      <h3>목표 대비 伸 · 총판/실판 비교 <small>(${scopeLabel})</small></h3>
+      <h3>목표 대비 달성율 · 총판/실판 비교 <small>(${scopeLabel})</small></h3>
       <table>
         <thead><tr><th rowspan="2">목표 구분</th><th colspan="2">총판</th><th colspan="2">실판</th></tr>
-        <tr><th>목표(KK)</th><th>목표 伸</th><th>목표(KK)</th><th>목표 伸</th></tr></thead>
+        <tr><th>목표(KK)</th><th>달성율</th><th>목표(KK)</th><th>달성율</th></tr></thead>
         <tbody>${targetRowsHtml}</tbody>
       </table>
+      <div style="position:relative;height:220px;margin-top:14px;">
+        <canvas id="smAchieveChart"></canvas>
+      </div>
       <div style="margin-top:10px;font-size:13px;">
         <div>당월: 총판 <b>${smKK(panRow?smMetric(panRow, idxP.curMonth):null)}</b> · 실판 <b>${smKK(silRow?smMetric(silRow, idxS.curMonth):null)}</b></div>
-        <div style="margin-top:4px;">달성율 — 총판: ${achieveCells(pan, panRow)} / 실판: ${achieveCells(sil, silRow)}</div>
         <div style="margin-top:4px;">전년비 — 총판: <b>${smRaw(panRow?smMetric(panRow,idxP.yoy):null)}</b> · 실판: <b>${smRaw(silRow?smMetric(silRow,idxS.yoy):null)}</b></div>
       </div>
     </div>`;
@@ -4101,6 +4160,22 @@ function renderSalesMaster(){
     </tr>`;
   }).join('');
 
+  // 제품별 "전년비" 그래프용 수치 변환: 파일이 "Δxx.x%" 문자열로 명시한 항목만 그 크기를
+  // 그대로 숫자로 뽑아 쓴다(이 파일에서는 Δ 표기가 전부 양수만 관찰됨 — 실제 부호는 알 수
+  // 없으므로 임의로 부호를 추정하지 않는다). 반면 같은 칸인데 문자열이 아니라 순수 숫자로만
+  // 들어있는 항목은 전년/당월 실측값으로 역산해봐도 그 숫자와 맞아떨어지지 않아(표기 방식이
+  // 다른 것으로 추정) 그래프에서는 신뢰할 수 없다고 보고 제외한다(표에는 원본 값 그대로 표시).
+  function smYoyChartNum(v){
+    if(typeof v==='string'){
+      const m = v.match(/(\d+(\.\d+)?)/);
+      return m ? parseFloat(m[1]) : null;
+    }
+    return null;
+  }
+  const hasAmbiguousYoy = prodNames.some(n=>{
+    const pp = panProds.find(p=>p.name===n); const sp = silProdsByName[n];
+    return (pp && typeof pp.yoy==='number') || (sp && typeof sp.yoy==='number');
+  });
   setTimeout(()=>{
     const ctx = document.getElementById('smProdChart');
     if(ctx){
@@ -4110,11 +4185,11 @@ function renderSalesMaster(){
         data:{
           labels: prodNames,
           datasets:[
-            { label:`총판 당월(${unit==='amt'?'KK':'대'})`, data: panProds.map(p=>smNum(p.curMonth)||0), backgroundColor:'#A50034' },
-            { label:`실판 당월(${unit==='amt'?'KK':'대'})`, data: prodNames.map(n=>{ const sp = silProds.find(p=>p.name===n); return sp ? (smNum(sp.curMonth)||0) : 0; }), backgroundColor:'#adb5bd' }
+            { label:'총판 전년비(%)', data: panProds.map(p=>smYoyChartNum(p.yoy)||0), backgroundColor:'#A50034' },
+            { label:'실판 전년비(%)', data: prodNames.map(n=>{ const sp = silProdsByName[n]; return sp ? (smYoyChartNum(sp.yoy)||0) : 0; }), backgroundColor:'#adb5bd' }
           ]
         },
-        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{x:{beginAtZero:true}} }
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{x:{beginAtZero:true, title:{display:true, text:'전년비 증감폭(%)'}}} }
       });
     }
   }, 0);
@@ -4126,16 +4201,20 @@ function renderSalesMaster(){
         <span class="branch-pill ${unit==='amt'?'active':''}" onclick="setSmProductUnit('amt')">금액</span>
         <span class="branch-pill ${unit==='qty'?'active':''}" onclick="setSmProductUnit('qty')">수량</span>
       </div>
-      <div style="overflow-x:auto;">
-        <table>
-          <thead><tr><th rowspan="2">제품</th><th colspan="3">총판</th><th colspan="3">실판</th></tr>
-          <tr><th>전년</th><th>당월</th><th>전년비</th><th>전년</th><th>당월</th><th>전년비</th></tr></thead>
-          <tbody>${productRowsHtml}</tbody>
-        </table>
-      </div>
-      <div style="position:relative;height:420px;margin-top:14px;">
+      <div style="position:relative;height:520px;">
         <canvas id="smProdChart"></canvas>
       </div>
+      ${hasAmbiguousYoy ? `<div class="small-note" style="margin-top:6px;">※ 원본 파일에 숫자로만 표기되어 그래프에서 제외된 항목이 있습니다(아래 표에서 확인 가능).</div>` : ''}
+      <details style="margin-top:12px;">
+        <summary style="cursor:pointer;color:var(--muted);font-size:12.5px;">상세 표 보기</summary>
+        <div style="overflow-x:auto;margin-top:8px;">
+          <table>
+            <thead><tr><th rowspan="2">제품</th><th colspan="3">총판</th><th colspan="3">실판</th></tr>
+            <tr><th>전년</th><th>당월</th><th>전년비</th><th>전년</th><th>당월</th><th>전년비</th></tr></thead>
+            <tbody>${productRowsHtml}</tbody>
+          </table>
+        </div>
+      </details>
     </div>`;
 
   return `
