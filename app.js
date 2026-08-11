@@ -2524,8 +2524,13 @@ const RICH_ICONS = {
   indent:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="5" x2="17" y2="5"/><line x1="9" y1="10" x2="17" y2="10"/><line x1="9" y1="15" x2="17" y2="15"/><polyline points="3,7 6,10 3,13"/></svg>'
 };
 function richToolbarHtml(id){
+  // 서식 버튼들만 개별적으로 mousedown 기본동작을 막아 에디터의 선택영역을 지켜준다.
+  // (예전처럼 툴바 전체 div에 preventDefault를 걸면 <input type=color>의 네이티브 색상
+  // 선택창까지 함께 막혀버려서 색상 피커 자체가 열리지 않는 문제가 있었다 — 글자크기/색상
+  // 컨트롤은 이 방지 대상에서 제외한다.)
+  const pd = 'onmousedown="event.preventDefault()"';
   return `
-  <div class="rich-toolbar" onmousedown="event.preventDefault()">
+  <div class="rich-toolbar">
     <select class="rt-sel" title="글자 크기" onchange="richSetFontSize('${id}', this.value)">
       <option value="12">12px</option>
       <option value="13.5" selected>14px</option>
@@ -2535,23 +2540,23 @@ function richToolbarHtml(id){
       <option value="24">24px</option>
     </select>
     <span class="rt-divider"></span>
-    <button type="button" class="rt-btn" title="굵게" onclick="richExec('${id}','bold')"><b>B</b></button>
-    <button type="button" class="rt-btn" title="기울임" onclick="richExec('${id}','italic')"><i>I</i></button>
-    <button type="button" class="rt-btn" title="밑줄" onclick="richExec('${id}','underline')"><u>U</u></button>
-    <button type="button" class="rt-btn" title="취소선" onclick="richExec('${id}','strikeThrough')"><s>S</s></button>
+    <button type="button" ${pd} class="rt-btn" title="굵게" onclick="richExec('${id}','bold')"><b>B</b></button>
+    <button type="button" ${pd} class="rt-btn" title="기울임" onclick="richExec('${id}','italic')"><i>I</i></button>
+    <button type="button" ${pd} class="rt-btn" title="밑줄" onclick="richExec('${id}','underline')"><u>U</u></button>
+    <button type="button" ${pd} class="rt-btn" title="취소선" onclick="richExec('${id}','strikeThrough')"><s>S</s></button>
     <span class="rt-divider"></span>
-    <label class="rt-btn rt-color" title="글자 색 선택">A<input type="color" id="${id}_colorPick" value="#a50034"></label>
-    <button type="button" class="rt-btn rt-btn-wide" title="선택한 색 적용" onclick="richApplyColor('${id}')">적용</button>
+    <label class="rt-btn rt-color" title="글자 색 선택" style="color:#a50034;" id="${id}_colorSwatch">A<input type="color" id="${id}_colorPick" value="#a50034" oninput="document.getElementById('${id}_colorSwatch').style.color=this.value"></label>
+    <button type="button" ${pd} class="rt-btn rt-btn-wide" title="선택한 색 적용" onclick="richApplyColor('${id}')">적용</button>
     <span class="rt-divider"></span>
-    <button type="button" class="rt-btn" title="왼쪽 정렬" onclick="richExec('${id}','justifyLeft')">${RICH_ICONS.alignLeft}</button>
-    <button type="button" class="rt-btn" title="가운데 정렬" onclick="richExec('${id}','justifyCenter')">${RICH_ICONS.alignCenter}</button>
-    <button type="button" class="rt-btn" title="오른쪽 정렬" onclick="richExec('${id}','justifyRight')">${RICH_ICONS.alignRight}</button>
-    <button type="button" class="rt-btn" title="양쪽 정렬" onclick="richExec('${id}','justifyFull')">${RICH_ICONS.alignJustify}</button>
+    <button type="button" ${pd} class="rt-btn" title="왼쪽 정렬" onclick="richExec('${id}','justifyLeft')">${RICH_ICONS.alignLeft}</button>
+    <button type="button" ${pd} class="rt-btn" title="가운데 정렬" onclick="richExec('${id}','justifyCenter')">${RICH_ICONS.alignCenter}</button>
+    <button type="button" ${pd} class="rt-btn" title="오른쪽 정렬" onclick="richExec('${id}','justifyRight')">${RICH_ICONS.alignRight}</button>
+    <button type="button" ${pd} class="rt-btn" title="양쪽 정렬" onclick="richExec('${id}','justifyFull')">${RICH_ICONS.alignJustify}</button>
     <span class="rt-divider"></span>
-    <button type="button" class="rt-btn" title="글머리 기호" onclick="richExec('${id}','insertUnorderedList')">${RICH_ICONS.listUl}</button>
-    <button type="button" class="rt-btn" title="번호 매기기" onclick="richExec('${id}','insertOrderedList')">${RICH_ICONS.listOl}</button>
-    <button type="button" class="rt-btn" title="내어쓰기" onclick="richExec('${id}','outdent')">${RICH_ICONS.outdent}</button>
-    <button type="button" class="rt-btn" title="들여쓰기" onclick="richExec('${id}','indent')">${RICH_ICONS.indent}</button>
+    <button type="button" ${pd} class="rt-btn" title="글머리 기호" onclick="richExec('${id}','insertUnorderedList')">${RICH_ICONS.listUl}</button>
+    <button type="button" ${pd} class="rt-btn" title="번호 매기기" onclick="richExec('${id}','insertOrderedList')">${RICH_ICONS.listOl}</button>
+    <button type="button" ${pd} class="rt-btn" title="내어쓰기" onclick="richExec('${id}','outdent')">${RICH_ICONS.outdent}</button>
+    <button type="button" ${pd} class="rt-btn" title="들여쓰기" onclick="richExec('${id}','indent')">${RICH_ICONS.indent}</button>
   </div>`;
 }
 function richEditorHtml(id, initialHtml, placeholder, minHeight){
@@ -4852,10 +4857,32 @@ function handleInventoryFile(evt){
    vs "성서점") 문제없이 반영되고, 다른 지점 파일을 순서에 상관없이 추가로 올려도 사번 단위로
    병합되어 기존에 반영된 다른 직원 데이터를 지우지 않는다.
    ========================================================================= */
+// 시간 셀 값을 "HH:MM" 문자열로 정규화한다. Shiftee/엑셀 저장 방식에 따라 같은 시간이
+// 일반 텍스트("11:00")뿐 아니라 실제 Date 객체나 0~1 사이의 시간 소수(엑셀 시간 직렬값)로
+// 들어오는 경우가 있어, 이 세 가지 형태를 모두 처리해야 "출근 시간"으로 인식된다.
+// (문자열만 처리했을 때 Date/소수로 들어온 셀은 출근이 아니라 "기타 상태"로 잘못 분류되어
+// 근태 매칭이 어긋나 보이는 원인이 될 수 있다.)
+function shifteeCellTimeStr(v){
+  if(v==null || v==='') return null;
+  if(v instanceof Date){
+    return `${String(v.getHours()).padStart(2,'0')}:${String(v.getMinutes()).padStart(2,'0')}`;
+  }
+  if(typeof v === 'number'){
+    if(v>=0 && v<1){
+      const totalMin = Math.round(v*24*60);
+      return `${String(Math.floor(totalMin/60)).padStart(2,'0')}:${String(totalMin%60).padStart(2,'0')}`;
+    }
+    return null;
+  }
+  const s = String(v).trim();
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  return m ? `${m[1].padStart(2,'0')}:${m[2]}` : null;
+}
 function shifteeClassifyStatus(text){
   if(text==null || text==='') return null;
+  if(shifteeCellTimeStr(text)) return 'work';
   const t = String(text).trim();
-  if(/^\d{1,2}:\d{2}$/.test(t)) return 'work';
+  if(t==='') return null;
   if(t.includes('대체')) return 'substitute';
   if(t.includes('휴무')) return 'off';
   return 'leave'; // 연차 등 그 외 상태 텍스트는 모두 "휴가성" 상태로 취급
@@ -4872,30 +4899,45 @@ function shifteeSheetPeriod(sheetName){
   const now = new Date();
   return { year: now.getFullYear(), month: now.getMonth()+1 };
 }
+// 사번 셀 값을 문자열로 정규화한다. 엑셀에서 사번 열이 "숫자" 서식으로 저장된 경우
+// SheetJS가 1000963.0 처럼 소수점이 붙은 숫자로 돌려줄 수 있어(raw:true), 그런 경우
+// 뒤에 붙은 ".0"을 제거해 DB.users의 문자열 사번과 정확히 일치시킨다.
+function shifteeNormalizeEmpId(v){
+  if(v==null) return '';
+  if(typeof v === 'number') return String(Math.trunc(v));
+  return String(v).trim().replace(/\.0$/, '');
+}
+// 행 구분 라벨("근무일정 시작시간"/"근무일정 종료시간"/"지점")도 문자열로 정규화 후
+// trim/포함 비교로 판정한다 — 내보내기 버전에 따라 앞뒤 공백이 붙어 있어도 인식되도록.
+function shifteeRowLabel(v){ return v==null ? '' : String(v).trim(); }
 function parseShifteeScheduleRows(rows, year, month){
-  const result = { byEmpDate:{}, matchedEmp:0, unmatchedEmp:0, unmatchedNames:[], dayCount:0 };
+  const result = { byEmpDate:{}, matchedEmp:0, unmatchedEmp:0, unmatchedNames:[], dayCount:0, minDay:null, maxDay:null };
   if(!rows || rows.length===0) return result;
   const header = rows[0] || [];
   // 1~31일 컬럼: "N/요일" 형식, 5번째 열(0-based index 5)부터 시작
   const dayCols = []; // { col, day }
   for(let col=5; col<header.length; col++){
     const h = header[col];
-    const m = h!=null ? String(h).match(/^(\d{1,2})\//) : null;
+    const m = h!=null ? String(h).trim().match(/^(\d{1,2})\// ) : null;
     if(m) dayCols.push({ col, day: Number(m[1]) });
   }
   result.dayCount = dayCols.length;
+  if(dayCols.length>0){
+    result.minDay = Math.min(...dayCols.map(d=>d.day));
+    result.maxDay = Math.max(...dayCols.map(d=>d.day));
+  }
 
   let i = 1;
   while(i < rows.length){
     const row = rows[i] || [];
-    const rowLabel = row[4];
+    const rowLabel = shifteeRowLabel(row[4]);
     if(rowLabel === '근무일정 시작시간'){
-      const empId = row[0] != null ? String(row[0]).trim() : '';
+      const empId = shifteeNormalizeEmpId(row[0]);
       const empName = row[1] != null ? String(row[1]).trim() : '';
       const startRow = row;
-      const endRow = (rows[i+1] && rows[i+1][4] === '근무일정 종료시간') ? rows[i+1] : null;
-      const branchRow = (rows[i+2] && rows[i+2][4] === '지점') ? rows[i+2] : null;
-      const user = DB.users.find(u=>u.empId===empId);
+      const endRow = (rows[i+1] && shifteeRowLabel(rows[i+1][4]) === '근무일정 종료시간') ? rows[i+1] : null;
+      const branchRow = (rows[i+2] && shifteeRowLabel(rows[i+2][4]) === '지점') ? rows[i+2] : null;
+      const user = DB.users.find(u=>shifteeNormalizeEmpId(u.empId)===empId);
       if(user){
         result.matchedEmp++;
         dayCols.forEach(({col, day})=>{
@@ -4905,12 +4947,12 @@ function parseShifteeScheduleRows(rows, year, month){
           const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
           const entry = { status: cat, label: String(cell).trim(), checkin:null, checkout:null };
           if(cat==='work'){
-            entry.checkin = String(cell).trim();
-            entry.checkout = endRow && endRow[col]!=null ? String(endRow[col]).trim() : null;
+            entry.checkin = shifteeCellTimeStr(cell);
+            entry.checkout = endRow ? shifteeCellTimeStr(endRow[col]) : null;
             entry.label = '출근';
           }
-          if(!result.byEmpDate[empId]) result.byEmpDate[empId] = {};
-          result.byEmpDate[empId][dateStr] = entry;
+          if(!result.byEmpDate[user.empId]) result.byEmpDate[user.empId] = {};
+          result.byEmpDate[user.empId][dateStr] = entry;
         });
       } else if(empId){
         result.unmatchedEmp++;
@@ -4950,7 +4992,18 @@ function handleWorkScheduleFile(evt){
       logActivity('update', `${SESSION.name}님(관리자)이 [근무일정] 파일을 업로드했습니다: ${file.name}`);
       renderTab('systemAdmin');
       const unmatchedMsg = parsed.unmatchedEmp>0 ? ` / 미등록 사번 ${parsed.unmatchedEmp}명 제외(${parsed.unmatchedNames.slice(0,5).join(', ')}${parsed.unmatchedNames.length>5?' 외':''})` : '';
-      showUploadResult('workScheduleUploadMsg', true, `"${sheetName}" 기준 ${parsed.matchedEmp}명 근무일정 반영 완료${unmatchedMsg}`);
+      // 오늘 날짜가 이번에 올린 파일의 기간(예: 8/1~8/31)에 아예 포함되지 않으면, 반영은 됐어도
+      // "오늘 출근 현황"에는 당장 아무 변화가 없어 보일 수 있으므로 눈에 띄게 경고해 준다.
+      let rangeWarning = '';
+      if(parsed.minDay!=null && parsed.maxDay!=null){
+        const rangeStart = `${year}-${String(month).padStart(2,'0')}-${String(parsed.minDay).padStart(2,'0')}`;
+        const rangeEnd = `${year}-${String(month).padStart(2,'0')}-${String(parsed.maxDay).padStart(2,'0')}`;
+        const today = todayStr();
+        if(today < rangeStart || today > rangeEnd){
+          rangeWarning = `<br><span style="color:var(--bad);font-weight:700;">⚠ 이 파일의 기간은 ${rangeStart} ~ ${rangeEnd} 입니다. 오늘(${today})이 이 기간에 포함되지 않아 "오늘 출근 현황"에는 아직 반영되지 않습니다 — 이번 달 파일을 올려주세요.</span>`;
+        }
+      }
+      showUploadResult('workScheduleUploadMsg', true, `"${sheetName}" 기준 ${parsed.matchedEmp}명 근무일정 반영 완료${unmatchedMsg}${rangeWarning}`);
     }catch(err){
       showUploadResult('workScheduleUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
@@ -5917,7 +5970,7 @@ function renderCollectPhoto(){
         <div style="margin-bottom:6px;">${editPhotosHtml || '<div class="muted" style="font-size:11.5px;">첨부된 파일 없음</div>'}</div>
         <div class="field" style="margin-bottom:8px;">
           <label>파일 추가 (선택, 사진/PPT/엑셀 등 여러 개 가능)</label>
-          <input id="epe_${r.id}_file" type="file" multiple style="width:100%;font-size:11px;">
+          <input id="epe_${r.id}_file" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" style="width:100%;font-size:11px;">
         </div>
         <button class="btn btn-sm btn-primary" style="width:100%;margin-bottom:4px;" onclick="saveEditExecPhoto('${r.id}')">저장</button>
         <button class="btn btn-sm" style="width:100%;" onclick="cancelEditExecPhoto()">취소</button>
@@ -5965,7 +6018,7 @@ function renderCollectPhoto(){
         </div>
         <div class="field">
           <label>파일 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
-          <input id="epFile" type="file" multiple>
+          <input id="epFile" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
         </div>
         <button class="btn btn-primary" onclick="submitExecPhoto()">등록</button>
       </div>
