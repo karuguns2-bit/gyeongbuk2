@@ -882,14 +882,6 @@ function migrateDB(){
   if(!DB.issueCases) DB.issueCases = [];
   if(!DB.suggestions) DB.suggestions = [];
   if(!DB.contestGifts) DB.contestGifts = [];
-  // 로니 런칭 기념 사은품 한정수량이 12건→24건으로 늘어나며 문구도 함께 바뀌었으므로,
-  // 기존에 "(12건 선착순 한정)" 문구로 등록돼 있던 건들도 새 문구 기준으로 계속 집계·표시되도록
-  // contestType 값을 새 문구로 맞춰준다(기존 등록건을 24건 집계에 포함시키기 위함).
-  DB.contestGifts.forEach(r=>{
-    if(r.contestType==='26년 8월 로니 런칭 기념 사은품(12건 선착순 한정)'){
-      r.contestType = '26년 8월 로니 런칭 기념 사은품(24건 선착순 한정)';
-    }
-  });
   if(!DB.subTierContestGifts) DB.subTierContestGifts = [];
   // 장기 미사용 시 자동 전환되는 스크린세이버 사용 여부 (관리자가 시스템 관리에서 설정, 기본값 사용함)
   if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
@@ -912,7 +904,6 @@ function migrateDB(){
   if(DB.eduVideoRich===undefined) DB.eduVideoRich = null;
   // 재고 조회: "소진리스트" 시트에서 추출한 소진집중 대상 상품코드 목록(깜빡이는 알림 배지용)
   if(!DB.inventoryClearanceCodes) DB.inventoryClearanceCodes = [];
-  if(DB.inventoryClearanceBaseline===undefined) DB.inventoryClearanceBaseline = null;
   if(!DB.kakaoFriends) DB.kakaoFriends = [];
   DB.kakaoFriends.forEach(r=>{ if(!r.date) r.date = r.weekStart; if(!r.weekStart && r.date) r.weekStart = getMondayStr(r.date); });
   if(!DB.prospects) DB.prospects = [];
@@ -2087,25 +2078,9 @@ function renderSystemAdmin(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>재고 조회 파일 업로드 <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 단, 아래 "소진집중 소진율 카운팅 기준선"이 저장되어 있으면, 기준선 대비 수량이 0이 되었거나 이번 파일에서 아예 사라진 소진집중 품목은 구분(상태)이 자동으로 "소진완료"로 표시됩니다(이 경우에 한해 매니저가 다시 수정하기 전까지 자동 반영).</div>
+      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.</div>
       <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
       <div id="inventoryUploadMsg" class="small-note"></div>
-    </div>
-
-    <div class="card" style="margin-bottom:16px;">
-      <h3>소진집중 소진율 카운팅 기준선 <small>(관리자가 원하는 시점에 저장 · 이후 재고 파일을 새로 올릴 때마다 이 기준과 비교해 소진완료/소진율을 계산)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">
-        지금 반영되어 있는(가장 최근 업로드) 재고 데이터의 소진집중 품목별 수량을 기준선으로 저장합니다. 저장 시점 이후 새 재고 파일을 올리면, 기준선 대비 수량이 0이 되었거나 파일에서 아예 사라진(단종/철수 등) 소진집중 품목은 자동으로 "소진완료"로 표시되고, 소진 대수·소진율이 재고 조회 화면에 함께 표시됩니다.
-        ${DB.inventoryClearanceBaseline ? `<br>현재 저장된 기준선: <b>${DB.inventoryClearanceBaseline.date}</b> 기준 · ${Object.keys(DB.inventoryClearanceBaseline.rows||{}).length}건` : '<br>아직 저장된 기준선이 없습니다.'}
-      </div>
-      <div class="form-row" style="align-items:flex-end;">
-        <div class="field">
-          <label>소진 카운팅 기준 일자(시작일)</label>
-          <input type="date" id="clearanceBaselineDateInput" value="${DB.inventoryClearanceBaseline ? DB.inventoryClearanceBaseline.date : ''}">
-        </div>
-        <button class="btn btn-primary" onclick="saveClearanceBaseline()">현재 상태를 기준선으로 저장</button>
-      </div>
-      <div id="clearanceBaselineMsg" class="small-note"></div>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
@@ -2127,7 +2102,7 @@ function renderSystemAdmin(){
           <div id="eduAiRpUploadMsg" class="small-note"></div>
         </div>
       </div>
-      <div class="small-note">월간test는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>AI R/P는 "대상자요약" 파일(사번/이름/지점/상태/제출횟수/총점 컬럼) 그대로 올리면 됩니다 — <b>상태</b> 컬럼이 "완료"면 실행완료, 그 외("미완료" 등)면 미실행으로 매칭되고, 제출횟수·총점도 함께 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).${DB.eduVideoRich ? ` <b>현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}</b>` : ''}</div>
+      <div class="small-note">월간test/AI R/P는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).${DB.eduVideoRich ? ` <b>현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}</b>` : ''}</div>
     </div>
 
     <div class="card">
@@ -3644,11 +3619,7 @@ function renderGoals(){
     </div>`;
 
   const allocSum = g.allocations.reduce((s,a)=>s+a.target,0);
-  // 팀원별 목표 배분의 합계/잔여 기준은 GROSS 목표금액이 아니라 "MSIS실판매 등록 기준
-  // 예상 목표치"(GROSS×1.25)로 계산한다 — 팀원 목표는 이 예상 목표치를 기준으로 나눠서
-  // 배분해야 하기 때문. 지점 달성율/진행율(branchAchievedPct)은 기존대로 GROSS 목표 기준 유지.
-  const msisExpectedTarget = g.target * 1.25;
-  const remaining = msisExpectedTarget - allocSum;
+  const remaining = g.target - allocSum;
   const branchAchievedWon = branchAchieved(branchId, period);
   const branchAchievedPct = pctOf(branchAchievedWon, g.target);
 
@@ -3740,12 +3711,11 @@ function renderGoals(){
           <div class="muted" style="font-size:10.5px;line-height:1.45;margin-top:6px;white-space:normal;word-break:keep-all;">※GROSS금액과 편차가 작거나 클수도 있으므로, 참고지표로만 활용 바랍니다</div>
         </div>
       </div>
-      <div class="muted" style="margin-top:10px;">배분 합계: ${fmtKK(allocSum)} / MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 대비 잔여: <b style="color:${remaining<0?'var(--bad)':'var(--text)'}">${fmtKK(remaining)}</b></div>
+      <div class="muted" style="margin-top:10px;">배분 합계: ${fmtKK(allocSum)} / 잔여: <b style="color:${remaining<0?'var(--bad)':'var(--text)'}">${fmtKK(remaining)}</b></div>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
       <h3>2. 팀원별 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
-      <div class="small-note" style="margin-bottom:10px;">※ MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 기준으로 팀원별 목표를 나눠서 설정해 주세요.</div>
       <table>
         <thead><tr><th>이름</th><th>배분 목표</th><th>누적 실적</th><th>달성률</th><th style="width:120px">진행률</th></tr></thead>
         <tbody>${allocRows}</tbody>
@@ -4425,183 +4395,6 @@ function showUploadResult(elId, ok, html){
   if(!el) return;
   el.innerHTML = `<span style="color:${ok ? 'var(--good)' : 'var(--bad)'};">${ok ? '✅ ' : '⚠️ '}${html}</span>`;
 }
-// ---- 재고 조회 파일 업로드: "재고장" 시트 파싱 & 스냅샷 반영 / "소진리스트" 시트 파싱 ----
-// 파일마다 헤더 문구가 살짝 다를 수 있어(점포명/지점명/매장명 등) 아래 별칭 목록으로 유연하게 매칭한다.
-function normalizeInvHeader(v){
-  return String(v==null ? '' : v).replace(/\s+/g,'').trim();
-}
-const INV_HEADER_ALIASES = {
-  store: ['점포명','지점명','매장명','점포','지점'],
-  product: ['상품명','제품명','상품','제품'],
-  cat1: ['구분1','구분','대분류'],
-  cat2: ['구분2','소분류','상세구분'],
-  model: ['모델명','모델'],
-  code: ['상품코드','코드','바코드'],
-  qty: ['현재수량','수량','재고수량'],
-  amountWon: ['현재금액','금액','재고금액']
-};
-// 파일 맨 위에 안내 문구 등 다른 행이 섞여 있을 수 있으므로, 위에서부터 최대 10행까지 훑어
-// "점포명"류 + "상품명"류 컬럼이 함께 있는 행을 진짜 헤더 행으로 판단한다.
-function findInvHeaderRowIndex(rows){
-  const maxScan = Math.min(rows.length, 10);
-  for(let i=0;i<maxScan;i++){
-    const row = rows[i] || [];
-    const normalized = row.map(normalizeInvHeader);
-    const hasStore = normalized.some(h=>INV_HEADER_ALIASES.store.includes(h));
-    const hasProduct = normalized.some(h=>INV_HEADER_ALIASES.product.includes(h));
-    if(hasStore && hasProduct) return i;
-  }
-  return -1;
-}
-function parseInventorySheetRows(rows){
-  if(!Array.isArray(rows) || rows.length===0) return [];
-  const headerIdx = findInvHeaderRowIndex(rows);
-  if(headerIdx===-1) return [];
-  const header = (rows[headerIdx]||[]).map(normalizeInvHeader);
-  const colIndex = {};
-  Object.keys(INV_HEADER_ALIASES).forEach(key=>{
-    colIndex[key] = header.findIndex(h=>INV_HEADER_ALIASES[key].includes(h));
-  });
-  const toNum = v => (v===null || v===undefined || v==='') ? null : Number(v);
-  const toStr = v => (v===null || v===undefined) ? '' : String(v).trim();
-  const out = [];
-  for(let i=headerIdx+1;i<rows.length;i++){
-    const row = rows[i];
-    if(!row) continue;
-    const store = colIndex.store>=0 ? toStr(row[colIndex.store]) : '';
-    const product = colIndex.product>=0 ? toStr(row[colIndex.product]) : '';
-    if(!store || !product) continue; // 점포명/상품명 없는 빈 행은 건너뜀
-    out.push({
-      store, product,
-      cat1: colIndex.cat1>=0 ? toStr(row[colIndex.cat1]) : '',
-      cat2: colIndex.cat2>=0 ? toStr(row[colIndex.cat2]) : '',
-      model: colIndex.model>=0 ? toStr(row[colIndex.model]) : '',
-      code: colIndex.code>=0 ? toNum(row[colIndex.code]) : null,
-      qty: colIndex.qty>=0 ? (toNum(row[colIndex.qty]) || 0) : 0,
-      amountWon: colIndex.amountWon>=0 ? toNum(row[colIndex.amountWon]) : null
-    });
-  }
-  return out;
-}
-// 새로 올라온 재고 스냅샷을 기존 DB.inventory에 반영한다.
-// 매장+상품코드+모델명+상품명(=invRowKey)이 같은 기존 행이 있으면 매니저가 직접 입력한
-// 구분(cat1)·상태·판매상태·비고·진열일자·진열소진일자와 기존 id는 그대로 유지하고,
-// 수량/금액 등 나머지 값만 새 파일 기준으로 갱신한다. 새 상품은 기본값으로 새로 추가된다.
-function applyInventorySnapshot(parsedInventory){
-  const prevByKey = {};
-  (DB.inventory||[]).forEach(r=>{ prevByKey[invRowKey(r)] = r; });
-  const next = parsedInventory.map(r=>{
-    const prev = prevByKey[invRowKey(r)];
-    if(prev){
-      return {
-        ...r,
-        id: prev.id,
-        cat1: (prev.cat1!=null && prev.cat1!=='') ? prev.cat1 : r.cat1,
-        note: prev.note || '',
-        status: prev.status || '보유중',
-        saleStatus: prev.saleStatus || '판매가능',
-        displayDate: prev.displayDate || '',
-        displaySoldOutDate: prev.displaySoldOutDate || ''
-      };
-    }
-    return { ...r, note:'', status:'보유중', saleStatus:'판매가능', displayDate:'', displaySoldOutDate:'' };
-  });
-  DB.inventory = next;
-  return next.length;
-}
-// "소진리스트" 시트는 헤더 없이 상품코드/상품명 쌍이 여러 블록으로 반복되는 형태라
-// (블록 사이 빈 칸 개수가 일정하지 않음) 각 행을 훑으며 "숫자 다음에 바로 문자열이
-// 오는" 자리를 상품코드/상품명 쌍으로 인식해서 상품코드만 모은다.
-function parseClearanceListRows(rows){
-  const codes = [];
-  (rows||[]).forEach(row=>{
-    if(!row) return;
-    for(let i=0;i<row.length-1;i++){
-      const codeVal = row[i];
-      const nameVal = row[i+1];
-      if(typeof codeVal==='number' && codeVal>1000 && typeof nameVal==='string' && nameVal.trim()!==''){
-        codes.push(codeVal);
-      }
-    }
-  });
-  return [...new Set(codes)];
-}
-// ---- 소진집중 소진율 카운팅 기준선 ----
-// 관리자가 원하는 시점에 "현재 재고 상태를 기준선으로 저장"하면, 그 시점의 소진집중 품목별
-// 수량(매장+상품코드+모델명+상품명 = invRowKey 기준)을 스냅샷으로 남겨둔다. 이후 재고 파일을
-// 새로 올릴 때마다 이 기준선과 비교해서 몇 건이 소진(수량 0 또는 파일에서 아예 사라짐)됐는지,
-// 소진율이 몇 %인지 계산한다. 기준선 자체는 새 파일을 올려도 바뀌지 않고, 관리자가 다시
-// "기준선으로 저장"을 눌러야만 갱신된다.
-function saveClearanceBaseline(){
-  if(SESSION.role!=='admin'){ alert('기준선 저장은 관리자만 가능합니다.'); return; }
-  const dateInput = document.getElementById('clearanceBaselineDateInput');
-  const dateStr = dateInput ? dateInput.value : '';
-  if(!dateStr){ showUploadResult('clearanceBaselineMsg', false, '소진 카운팅 기준 일자(시작일)를 입력해 주세요.'); return; }
-  const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
-  const rows = {};
-  (DB.inventory||[]).forEach(r=>{
-    // 재고 조회 화면의 "🔥 소진집중" 표시와 동일한 기준: 소진리스트 코드이면서 행사(행)/진열(진)
-    // 재고인 것만 소진집중으로 집계한다(같은 코드라도 일반 재고는 제외 — 그래야 화면에 보이는
-    // "소진집중 N건" 숫자와 기준선 건수가 일치한다).
-    if(r.code!=null && clearanceSet.has(Number(r.code)) && invTag(r.product)){
-      rows[invRowKey(r)] = Number(r.qty)||0;
-    }
-  });
-  const rowCount = Object.keys(rows).length;
-  if(rowCount===0 && !confirm('현재 소진집중으로 표시된 재고 항목이 없습니다. 그래도 빈 기준선으로 저장할까요?')) return;
-  DB.inventoryClearanceBaseline = { date: dateStr, rows, setAt: new Date().toISOString(), setBy: SESSION.name };
-  saveDB();
-  logActivity('update', `${SESSION.name}님(관리자)이 [소진집중 소진율] 기준선을 ${dateStr} 기준으로 저장했습니다(${rowCount}건)`);
-  renderTab('systemAdmin');
-  showUploadResult('clearanceBaselineMsg', true, `소진 카운팅 기준선을 ${dateStr} 기준, ${rowCount}건으로 저장했습니다.`);
-}
-// 새 재고 파일이 반영된 직후 호출: 기준선에 있던 소진집중 품목 중 지금 수량이 0 이하인 것들을
-// 자동으로 "소진완료" 상태로 표시한다. 기준선에 없던(기준선 저장 이후 새로 소진집중에 추가된)
-// 품목이나, 매니저가 이미 "소진완료"로 표시해 둔 품목은 건드리지 않는다(중복 카운트 방지).
-// 반환값은 이번 업로드로 새로 "소진완료" 처리된 건수.
-function applyClearanceDepletion(){
-  const baseline = DB.inventoryClearanceBaseline;
-  if(!baseline || !baseline.rows) return 0;
-  let count = 0;
-  (DB.inventory||[]).forEach(r=>{
-    const key = invRowKey(r);
-    if(Object.prototype.hasOwnProperty.call(baseline.rows, key)){
-      if((Number(r.qty)||0) <= 0 && r.status!=='소진완료'){
-        r.status = '소진완료';
-        count++;
-      }
-    }
-  });
-  return count;
-}
-// 기준선 대비 현재까지 몇 건이 소진됐는지/소진율을 계산한다. 기준선에 있던 품목이 이번 파일에서
-// 아예 사라진 경우(단종/철수 등)도 소진된 것으로 집계한다.
-function clearanceDepletionStats(){
-  const baseline = DB.inventoryClearanceBaseline;
-  if(!baseline || !baseline.rows) return null;
-  const keys = Object.keys(baseline.rows);
-  const total = keys.length;
-  if(total===0) return { date: baseline.date, total:0, depleted:0, pct:0 };
-  const currentByKey = {};
-  (DB.inventory||[]).forEach(r=>{ currentByKey[invRowKey(r)] = r; });
-  let depleted = 0;
-  keys.forEach(key=>{
-    const cur = currentByKey[key];
-    if(!cur || (Number(cur.qty)||0) <= 0) depleted++;
-  });
-  const pct = Math.round((depleted/total)*1000)/10;
-  return { date: baseline.date, total, depleted, pct };
-}
-// 시트 이름에서 "8월 1일"처럼 월/일을 추출한다. "8월 1일 재고장"/"8월1일재고장" 등 공백 유무는
-// 모두 허용. 못 찾으면 null (날짜가 없는 일반 "재고장" 시트로 취급).
-function extractInvSheetDate(sheetName){
-  const m = String(sheetName||'').match(/(\d{1,2})\s*월\s*(\d{1,2})\s*일/);
-  if(!m) return null;
-  const month = Number(m[1]), day = Number(m[2]);
-  if(!month || !day) return null;
-  const year = new Date().getFullYear();
-  return { month, day, dateStr: `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`, sortKey: month*100+day };
-}
 function handleInventoryFile(evt){
   const file = evt.target.files[0];
   if(!file) return;
@@ -4611,33 +4404,14 @@ function handleInventoryFile(evt){
     try{
       const raw = new Uint8Array(e.target.result);
       const wb = XLSX.read(raw, {type:'array'});
-
-      // "재고"가 이름에 들어간 시트가 여러 개면(예: "8월 1일 재고장"/"8월 10일 재고장") 각 시트명에서
-      // 날짜를 추출해, 가장 늦은 날짜의 시트를 "현재 재고" 스냅샷으로 반영하고, 아직 소진집중 기준선이
-      // 저장돼 있지 않을 때만 가장 이른 날짜의 시트를 기준선으로 자동 저장한다(이미 기준선이 있으면
-      // 그대로 유지 — 매번 재업로드해도 기준선은 바뀌지 않고 최신 시트만 갱신됨).
-      const invSheetNames = wb.SheetNames.filter(n=>n.includes('재고'));
-      const datedSheets = invSheetNames
-        .map(n=>({ name:n, d:extractInvSheetDate(n) }))
-        .filter(x=>x.d)
-        .sort((a,b)=>a.d.sortKey - b.d.sortKey);
-
-      let currentSheetName, baselineSheetInfo = null;
-      if(datedSheets.length >= 2){
-        currentSheetName = datedSheets[datedSheets.length-1].name;
-        baselineSheetInfo = datedSheets[0];
-      } else {
-        currentSheetName = invSheetNames[0] || wb.SheetNames[0];
-      }
-
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[currentSheetName], {header:1, defval:null, raw:true});
+      const sheetName = wb.SheetNames.find(n=>n.includes('재고')) || wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
       const parsedInventory = parseInventorySheetRows(rows);
       if(parsedInventory.length===0){ showUploadResult('inventoryUploadMsg', false, '재고 데이터를 인식하지 못했습니다. 파일에 "점포명"(또는 지점명/매장명)과 "상품명"(또는 제품명) 컬럼이 있는지 확인해 주세요.'); return; }
+      const count = applyInventorySnapshot(parsedInventory);
 
       // "소진리스트" 시트가 이 파일에 있으면 소진집중 대상 상품코드도 함께 갱신한다
       // (없는 파일도 많으므로, 없으면 기존에 반영돼 있던 값은 그대로 둔다).
-      // 기준선을 새로 잡을 때 "그 시점의 소진집중 코드" 기준으로 걸러야 하므로 반드시
-      // applyInventorySnapshot/기준선 계산보다 먼저 갱신한다.
       let clearanceMsg = '';
       const clrSheetName = wb.SheetNames.find(n=>n.includes('소진'));
       if(clrSheetName){
@@ -4647,35 +4421,11 @@ function handleInventoryFile(evt){
         clearanceMsg = ` / 소진집중 대상 ${clearanceCodes.length}건 반영`;
       }
 
-      // 기준선이 아직 없고, 이 파일에 더 이른 날짜의 재고장 시트가 함께 있으면 그 시트로 기준선을
-      // 자동 저장한다(가장 먼저 올린 파일에 기준일+비교일 시트가 함께 들어있는 경우를 위함).
-      let baselineMsg = '';
-      if(baselineSheetInfo && !DB.inventoryClearanceBaseline){
-        const baseRawRows = XLSX.utils.sheet_to_json(wb.Sheets[baselineSheetInfo.name], {header:1, defval:null, raw:true});
-        const baseParsed = parseInventorySheetRows(baseRawRows);
-        const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
-        const baseRows = {};
-        // 재고 조회 화면의 "🔥 소진집중" 표시와 동일하게 행사(행)/진열(진) 재고만 소진집중으로 집계
-        baseParsed.forEach(r=>{
-          if(r.code!=null && clearanceSet.has(Number(r.code)) && invTag(r.product)) baseRows[invRowKey(r)] = Number(r.qty)||0;
-        });
-        DB.inventoryClearanceBaseline = { date: baselineSheetInfo.d.dateStr, rows: baseRows, setAt: new Date().toISOString(), setBy: SESSION.name };
-        baselineMsg = ` / "${baselineSheetInfo.name}" 시트로 소진 카운팅 기준선(${baselineSheetInfo.d.dateStr}, ${Object.keys(baseRows).length}건) 자동 저장`;
-      }
-
-      const count = applyInventorySnapshot(parsedInventory);
-
-      // 소진집중 기준선이 저장돼 있으면, 기준선 대비 소진된(수량 0 또는 파일에서 사라진) 품목의
-      // 구분(상태)을 자동으로 "소진완료"로 표시한다 (applyInventorySnapshot이 끝나 DB.inventory와
-      // DB.inventoryClearanceCodes가 모두 최신 상태로 반영된 뒤에 실행해야 정확히 판정된다).
-      const depletedCount = applyClearanceDepletion();
-      const depletionMsg = depletedCount>0 ? ` / 소진집중 ${depletedCount}건 소진완료 자동 반영` : '';
-
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
-      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${clearanceMsg}${baselineMsg}${depletionMsg}`);
+      showUploadResult('inventoryUploadMsg', true, `재고 데이터 ${count}건 반영 완료${clearanceMsg}`);
     }catch(err){
       showUploadResult('inventoryUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
@@ -5394,7 +5144,6 @@ function renderInventory(){
   if(f.page < 1) f.page = 1;
   const pageRows = rows.slice((f.page-1)*INV_PAGE_SIZE, f.page*INV_PAGE_SIZE);
   const clearanceCountInView = rows.filter(isClearanceRow).length;
-  const clearanceStats = clearanceDepletionStats();
 
   const tableRows = pageRows.map(r=>{
     const tag = invTag(r.product);
@@ -5470,7 +5219,7 @@ function renderInventory(){
         <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">제품 상태 (다중 선택)</label>
         <div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>
       </div>
-      <div class="small-note" style="margin-top:10px;">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}${clearanceStats ? ` · 소진 카운팅 기준일(시작일) <b>${clearanceStats.date}</b> · 소진완료 <b>${clearanceStats.depleted}대</b> / ${clearanceStats.total}건 (소진율 <b>${clearanceStats.pct}%</b>)` : ''}</div>
+      <div class="small-note" style="margin-top:10px;">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}</div>
     </div>
 
     <div class="card">
@@ -5600,7 +5349,6 @@ function renderExecPhotoGuide(){
     </div>`;
 }
 function renderCollectPhoto(){
-  if(!state.epSelectedIds) state.epSelectedIds = new Set();
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.execPhotos);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -5638,10 +5386,7 @@ function renderCollectPhoto(){
     return `
     <div class="card" style="width:220px;">
       <div class="flex-between" style="margin-bottom:6px;">
-        <div style="font-weight:600;display:flex;align-items:center;gap:6px;">
-          ${SESSION.role==='admin' ? `<input type="checkbox" ${state.epSelectedIds.has(r.id)?'checked':''} onchange="toggleExecPhotoSelect('${r.id}', this.checked)" title="선택">` : ''}
-          ${branchName(r.branchId)}
-        </div>
+        <div style="font-weight:600;">${branchName(r.branchId)}</div>
         ${r.week ? `<span class="tag">${escapeHtml(r.week)}</span>` : ''}
       </div>
       ${photosHtml}
@@ -5754,90 +5499,6 @@ function deleteExecPhoto(id){
   if(!confirm('삭제하시겠습니까?')) return;
   DB.execPhotos = DB.execPhotos.filter(r=>r.id!==id);
   if(target) (target.photos||[]).forEach(p=>{ if(p.dataUrl) deleteFromStorage(p.dataUrl); });
-  saveDB();
-  renderTab('collectPhoto');
-}
-
-// 실행력 점검 사진 취합 - 관리자가 카드별 체크박스로 여러 건을 골라서, 상단 툴바의
-// "선택 항목 내려받기"/"선택 항목 삭제하기" 버튼으로 한 번에 처리할 수 있게 한다.
-// 체크박스를 누를 때마다 화면 전체를 다시 그리면 스크롤 위치가 튀고 깜빡이므로, 선택 상태는
-// state에 Set으로만 들고 있다가 툴바 버튼의 표시 건수만 가볍게 갱신한다(전체 재렌더 없음).
-function toggleExecPhotoSelect(id, checked){
-  if(!state.epSelectedIds) state.epSelectedIds = new Set();
-  if(checked) state.epSelectedIds.add(id); else state.epSelectedIds.delete(id);
-  updateExecPhotoSelectionToolbar();
-}
-function updateExecPhotoSelectionToolbar(){
-  const n = state.epSelectedIds ? state.epSelectedIds.size : 0;
-  const label = n>0 ? ` (${n})` : '';
-  ['execPhotoSelCountDl','execPhotoSelCountDel'].forEach(id=>{
-    const el = document.getElementById(id);
-    if(el) el.textContent = label;
-  });
-}
-// 실행력 점검 사진 취합 - 체크박스로 선택한 건들의 사진만 zip으로 묶어 다운로드한다.
-// downloadAllExecPhotos()(현재 화면에 보이는 전체)와 로직은 같고 대상만 선택된 건으로 좁힌다.
-async function downloadSelectedExecPhotos(){
-  if(SESSION.role!=='admin') return;
-  const ids = state.epSelectedIds ? [...state.epSelectedIds] : [];
-  if(ids.length===0){ alert('선택된 항목이 없습니다. 다운로드할 건의 체크박스를 먼저 선택해 주세요.'); return; }
-  if(typeof JSZip==='undefined'){
-    alert('압축 파일 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
-    return;
-  }
-  const idSet = new Set(ids);
-  const selected = (DB.execPhotos||[]).filter(r=>idSet.has(r.id));
-  const items = [];
-  selected.forEach(r=>{
-    (r.photos||[]).forEach(p=>{
-      if(p && p.dataUrl) items.push({ branch: branchName(r.branchId), file: p });
-    });
-  });
-  if(items.length===0){ alert('선택한 건에 다운로드할 사진(첨부파일)이 없습니다.'); return; }
-
-  const btn = document.getElementById('execPhotoDownloadSelectedBtn');
-  const btnOrigHtml = btn ? btn.innerHTML : null;
-  if(btn){ btn.disabled = true; btn.innerHTML = '압축 중...'; }
-  try{
-    const zip = new JSZip();
-    const counters = {};
-    let okCount = 0, failCount = 0;
-    for(const { branch, file } of items){
-      try{
-        const res = await fetch(file.dataUrl);
-        if(!res.ok) throw new Error('fetch failed: ' + res.status);
-        const arrBuf = await res.arrayBuffer();
-        const ext = guessAttachmentExt(file.name);
-        counters[branch] = (counters[branch]||0) + 1;
-        zip.file(`${branch}${counters[branch]}${ext}`, arrBuf);
-        okCount++;
-      }catch(e){
-        failCount++; // 이 파일 하나만 건너뛰고 나머지는 계속 압축
-      }
-    }
-    if(okCount===0){ alert('사진을 하나도 내려받지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'); return; }
-    const blob = await zip.generateAsync({type:'blob'});
-    downloadBlob(blob, `실행력점검사진_선택항목_${todayStr()}.zip`);
-    if(failCount>0) alert(`${okCount}개 사진은 정상적으로 압축했지만, ${failCount}개는 내려받는 데 실패해서 제외했습니다.`);
-  }catch(e){
-    alert('사진 압축 파일 생성 중 오류가 발생했습니다: ' + e.message);
-  }finally{
-    if(btn){ btn.disabled = false; btn.innerHTML = btnOrigHtml; }
-  }
-}
-// 실행력 점검 사진 취합 - 체크박스로 선택한 건들을 한 번에 삭제한다(스토리지에 올라간 실제
-// 파일도 함께 정리). 개별 삭제(deleteExecPhoto)와 동일한 권한 기준(관리자)으로, 여러 건을
-// 매번 하나씩 지우지 않아도 되게 하는 일괄 처리 버튼이다.
-function deleteSelectedExecPhotos(){
-  if(SESSION.role!=='admin') return;
-  const ids = state.epSelectedIds ? [...state.epSelectedIds] : [];
-  if(ids.length===0){ alert('선택된 항목이 없습니다. 삭제할 건의 체크박스를 먼저 선택해 주세요.'); return; }
-  if(!confirm(`선택한 ${ids.length}건을 삭제하시겠습니까? 삭제한 사진은 복구할 수 없습니다.`)) return;
-  const idSet = new Set(ids);
-  const targets = (DB.execPhotos||[]).filter(r=>idSet.has(r.id));
-  targets.forEach(r=>(r.photos||[]).forEach(p=>{ if(p.dataUrl) deleteFromStorage(p.dataUrl); }));
-  DB.execPhotos = (DB.execPhotos||[]).filter(r=>!idSet.has(r.id));
-  state.epSelectedIds.clear();
   saveDB();
   renderTab('collectPhoto');
 }
@@ -6158,8 +5819,8 @@ const CONTEST_GIFT_TYPE_OPTIONS = [
   { value:'26년 8월 구독특별 사은품', gift:'[가이타이너]슈라우프 와이드 그릴' },
   { value:'26년 8월 에어컨 구독 특별사은품', gift:'[셰퍼]에어브리즈 14인치 선풍기' },
   // 매장에서 직접 수령하는 항목이라 실제 배송 주소가 없으므로, 선택 시 주소칸에 안내 문구를 자동으로 채워준다.
-  // 선착순 24개 한정 사은품이므로 limit을 지정해 등록 시마다 잔여수량 안내/소진 시 등록 차단에 사용한다.
-  { value:'26년 8월 로니 런칭 기념 사은품(24건 선착순 한정)', gift:'[아티] 내열용기 직사각 5종세트', address:'매장으로 배송', limit:24 }
+  // 선착순 12개 한정 사은품이므로 limit을 지정해 등록 시마다 잔여수량 안내/소진 시 등록 차단에 사용한다.
+  { value:'26년 8월 로니 런칭 기념 사은품(12건 선착순 한정)', gift:'[아티] 내열용기 직사각 5종세트', address:'매장으로 배송', limit:12 }
 ];
 // 선착순 한정수량 항목의 누적 지급 수량(판매 건수 qty 합산)을 계산한다. 전 지점 취합 기준(각 지점별이 아니라 전체 합계).
 // excludeId를 넘기면 해당 레코드는 집계에서 제외한다(수정 화면에서 자기 자신의 기존 qty를 이중 차감하지 않기 위함).
@@ -6181,11 +5842,7 @@ const SUB_TIER_CONTEST_BANNER_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEU
 const SUB_TIER_CONTEST_OPTIONS = [
   { value:'구독 4품목 계약 시', gift:'앤루시 에어스톰R 리모컨 써큘레이터' },
   { value:'결제금액 기준 800만원 금액대', gift:'[제너] 클로제 IH 스텐냄비 3종 세트' },
-  { value:'결제금액 기준 1,000만원대 금액대', gift:'[에스트] 세라믹 후라이팬 2종 세트' },
-  // 다른 항목들과 달리 실제 배송 주소가 필요한 항목이라 needsAddress로 표시해 둔다.
-  // 이 항목을 선택했을 때만 주소 검색 버튼이 활성화되고, 그 외 항목은 "매장으로 입고"로
-  // 자동 고정된다(구독연동사은품 취합 페이지의 로니 항목과 반대 방향의 동일한 패턴).
-  { value:'에어컨 진열 판매', gift:'셰퍼 에어브리즈 14인치 선풍기', needsAddress:true }
+  { value:'결제금액 기준 1,000만원대 금액대', gift:'[에스트] 세라믹 후라이팬 2종 세트' }
 ];
 function syncContestGiftName(){
   const sel = document.getElementById('cgContestType');
@@ -6195,11 +5852,9 @@ function syncContestGiftName(){
   giftEl.value = opt ? opt.gift : '';
   // "로니 런칭 기념 사은품"처럼 매장에서 직접 수령하는 항목은 실제 배송 주소가 없으므로,
   // 해당 항목 선택 시 주소칸에 안내 문구를 자동으로 채워준다 (다른 항목은 기존처럼 직접 주소 검색).
-  const addrEl = document.getElementById('cgAddress');
-  if(addrEl){
-    // "로니 런칭 기념 사은품"처럼 매장 수령 항목은 안내 문구를 유지하고,
-    // 그 외 항목으로 바꾸면 이전에 남아있던 안내 문구를 지우고 다시 주소 검색이 가능한 빈 상태로 되돌린다.
-    addrEl.value = (opt && opt.address) ? opt.address : '';
+  if(opt && opt.address){
+    const addrEl = document.getElementById('cgAddress');
+    if(addrEl) addrEl.value = opt.address;
   }
   announceContestGiftRemaining(opt);
 }
@@ -6209,12 +5864,9 @@ function syncContestGiftNameFor(selectId, giftId, addressId, recordId){
   if(!sel || !giftEl) return;
   const opt = CONTEST_GIFT_TYPE_OPTIONS.find(o=>o.value===sel.value);
   giftEl.value = opt ? opt.gift : '';
-  if(addressId){
+  if(opt && opt.address && addressId){
     const addrEl = document.getElementById(addressId);
-    if(addrEl){
-      // 새 등록 폼과 동일하게, 매장 수령 항목이 아니면 안내 문구를 지우고 빈 상태로 되돌려 주소 검색이 가능하게 한다.
-      addrEl.value = (opt && opt.address) ? opt.address : '';
-    }
+    if(addrEl) addrEl.value = opt.address;
   }
   announceContestGiftRemaining(opt, recordId);
 }
@@ -6332,7 +5984,7 @@ function renderCollectionNotice(key, tab){
   }).join('');
   const editorControls = showEditor ? `
     <div style="margin-top:${hasContent?'10px':'0'};display:flex;flex-direction:column;gap:8px;">
-      <textarea id="cn_${key}_text" rows="8" style="width:100%;font-size:13px;min-height:160px;resize:vertical;line-height:1.5;padding:10px;" placeholder="공지 문구를 입력하세요">${n.text?escapeHtml(n.text):''}</textarea>
+      <textarea id="cn_${key}_text" rows="2" style="width:100%;font-size:13px;" placeholder="공지 문구를 입력하세요">${n.text?escapeHtml(n.text):''}</textarea>
       <div class="field" style="margin:0;">
         <label style="font-size:11.5px;">파일 첨부 (사진/PPT/엑셀 등 여러 개 선택 가능, 이 위로 파일을 끌어다 놓아도 첨부됩니다)</label>
         <input id="cn_${key}_file" type="file" multiple onchange="addCollectionNoticeImage('${key}','${tab}',event)">
@@ -6732,29 +6384,14 @@ function saveEditContestGift(id){
    3b. 구독4품목↑/금액대별 사은품 취합
    ========================================================================= */
 function syncSubTierGiftName(){
-  syncSubTierGiftNameFor('stcContestType','stcGiftName','stcAddress','stcAddressBtn');
+  syncSubTierGiftNameFor('stcContestType','stcGiftName');
 }
-// "에어컨 진열 판매"만 실제 배송 주소가 필요해 직접 검색해서 입력하고, 그 외 항목은
-// 매번 "매장으로 입고"로 자동 고정한다. addressId/addressBtnId를 넘기지 않으면(과거 호출부
-// 호환용) 주소 관련 동작은 건너뛴다.
-function syncSubTierGiftNameFor(selectId, giftId, addressId, addressBtnId){
+function syncSubTierGiftNameFor(selectId, giftId){
   const sel = document.getElementById(selectId);
   const giftInput = document.getElementById(giftId);
   if(!sel || !giftInput) return;
   const opt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===sel.value);
   giftInput.value = opt ? opt.gift : '';
-  if(addressId){
-    const addrEl = document.getElementById(addressId);
-    const needsAddress = !!(opt && opt.needsAddress);
-    if(addrEl) addrEl.value = needsAddress ? '' : '매장으로 입고';
-    if(addressBtnId){
-      const btnEl = document.getElementById(addressBtnId);
-      if(btnEl) btnEl.disabled = !needsAddress;
-    }
-    // "에어컨 진열 판매"는 매장이 아니라 고객 댁으로 직접 배송되는 항목이라, 선택하는 순간
-    // 주소를 반드시 입력해야 한다는 것을 바로 알려준다.
-    if(needsAddress) alert('고객 댁으로 배송됩니다. 주소창에 배송지를 입력해주세요.');
-  }
 }
 // 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
 // canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
@@ -6794,21 +6431,15 @@ function renderSubTierContest(){
       const existingPhotos = (r.evidenceFiles&&r.evidenceFiles.length>0)
         ? r.evidenceFiles.map(f=>noticeAttachmentHtml(f, 36, null)).join('')
         : '없음';
-      const curOpt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===r.contestType);
-      const curNeedsAddress = !!(curOpt && curOpt.needsAddress);
       return `
     <tr>
-      <td><select id="stce_${r.id}_contestType" style="width:190px" onchange="syncSubTierGiftNameFor('stce_${r.id}_contestType','stce_${r.id}_giftName','stce_${r.id}_address','stce_${r.id}_addressBtn')">
+      <td><select id="stce_${r.id}_contestType" style="width:190px" onchange="syncSubTierGiftNameFor('stce_${r.id}_contestType','stce_${r.id}_giftName')">
         <option value="">선택하세요</option>
         ${SUB_TIER_CONTEST_OPTIONS.map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===r.contestType?'selected':''}>${escapeHtml(o.value)}</option>`).join('')}
       </select></td>
       <td><input id="stce_${r.id}_giftName" value="${escapeHtml(r.giftName||'')}" style="width:200px"></td>
       <td><select id="stce_${r.id}_branch" style="width:120px">${branchOptionsHtml(r.branchId)}</select></td>
       <td><input id="stce_${r.id}_saleDate" type="date" value="${r.saleDate||''}" style="width:135px"></td>
-      <td>
-        <input id="stce_${r.id}_address" value="${escapeHtml(r.address||'')}" style="width:150px;background:#f7f7f8;" readonly>
-        <button type="button" id="stce_${r.id}_addressBtn" class="btn btn-sm" onclick="openAddressSearch('stce_${r.id}_address')" ${curNeedsAddress?'':'disabled'} style="margin-top:2px;">주소 검색</button>
-      </td>
       <td>
         기존: ${existingPhotos}<br>
         <input id="stce_${r.id}_evidence" type="file" multiple style="width:150px;font-size:11px;">
@@ -6826,16 +6457,15 @@ function renderSubTierContest(){
       <td>${escapeHtml(r.giftName||'-')}</td>
       <td>${branchName(r.branchId)}</td>
       <td>${r.saleDate||'-'}</td>
-      <td class="muted">${escapeHtml(r.address||'-')}</td>
       <td>${(r.evidenceFiles&&r.evidenceFiles.length>0) ? r.evidenceFiles.map(f=>noticeAttachmentHtml(f,36,null)).join('') : '-'}</td>
       <td class="muted">${escapeHtml(r.requesterName)}</td>
       <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditSubTierContest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubTierContest('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="8" class="muted">등록된 내역이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="7" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
-    <div class="page-title">구독4품목↑/금액대별 사은품/에어컨 진열판매 연동사은품 취합</div>
-    <div class="page-desc">구독 4품목 이상 계약, 결제금액 기준, 에어컨 진열판매 연동 사은품 컨테스트 건을 취합·관리합니다.</div>
+    <div class="page-title">구독4품목↑/금액대별 사은품 취합</div>
+    <div class="page-desc">구독 4품목 이상 계약 또는 결제금액 기준 사은품 컨테스트 건을 취합·관리합니다.</div>
 
     ${renderCollectionNotice('subTierContest','subTierContest')}
 
@@ -6865,16 +6495,6 @@ function renderSubTierContest(){
         </div>
       </div>
       <div class="form-row">
-        <div class="field" style="min-width:300px;">
-          <label>주소</label>
-          <div style="display:flex;gap:6px;">
-            <input id="stcAddress" placeholder="&quot;에어컨 진열 판매&quot; 선택 시 주소 검색 버튼을 눌러 입력하세요 (직접 입력 불가)" style="width:300px;background:#f7f7f8;" readonly>
-            <button type="button" id="stcAddressBtn" class="btn btn-sm" onclick="openAddressSearch('stcAddress')" disabled>주소 검색</button>
-          </div>
-          <div class="small-note">※ "에어컨 진열 판매" 선택 시에만 주소를 검색해서 입력할 수 있습니다. 그 외 항목은 "매장으로 입고"로 자동 설정됩니다.</div>
-        </div>
-      </div>
-      <div class="form-row">
         <div class="field" style="min-width:260px;">
           <label>영수증 사진 증빙</label>
           <input id="stcEvidenceFiles" type="file" multiple>
@@ -6888,7 +6508,7 @@ function renderSubTierContest(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>주소</th><th>영수증 증빙</th><th>등록자</th><th class="act-col"></th></tr></thead>
+        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>영수증 증빙</th><th>등록자</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -6919,21 +6539,18 @@ function submitSubTierContest(){
   const giftName = document.getElementById('stcGiftName').value.trim();
   const branchId = document.getElementById('stcBranch').value;
   const saleDate = document.getElementById('stcSaleDate').value;
-  const address = document.getElementById('stcAddress').value.trim();
   const evidenceInput = document.getElementById('stcEvidenceFiles');
   const evidenceFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
   const msgEl = document.getElementById('stcMsg');
 
   if(!contestType){ if(msgEl) msgEl.textContent = '컨테스트 항목을 선택해 주세요.'; return; }
-  const contestOpt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===contestType);
-  if(contestOpt && contestOpt.needsAddress && !address){ if(msgEl) msgEl.textContent = '주소 검색 버튼을 눌러 배송 주소를 입력해 주세요.'; return; }
   const oversized = evidenceFiles.find(f=>f.size > 5*1024*1024);
   if(oversized){ if(msgEl) msgEl.textContent = `"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`; return; }
 
   function finalize(evidence){
     DB.subTierContestGifts.push({
       id: 'stc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      contestType, giftName: giftName||null, branchId, saleDate, address: address||null, evidenceFiles: evidence,
+      contestType, giftName: giftName||null, branchId, saleDate, evidenceFiles: evidence,
       requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
     });
     touchTabContent('subTierContest');
@@ -6957,18 +6574,15 @@ function saveEditSubTierContest(id){
   const giftName = document.getElementById(`stce_${id}_giftName`).value.trim();
   const branchId = document.getElementById(`stce_${id}_branch`).value;
   const saleDate = document.getElementById(`stce_${id}_saleDate`).value;
-  const address = document.getElementById(`stce_${id}_address`).value.trim();
   const evidenceInput = document.getElementById(`stce_${id}_evidence`);
   const newFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
 
   if(!contestType){ alert('컨테스트 항목을 선택해 주세요.'); return; }
-  const contestOpt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===contestType);
-  if(contestOpt && contestOpt.needsAddress && !address){ alert('주소 검색 버튼을 눌러 배송 주소를 입력해 주세요.'); return; }
   const oversized = newFiles.find(f=>f.size > 5*1024*1024);
   if(oversized){ alert(`"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
 
   function finalize(evidence){
-    r.contestType = contestType; r.giftName = giftName||null; r.branchId = branchId; r.saleDate = saleDate; r.address = address||null;
+    r.contestType = contestType; r.giftName = giftName||null; r.branchId = branchId; r.saleDate = saleDate;
     if(evidence) r.evidenceFiles = evidence;
     state.stcEditId = null;
     saveDB();
@@ -7006,19 +6620,7 @@ function openAddressSearch(inputId){
     modal.style.display = 'flex';
     new daum.Postcode({
       oncomplete: function(data){
-        // data.address만 쓰면 아파트명 등 건물명이 빠진다. 다음 우편번호 서비스 공식 샘플과
-        // 동일하게, 도로명 주소를 선택한 경우 법정동명 + 건물명(아파트인 경우)을 참고항목으로
-        // 괄호에 덧붙여서 "OO아파트"까지 함께 보이도록 한다.
-        let addr = data.roadAddress || data.address || data.jibunAddress || '';
-        let extraAddr = '';
-        if(data.userSelectedType === 'R'){
-          if(data.bname && /[동로가]$/.test(data.bname)) extraAddr += data.bname;
-          if(data.buildingName && data.apartment === 'Y'){
-            extraAddr += (extraAddr ? ', ' + data.buildingName : data.buildingName);
-          }
-          if(extraAddr) addr += ` (${extraAddr})`;
-        }
-        addressSearchBaseValue = addr;
+        addressSearchBaseValue = data.address;
         showAddressSearchStep2();
       },
       width: '100%',
@@ -8538,9 +8140,7 @@ function renderEduCompletion(cat){
     return { empId:u.empId, name:u.name, branchId:u.branchId,
       completed: rec ? !!rec.completed : false,
       completedDate: rec ? rec.completedDate : null,
-      period: rec ? rec.period : null,
-      submitCount: rec && rec.submitCount!=null ? rec.submitCount : null,
-      score: rec && rec.score!=null ? rec.score : null };
+      period: rec ? rec.period : null };
   }).sort((a,b)=> a.completed===b.completed ? a.name.localeCompare(b.name) : (a.completed?1:-1));
 
   const total = records.length;
@@ -8557,17 +8157,14 @@ function renderEduCompletion(cat){
   // 이수/미이수를 뒤집는 버튼을 제공하지 않는다(값이 잘못됐다면 최신 파일을 다시 올려서 갱신).
   // AI R/P "실행여부"는 파일 업로드가 아닌 관리자 수기 관리 항목이라 토글 버튼을 그대로 유지한다.
   const showToggleBtn = isAdmin && cat==='aiRp';
-  const showAiRpCols = cat==='aiRp';
   const rows = records.map(r=>`
     <tr>
       <td>${branchName(r.branchId)}</td>
       <td>${r.name} <span class="muted">(${r.empId})</span></td>
       <td>${r.completed ? `<span class="badge good">${w.done}</span>` : `<span class="badge bad">${w.notDone}</span>`}</td>
       <td class="muted">${r.completedDate||'-'}</td>
-      ${showAiRpCols ? `<td class="muted">${r.submitCount!=null ? r.submitCount+'회' : '-'}</td>` : ''}
-      ${showAiRpCols ? `<td class="muted">${r.score!=null ? r.score : '-'}</td>` : ''}
       ${showToggleBtn ? `<td><button class="btn btn-sm" onclick="toggleEduCompletion('${cat}','${r.empId}')">${r.completed?`${w.notDone}로 변경`:`${w.done}로 변경`}</button></td>` : ''}
-    </tr>`).join('') || `<tr><td colspan="${4+(showAiRpCols?2:0)+(showToggleBtn?1:0)}" class="muted">대상자가 없습니다.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="${showToggleBtn?5:4}" class="muted">대상자가 없습니다.</td></tr>`;
 
   const uploadHtml = isAdmin ? `
     <div class="card" style="margin-bottom:16px;">
@@ -8587,7 +8184,7 @@ function renderEduCompletion(cat){
     ${uploadHtml}
     <div class="card">
       <table>
-        <thead><tr><th>지점</th><th>이름</th><th>${w.rateWord.includes('실행')?'실행여부':'이수여부'}</th><th>${w.rateWord.includes('실행')?'실행일':'이수일'}</th>${showAiRpCols?'<th>제출횟수</th><th>총점</th>':''}${showToggleBtn?'<th></th>':''}</tr></thead>
+        <thead><tr><th>지점</th><th>이름</th><th>${w.rateWord.includes('실행')?'실행여부':'이수여부'}</th><th>${w.rateWord.includes('실행')?'실행일':'이수일'}</th>${showToggleBtn?'<th></th>':''}</tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -8606,46 +8203,6 @@ function toggleEduCompletion(cat, empId){
   rec.completedDate = rec.completed ? todayStr() : null;
   saveDB();
   renderTab(eduTabName(cat));
-}
-// AI R/P 실행 여부 업로드 파일 전용 파서
-// (예: "LG 로봇청소기 로니(RONi) AI R/P_대상자요약.csv" — 사번당 1행 요약 파일).
-// 실제 파일 헤더: 프로젝트/상태/회사/영업팀/채널/지점/이름/사번/직책/제출횟수/상담스타일/총점/제출일/...
-// "상태" 컬럼 값이 정확히 "완료"면 실행완료로, 그 외("미완료" 등)는 미실행으로 매칭하고,
-// 제출횟수·총점(완료 건만 값이 있음)도 함께 저장한다.
-function parseEduAiRpRows(rows){
-  if(!rows || rows.length<2) return [];
-  const header = (rows[0]||[]).map(h=>String(h==null?'':h).trim());
-  const findCol = (re)=> header.findIndex(h=>re.test(h));
-  const empIdCol = findCol(/사번/);
-  const nameCol = findCol(/이름|성명/);
-  const statusCol = findCol(/^상태$/);
-  const submitCountCol = findCol(/제출\s*횟수/);
-  const scoreCol = findCol(/총점/);
-  if(empIdCol<0) return [];
-  const out = [];
-  for(let r=1; r<rows.length; r++){
-    const row = rows[r]; if(!row) continue;
-    const rawId = row[empIdCol];
-    if(rawId==null || rawId==='') continue;
-    const empId = bareEmpId(rawId);
-    const user = DB.users.find(u=>u.empId===empId && u.role==='staff');
-    if(!user) continue; // 혼매경북팀/경북2담당 소속(DB.users)이 아니면 자동 제외
-    const rawStatus = statusCol>=0 ? String(row[statusCol]==null?'':row[statusCol]).trim() : '';
-    const completed = rawStatus === '완료';
-    const submitCount = submitCountCol>=0 ? (Number(row[submitCountCol])||0) : 0;
-    const scoreRaw = scoreCol>=0 ? row[scoreCol] : null;
-    const score = (scoreRaw!=null && String(scoreRaw).trim()!=='') ? Number(scoreRaw) : null;
-    // 실행일은 (다른 이수현황 카테고리와 동일하게) 파일 안의 제출일 텍스트를 파싱하는 대신
-    // 업로드한 날짜를 그대로 사용한다 — CSV에서 날짜/시간 텍스트가 엑셀 일련번호로 잘못
-    // 변환되는 경우가 있어, 굳이 파싱하지 않는 편이 더 안전하다.
-    out.push({
-      empId, name: (nameCol>=0 && row[nameCol]) ? String(row[nameCol]).trim() : user.name,
-      branchId: user.branchId, period: null,
-      completed, completedDate: completed ? todayStr() : null,
-      submitCount, score
-    });
-  }
-  return out;
 }
 function parseEduCompletionRows(rows){
   if(!rows || rows.length<2) return [];
@@ -8685,7 +8242,7 @@ function handleEduCompletionFile(evt, cat){
       const wb = XLSX.read(data, {type:'array'});
       const sheetName = wb.SheetNames[0];
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
-      const parsed = cat==='aiRp' ? parseEduAiRpRows(rows) : parseEduCompletionRows(rows);
+      const parsed = parseEduCompletionRows(rows);
       DB.eduCompletion[cat] = parsed;
       touchTabContent(eduTabName(cat));
       saveDB();
@@ -10134,16 +9691,10 @@ function updateExportToolbarVisibility(tab){
   const el = document.getElementById('exportToolbar');
   if(!el) return;
   el.style.display = (tab==='subscription') ? 'none' : '';
-  const isPhotoAdmin = (tab==='collectPhoto' && SESSION && SESSION.role==='admin');
   const photoBtn = document.getElementById('execPhotoDownloadBtn');
-  if(photoBtn) photoBtn.style.display = isPhotoAdmin ? '' : 'none';
-  const dlSelBtn = document.getElementById('execPhotoDownloadSelectedBtn');
-  const delSelBtn = document.getElementById('execPhotoDeleteSelectedBtn');
-  if(dlSelBtn) dlSelBtn.style.display = isPhotoAdmin ? '' : 'none';
-  if(delSelBtn) delSelBtn.style.display = isPhotoAdmin ? '' : 'none';
-  // 실행력 점검 사진 화면을 벗어나면 이전에 체크해 둔 선택 상태가 계속 남아있지 않도록 비운다.
-  if(!isPhotoAdmin && state.epSelectedIds) state.epSelectedIds.clear();
-  updateExecPhotoSelectionToolbar();
+  if(photoBtn){
+    photoBtn.style.display = (tab==='collectPhoto' && SESSION && SESSION.role==='admin') ? '' : 'none';
+  }
 }
 function updateInventoryNavLabel(){
   const el = document.getElementById('navInventoryDate');
