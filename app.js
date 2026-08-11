@@ -7003,7 +7003,19 @@ function openAddressSearch(inputId){
     modal.style.display = 'flex';
     new daum.Postcode({
       oncomplete: function(data){
-        addressSearchBaseValue = data.address;
+        // data.address만 쓰면 아파트명 등 건물명이 빠진다. 다음 우편번호 서비스 공식 샘플과
+        // 동일하게, 도로명 주소를 선택한 경우 법정동명 + 건물명(아파트인 경우)을 참고항목으로
+        // 괄호에 덧붙여서 "OO아파트"까지 함께 보이도록 한다.
+        let addr = data.roadAddress || data.address || data.jibunAddress || '';
+        let extraAddr = '';
+        if(data.userSelectedType === 'R'){
+          if(data.bname && /[동로가]$/.test(data.bname)) extraAddr += data.bname;
+          if(data.buildingName && data.apartment === 'Y'){
+            extraAddr += (extraAddr ? ', ' + data.buildingName : data.buildingName);
+          }
+          if(extraAddr) addr += ` (${extraAddr})`;
+        }
+        addressSearchBaseValue = addr;
         showAddressSearchStep2();
       },
       width: '100%',
