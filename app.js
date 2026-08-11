@@ -1724,15 +1724,14 @@ function renderHome(){
   const msisTarget = target * 1.25;
   const achieved = branchAchieved(myBranch, homePeriod);
   const pct = pctOf(achieved, target);
-  // 매니저는 본인 소속 지점(myBranch)에 고정되어 있지만, "오늘 출근 현황" 카드만은 다른 지점
-  // 매니저의 출근 현황도 참고로 조회할 수 있도록 카드 우측 상단에 별도 지점 선택을 둔다
-  // (관리자는 이미 상단 전체 지점 pill로 페이지 전체를 전환할 수 있으므로 대상에서 제외).
-  const attBranchId = (SESSION.role==='manager' && state.homeAttBranchId) ? state.homeAttBranchId : myBranch;
+  // 매니저/사원은 본인 소속 지점(myBranch)에 고정되어 있지만, "오늘 출근 현황" 카드만은 다른
+  // 지점의 출근 현황도 조회할 수 있도록 카드 우측 상단에 별도 지점 선택을 둔다(관리자는 이미
+  // 상단 전체 지점 pill로 페이지 전체를 전환할 수 있으므로, 카드에도 같은 목록을 띄워 관리자
+  // 포함 누구나 이 카드에서 바로 지점을 바꿔볼 수 있게 한다).
+  const attBranchId = state.homeAttBranchId || myBranch;
   const attBranch = DB.branches.find(b=>b.id===attBranchId) || branch;
   const attRecords = attendanceRecordsForBranch(attBranchId, todayStr());
-  const attBranchSelectorHtml = SESSION.role==='manager'
-    ? `<select style="width:120px;font-size:12px;" onchange="setHomeAttBranch(this.value)">${DB.branches.map(b=>`<option value="${b.id}" ${b.id===attBranchId?'selected':''}>${b.name}</option>`).join('')}</select>`
-    : '';
+  const attBranchSelectorHtml = `<select style="width:120px;font-size:12px;" onchange="setHomeAttBranch(this.value)">${DB.branches.map(b=>`<option value="${b.id}" ${b.id===attBranchId?'selected':''}>${b.name}</option>`).join('')}</select>`;
 
   let branchSelectorHtml = '';
   if(SESSION.role==='admin'){
@@ -2000,7 +1999,7 @@ function statusBadge(status){
 function canEditAttendance(branchId){
   return SESSION.role==='admin' || (SESSION.role==='manager' && SESSION.branchId===branchId);
 }
-function setViewBranch(id){ state.viewBranchId = id; renderTab(state.tab); }
+function setViewBranch(id){ state.viewBranchId = id; state.homeAttBranchId = null; renderTab(state.tab); }
 // 매니저가 홈 대시보드 [오늘 출근 현황] 카드에서만 다른 지점을 참고 조회할 때 사용(본인 소속 지점 자체는 그대로 유지됨).
 function setHomeAttBranch(id){ state.homeAttBranchId = id; renderTab('home'); }
 
