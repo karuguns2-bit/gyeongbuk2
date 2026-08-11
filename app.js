@@ -6181,7 +6181,11 @@ const SUB_TIER_CONTEST_BANNER_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEU
 const SUB_TIER_CONTEST_OPTIONS = [
   { value:'구독 4품목 계약 시', gift:'앤루시 에어스톰R 리모컨 써큘레이터' },
   { value:'결제금액 기준 800만원 금액대', gift:'[제너] 클로제 IH 스텐냄비 3종 세트' },
-  { value:'결제금액 기준 1,000만원대 금액대', gift:'[에스트] 세라믹 후라이팬 2종 세트' }
+  { value:'결제금액 기준 1,000만원대 금액대', gift:'[에스트] 세라믹 후라이팬 2종 세트' },
+  // 다른 항목들과 달리 실제 배송 주소가 필요한 항목이라 needsAddress로 표시해 둔다.
+  // 이 항목을 선택했을 때만 주소 검색 버튼이 활성화되고, 그 외 항목은 "매장으로 입고"로
+  // 자동 고정된다(구독연동사은품 취합 페이지의 로니 항목과 반대 방향의 동일한 패턴).
+  { value:'에어컨 진열 판매', gift:'셰퍼 에어브리즈 14인치 선풍기', needsAddress:true }
 ];
 function syncContestGiftName(){
   const sel = document.getElementById('cgContestType');
@@ -6728,14 +6732,26 @@ function saveEditContestGift(id){
    3b. 구독4품목↑/금액대별 사은품 취합
    ========================================================================= */
 function syncSubTierGiftName(){
-  syncSubTierGiftNameFor('stcContestType','stcGiftName');
+  syncSubTierGiftNameFor('stcContestType','stcGiftName','stcAddress','stcAddressBtn');
 }
-function syncSubTierGiftNameFor(selectId, giftId){
+// "에어컨 진열 판매"만 실제 배송 주소가 필요해 직접 검색해서 입력하고, 그 외 항목은
+// 매번 "매장으로 입고"로 자동 고정한다. addressId/addressBtnId를 넘기지 않으면(과거 호출부
+// 호환용) 주소 관련 동작은 건너뛴다.
+function syncSubTierGiftNameFor(selectId, giftId, addressId, addressBtnId){
   const sel = document.getElementById(selectId);
   const giftInput = document.getElementById(giftId);
   if(!sel || !giftInput) return;
   const opt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===sel.value);
   giftInput.value = opt ? opt.gift : '';
+  if(addressId){
+    const addrEl = document.getElementById(addressId);
+    const needsAddress = !!(opt && opt.needsAddress);
+    if(addrEl) addrEl.value = needsAddress ? '' : '매장으로 입고';
+    if(addressBtnId){
+      const btnEl = document.getElementById(addressBtnId);
+      if(btnEl) btnEl.disabled = !needsAddress;
+    }
+  }
 }
 // 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
 // canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
@@ -6775,15 +6791,21 @@ function renderSubTierContest(){
       const existingPhotos = (r.evidenceFiles&&r.evidenceFiles.length>0)
         ? r.evidenceFiles.map(f=>noticeAttachmentHtml(f, 36, null)).join('')
         : '없음';
+      const curOpt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===r.contestType);
+      const curNeedsAddress = !!(curOpt && curOpt.needsAddress);
       return `
     <tr>
-      <td><select id="stce_${r.id}_contestType" style="width:190px" onchange="syncSubTierGiftNameFor('stce_${r.id}_contestType','stce_${r.id}_giftName')">
+      <td><select id="stce_${r.id}_contestType" style="width:190px" onchange="syncSubTierGiftNameFor('stce_${r.id}_contestType','stce_${r.id}_giftName','stce_${r.id}_address','stce_${r.id}_addressBtn')">
         <option value="">선택하세요</option>
         ${SUB_TIER_CONTEST_OPTIONS.map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===r.contestType?'selected':''}>${escapeHtml(o.value)}</option>`).join('')}
       </select></td>
       <td><input id="stce_${r.id}_giftName" value="${escapeHtml(r.giftName||'')}" style="width:200px"></td>
       <td><select id="stce_${r.id}_branch" style="width:120px">${branchOptionsHtml(r.branchId)}</select></td>
       <td><input id="stce_${r.id}_saleDate" type="date" value="${r.saleDate||''}" style="width:135px"></td>
+      <td>
+        <input id="stce_${r.id}_address" value="${escapeHtml(r.address||'')}" style="width:150px;background:#f7f7f8;" readonly>
+        <button type="button" id="stce_${r.id}_addressBtn" class="btn btn-sm" onclick="openAddressSearch('stce_${r.id}_address')" ${curNeedsAddress?'':'disabled'} style="margin-top:2px;">주소 검색</button>
+      </td>
       <td>
         기존: ${existingPhotos}<br>
         <input id="stce_${r.id}_evidence" type="file" multiple style="width:150px;font-size:11px;">
@@ -6801,11 +6823,12 @@ function renderSubTierContest(){
       <td>${escapeHtml(r.giftName||'-')}</td>
       <td>${branchName(r.branchId)}</td>
       <td>${r.saleDate||'-'}</td>
+      <td class="muted">${escapeHtml(r.address||'-')}</td>
       <td>${(r.evidenceFiles&&r.evidenceFiles.length>0) ? r.evidenceFiles.map(f=>noticeAttachmentHtml(f,36,null)).join('') : '-'}</td>
       <td class="muted">${escapeHtml(r.requesterName)}</td>
       <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditSubTierContest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubTierContest('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="7" class="muted">등록된 내역이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="8" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">구독4품목↑/금액대별 사은품/에어컨 진열판매 연동사은품 취합</div>
@@ -6839,6 +6862,16 @@ function renderSubTierContest(){
         </div>
       </div>
       <div class="form-row">
+        <div class="field" style="min-width:300px;">
+          <label>주소</label>
+          <div style="display:flex;gap:6px;">
+            <input id="stcAddress" placeholder="&quot;에어컨 진열 판매&quot; 선택 시 주소 검색 버튼을 눌러 입력하세요 (직접 입력 불가)" style="width:300px;background:#f7f7f8;" readonly>
+            <button type="button" id="stcAddressBtn" class="btn btn-sm" onclick="openAddressSearch('stcAddress')" disabled>주소 검색</button>
+          </div>
+          <div class="small-note">※ "에어컨 진열 판매" 선택 시에만 주소를 검색해서 입력할 수 있습니다. 그 외 항목은 "매장으로 입고"로 자동 설정됩니다.</div>
+        </div>
+      </div>
+      <div class="form-row">
         <div class="field" style="min-width:260px;">
           <label>영수증 사진 증빙</label>
           <input id="stcEvidenceFiles" type="file" multiple>
@@ -6852,7 +6885,7 @@ function renderSubTierContest(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>영수증 증빙</th><th>등록자</th><th class="act-col"></th></tr></thead>
+        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>주소</th><th>영수증 증빙</th><th>등록자</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -6883,18 +6916,21 @@ function submitSubTierContest(){
   const giftName = document.getElementById('stcGiftName').value.trim();
   const branchId = document.getElementById('stcBranch').value;
   const saleDate = document.getElementById('stcSaleDate').value;
+  const address = document.getElementById('stcAddress').value.trim();
   const evidenceInput = document.getElementById('stcEvidenceFiles');
   const evidenceFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
   const msgEl = document.getElementById('stcMsg');
 
   if(!contestType){ if(msgEl) msgEl.textContent = '컨테스트 항목을 선택해 주세요.'; return; }
+  const contestOpt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===contestType);
+  if(contestOpt && contestOpt.needsAddress && !address){ if(msgEl) msgEl.textContent = '주소 검색 버튼을 눌러 배송 주소를 입력해 주세요.'; return; }
   const oversized = evidenceFiles.find(f=>f.size > 5*1024*1024);
   if(oversized){ if(msgEl) msgEl.textContent = `"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`; return; }
 
   function finalize(evidence){
     DB.subTierContestGifts.push({
       id: 'stc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      contestType, giftName: giftName||null, branchId, saleDate, evidenceFiles: evidence,
+      contestType, giftName: giftName||null, branchId, saleDate, address: address||null, evidenceFiles: evidence,
       requesterEmpId: SESSION.empId, requesterName: SESSION.name, createdAt: new Date().toISOString()
     });
     touchTabContent('subTierContest');
@@ -6918,15 +6954,18 @@ function saveEditSubTierContest(id){
   const giftName = document.getElementById(`stce_${id}_giftName`).value.trim();
   const branchId = document.getElementById(`stce_${id}_branch`).value;
   const saleDate = document.getElementById(`stce_${id}_saleDate`).value;
+  const address = document.getElementById(`stce_${id}_address`).value.trim();
   const evidenceInput = document.getElementById(`stce_${id}_evidence`);
   const newFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
 
   if(!contestType){ alert('컨테스트 항목을 선택해 주세요.'); return; }
+  const contestOpt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===contestType);
+  if(contestOpt && contestOpt.needsAddress && !address){ alert('주소 검색 버튼을 눌러 배송 주소를 입력해 주세요.'); return; }
   const oversized = newFiles.find(f=>f.size > 5*1024*1024);
   if(oversized){ alert(`"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
 
   function finalize(evidence){
-    r.contestType = contestType; r.giftName = giftName||null; r.branchId = branchId; r.saleDate = saleDate;
+    r.contestType = contestType; r.giftName = giftName||null; r.branchId = branchId; r.saleDate = saleDate; r.address = address||null;
     if(evidence) r.evidenceFiles = evidence;
     state.stcEditId = null;
     saveDB();
