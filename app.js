@@ -2494,10 +2494,54 @@ function richExec(id, cmd, value){
   document.execCommand(cmd, false, value===undefined ? null : value);
   richSaveSelection(id);
 }
-function richApplyColor(id){
-  const colorEl = document.getElementById(id+'_colorPick');
-  if(!colorEl) return;
-  richExec(id, 'foreColor', colorEl.value);
+// HSL -> HEX 변환(팔레트 그리드를 색상별로 계산해서 만들기 위함 — hex 50여개를 직접 나열하지
+// 않고 색상환을 고르게 나눈 값으로 생성한다).
+function richHslToHex(h, s, l){
+  s/=100; l/=100;
+  const k = n => (n + h/30) % 12;
+  const a = s * Math.min(l, 1-l);
+  const f = n => l - a*Math.max(-1, Math.min(k(n)-3, Math.min(9-k(n), 1)));
+  const toHex = x => Math.round(x*255).toString(16).padStart(2,'0');
+  return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
+}
+// 구글 문서 글자색 팔레트와 비슷하게: 맨 윗줄은 무채색(검정~흰색), 그 아래는 색상 10가지 ×
+// 밝기 5단계 그리드. 스와치를 클릭하면 별도 "적용" 버튼 없이 바로 그 색이 적용된다.
+function richColorPaletteHtml(id){
+  const grays = ['#000000','#434343','#666666','#999999','#b7b7b7','#cccccc','#d9d9d9','#efefef','#f3f3f3','#ffffff'];
+  const hues = [0,25,45,65,150,180,205,230,265,320];
+  const lightness = [85,70,55,42,28];
+  const swatch = c => `<button type="button" onmousedown="event.preventDefault()" class="rt-swatch" style="background:${c};" onclick="richApplyPaletteColor('${id}','${c}')" title="${c}"></button>`;
+  let html = `<div class="rt-palette-row">${grays.map(swatch).join('')}</div>`;
+  lightness.forEach(l=>{
+    html += `<div class="rt-palette-row">${hues.map(h=>swatch(richHslToHex(h,65,l))).join('')}</div>`;
+  });
+  return html;
+}
+let richPaletteOutsideHandler = null;
+function richToggleColorPalette(id){
+  const el = document.getElementById(id+'_colorPalette');
+  if(!el) return;
+  const opening = el.style.display !== 'block';
+  document.querySelectorAll('.rt-color-palette').forEach(p=>{ p.style.display = 'none'; });
+  if(richPaletteOutsideHandler){ document.removeEventListener('mousedown', richPaletteOutsideHandler); richPaletteOutsideHandler = null; }
+  if(opening){
+    el.style.display = 'block';
+    richPaletteOutsideHandler = function(e){
+      const btn = document.getElementById(id+'_colorBtn');
+      if(!el.contains(e.target) && e.target!==btn && !(btn && btn.contains(e.target))){
+        el.style.display = 'none';
+        document.removeEventListener('mousedown', richPaletteOutsideHandler);
+        richPaletteOutsideHandler = null;
+      }
+    };
+    setTimeout(()=>document.addEventListener('mousedown', richPaletteOutsideHandler), 0);
+  }
+}
+function richApplyPaletteColor(id, color){
+  richExec(id, 'foreColor', color);
+  const el = document.getElementById(id+'_colorPalette');
+  if(el) el.style.display = 'none';
+  if(richPaletteOutsideHandler){ document.removeEventListener('mousedown', richPaletteOutsideHandler); richPaletteOutsideHandler = null; }
 }
 function richSetFontSize(id, px){
   const el = document.getElementById(id);
@@ -2545,8 +2589,10 @@ function richToolbarHtml(id){
     <button type="button" ${pd} class="rt-btn" title="밑줄" onclick="richExec('${id}','underline')"><u>U</u></button>
     <button type="button" ${pd} class="rt-btn" title="취소선" onclick="richExec('${id}','strikeThrough')"><s>S</s></button>
     <span class="rt-divider"></span>
-    <label class="rt-btn rt-color" title="글자 색 선택" style="color:#a50034;" id="${id}_colorSwatch">A<input type="color" id="${id}_colorPick" value="#a50034" oninput="document.getElementById('${id}_colorSwatch').style.color=this.value"></label>
-    <button type="button" ${pd} class="rt-btn rt-btn-wide" title="선택한 색 적용" onclick="richApplyColor('${id}')">적용</button>
+    <span class="rt-color-wrap" style="position:relative;display:inline-block;">
+      <button type="button" ${pd} class="rt-btn" title="글자 색" id="${id}_colorBtn" onclick="richToggleColorPalette('${id}')"><span style="border-bottom:3px solid #a50034;">A</span></button>
+      <div class="rt-color-palette" id="${id}_colorPalette" style="display:none;">${richColorPaletteHtml(id)}</div>
+    </span>
     <span class="rt-divider"></span>
     <button type="button" ${pd} class="rt-btn" title="왼쪽 정렬" onclick="richExec('${id}','justifyLeft')">${RICH_ICONS.alignLeft}</button>
     <button type="button" ${pd} class="rt-btn" title="가운데 정렬" onclick="richExec('${id}','justifyCenter')">${RICH_ICONS.alignCenter}</button>
