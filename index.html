@@ -238,11 +238,11 @@
   .badge.bad{background:#fdecec;color:var(--bad);}
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
-  th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);}
+  th,td{padding:11px 13px;text-align:left;border-bottom:1px solid #eef0f2;}
   /* 등록건수가 많아 스크롤이 길어져도 표 머리글이 항상 보이도록 고정(틀고정)한다.
      .main이 화면 전체의 세로 스크롤 컨테이너이므로 top:0 기준으로 sticky 처리하면
      모든 취합/목록 표에 공통 적용된다. (2026.08) */
-  th{color:var(--text-sub);font-weight:600;font-size:12px;background:#fafafa;position:sticky;top:0;z-index:3;box-shadow:0 1px 0 var(--border);}
+  th{color:var(--text-sub);font-weight:700;font-size:11.5px;letter-spacing:.02em;background:#fafbfc;position:sticky;top:0;z-index:3;box-shadow:0 1px 0 #eef0f2;}
   tr:last-child td{border-bottom:none;}
   tbody tr{transition:background .1s ease;}
   tbody tr:hover{background:#fafbfc;}
@@ -318,6 +318,14 @@
   .card.notice-banner{height:210px;display:flex;flex-direction:column;}
   #noticeBannerBody{overflow:hidden;}
   .notice-banner .nb-label{font-size:11.5px;font-weight:700;letter-spacing:.5px;opacity:.85;text-transform:uppercase;flex-shrink:0;}
+  /* 공지사항/정보보고/우수 활동 사례 등 게시판 글 카드 공통 타이포그래피(제목/본문/메타)와
+     첨부 사진·파일을 정돈된 그리드로 배치하는 갤러리 레이아웃 — 여러 게시판이 함께 쓴다. */
+  .nb-title{font-size:15.5px;font-weight:700;letter-spacing:-.01em;}
+  .nb-content{font-size:13.5px;line-height:1.7;color:var(--text);}
+  .nb-meta{font-size:11.5px;color:var(--text-sub);}
+  .attach-gallery{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;}
+  .attach-gallery .xlsx-photo{box-shadow:0 2px 8px rgba(16,24,32,.1);transition:transform .15s ease,box-shadow .15s ease;}
+  .attach-gallery .xlsx-photo:hover{transform:translateY(-2px);box-shadow:0 6px 16px rgba(16,24,32,.16);}
   .notice-banner .nb-title{font-size:17px;font-weight:800;margin:6px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .notice-banner .nb-content{font-size:13px;opacity:.95;line-height:1.6;white-space:pre-wrap;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;}
   .notice-banner .nb-more-btn{

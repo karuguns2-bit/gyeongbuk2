@@ -1712,6 +1712,10 @@ function renderHome(){
   // 모든 달의 실적이 전부 합산되어(무기한 누적) 실제 이번 달 실적과 전혀 다른 숫자가 나온다.
   const homePeriod = currentGoalsPeriod();
   const target = branchTarget(myBranch, homePeriod);
+  // 홈 대시보드의 "이번 달 목표"는 GROSS 목표가 아니라 MSIS실판매 등록 기준 예상 목표치
+  // (GROSS×1.25)로 표시한다 — [목표 관리] 페이지의 배분 기준과 동일한 값을 보여주기 위함.
+  // 달성률(pct)은 기존대로 공식 평가 기준인 GROSS 목표 대비로 유지한다.
+  const msisTarget = target * 1.25;
   const achieved = branchAchieved(myBranch, homePeriod);
   const pct = pctOf(achieved, target);
   const att = DB.attendance[myBranch];
@@ -1742,14 +1746,14 @@ function renderHome(){
     ${branchSelectorHtml}
     <div class="grid grid-3" style="margin-bottom:16px;">
       <div class="card">
-        <h3>이번 달 목표</h3>
-        <div class="stat-num">${fmtWon(target)}</div>
+        <h3>이번 달 목표 <small style="font-weight:600;color:var(--text-sub);">(MSIS실판매등록 기준 예상 목표치)</small></h3>
+        <div class="stat-num">${fmtWon(msisTarget)}</div>
         <div class="stat-sub">${periodStr()} · ${branch?branch.name:''}</div>
       </div>
       <div class="card">
         <h3>누적 실적</h3>
         <div class="stat-num">${fmtWon(achieved)}</div>
-        <div class="stat-sub">잔여 ${fmtWon(Math.max(target-achieved,0))}</div>
+        <div class="stat-sub">잔여 ${fmtWon(Math.max(msisTarget-achieved,0))}</div>
       </div>
       <div class="card">
         <h3>달성률 ${pctBadge(pct)}</h3>
@@ -2733,23 +2737,23 @@ function renderNoticesBoard(){
     }
     const dt = new Date(n.createdAt);
     const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-    const photosHtml = (n.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 56, isAdmin ? `removeNoticeAttachment('${n.id}', ${idx})` : null)).join('');
+    const photosHtml = (n.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 108, isAdmin ? `removeNoticeAttachment('${n.id}', ${idx})` : null)).join('');
     const hasAttachment = (n.attachments||[]).length>0;
     const expanded = isPostExpanded(n.id);
     return `
       <div class="card" style="margin-bottom:12px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${n.id}','notices')">
-          <div class="nb-title" style="font-size:15px;">${escapeHtml(n.title)}</div>
+          <div class="nb-title">${escapeHtml(n.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
             <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
           </div>
         </div>
         ${expanded ? `
-        <div class="nb-content" style="margin:8px 0;white-space:pre-wrap;">${escapeHtml(n.content)}</div>
-        ${photosHtml ? `<div style="margin-bottom:6px;">${photosHtml}</div>` : ''}
-        <div class="flex-between" style="align-items:center;margin-top:4px;">
-          <div class="nb-meta muted" style="font-size:11.5px;">${escapeHtml(n.author)} · ${dtStr}</div>
+        <div class="nb-content" style="margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(n.content)}</div>
+        ${photosHtml ? `<div class="attach-gallery">${photosHtml}</div>` : ''}
+        <div class="flex-between" style="align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;">
+          <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
           ${isAdmin ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditNoticeBoard('${n.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteNoticeBoard('${n.id}')">삭제</button></div>` : ''}
         </div>
         ` : ''}
@@ -2911,7 +2915,7 @@ function renderInfoReports(){
     }
     const dt = new Date(r.createdAt);
     const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-    const filesHtml = (r.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 56, canManage ? `removeInfoReportAttachment('${r.id}', ${idx})` : null)).join('');
+    const filesHtml = (r.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 108, canManage ? `removeInfoReportAttachment('${r.id}', ${idx})` : null)).join('');
     const hasAttachment = (r.attachments||[]).length>0;
     const expanded = isPostExpanded(r.id);
     // 게시내용이 좋다고 생각하는 다른 매니저가 추천(따봉)할 수 있도록 likedBy(empId 배열)로 추천 여부/수를 관리한다.
@@ -2920,19 +2924,19 @@ function renderInfoReports(){
     return `
       <div class="card" style="margin-bottom:12px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${r.id}','infoReports')">
-          <div class="nb-title" style="font-size:15px;">${escapeHtml(r.title)}</div>
+          <div class="nb-title">${escapeHtml(r.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
             <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
           </div>
         </div>
         ${expanded ? `
-        <div class="nb-content" style="margin:8px 0;white-space:pre-wrap;">${escapeHtml(r.content)}</div>
-        ${filesHtml ? `<div style="margin-bottom:6px;">${filesHtml}</div>` : ''}
-        <div class="flex-between" style="margin-top:8px;align-items:center;">
+        <div class="nb-content" style="margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(r.content)}</div>
+        ${filesHtml ? `<div class="attach-gallery">${filesHtml}</div>` : ''}
+        <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
           <button class="btn btn-sm ${iLiked?'like-btn-active':''}" onclick="event.stopPropagation();toggleInfoReportLike('${r.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedBy.length>0?` ${likedBy.length}`:''}</button>
           <div style="display:flex;align-items:center;gap:8px;">
-            <div class="nb-meta muted" style="font-size:11.5px;">${escapeHtml(r.authorName)} · ${escapeHtml(branchName(r.branchId))} · ${dtStr}</div>
+            <div class="nb-meta">${escapeHtml(r.authorName)} · ${escapeHtml(branchName(r.branchId))} · ${dtStr}</div>
             ${canManage ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditInfoReport('${r.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteInfoReport('${r.id}')">삭제</button></div>` : ''}
           </div>
         </div>
@@ -6321,12 +6325,12 @@ function renderCollectionNotice(key, tab){
     const removeBtn = showEditor ? `<button type="button" title="파일 삭제" onclick="removeCollectionNoticeImage('${key}','${tab}',${idx})" style="position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:12px;line-height:1;">×</button>` : '';
     if(isImageAttachment(img)){
       return `<div style="position:relative;display:inline-block;">
-        <img class="xlsx-photo" src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:260px;max-height:220px;border-radius:8px;cursor:zoom-in;object-fit:cover;box-shadow:0 2px 8px rgba(0,0,0,.12);">
+        <img class="xlsx-photo" src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="width:132px;height:132px;border-radius:10px;cursor:zoom-in;object-fit:cover;box-shadow:0 2px 8px rgba(16,24,32,.1);">
         ${removeBtn}
       </div>`;
     }
     return `<div style="position:relative;display:inline-block;">
-      <a href="${img.dataUrl}" download="${escapeHtml(img.name||'file')}" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:#f7f7f8;font-size:12.5px;text-decoration:none;color:inherit;max-width:220px;">📎 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(img.name||'파일')}</span></a>
+      <a href="${img.dataUrl}" download="${escapeHtml(img.name||'file')}" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:#f7f8fa;font-size:12.5px;text-decoration:none;color:inherit;max-width:220px;">📎 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(img.name||'파일')}</span></a>
       ${removeBtn}
     </div>`;
   }).join('');
@@ -6358,13 +6362,9 @@ function renderCollectionNotice(key, tab){
   }
   return `
     <div class="card" style="margin-bottom:16px;">
-      <div style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;">
-        ${n.text ? `<div style="flex:1;min-width:220px;">
-          <div style="font-size:11.5px;font-weight:700;opacity:.7;">📌 공지</div>
-          <div style="font-size:13.5px;line-height:1.6;white-space:pre-wrap;margin-top:4px;">${escapeHtml(n.text)}</div>
-        </div>` : ''}
-        ${imagesHtml ? `<div style="display:flex;gap:10px;flex-wrap:wrap;">${imagesHtml}</div>` : ''}
-      </div>
+      <div style="font-size:11.5px;font-weight:700;opacity:.7;">📌 공지</div>
+      ${n.text ? `<div style="font-size:13.5px;line-height:1.7;white-space:pre-wrap;margin-top:6px;">${escapeHtml(n.text)}</div>` : ''}
+      ${imagesHtml ? `<div class="attach-gallery" style="margin-top:${n.text?'12px':'6px'};">${imagesHtml}</div>` : ''}
       ${imagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진은 클릭하면 확대, 그 외 파일은 클릭하면 다운로드됩니다.</div>` : ''}
       ${editorControls}
       ${viewActions}
@@ -7292,7 +7292,7 @@ function renderBestPractice(){
     // 공통 헬퍼(noticeAttachmentHtml/isImageAttachment)를 사용해 Storage URL로 저장된 사진도
     // 파일명 링크가 아니라 썸네일로 정상 표시되도록 한다. (이전에는 이 게시판만 자체 로직을 써서
     // data: base64 이미지만 썸네일로 표시하고 Storage URL은 전부 파일 링크로만 나왔음)
-    const attachmentsHtml = (p.attachments||[]).map(a=>noticeAttachmentHtml(a, 90, null)).join('');
+    const attachmentsHtml = (p.attachments||[]).map(a=>noticeAttachmentHtml(a, 108, null)).join('');
     // 수정 화면에서는 기존 첨부 사진마다 클릭 한 번으로 바로 삭제할 수 있도록 별도로 만든다
     // (공지사항/정보보고 게시판과 동일한 방식 — removeBestPracticeAttachment 참고).
     const editAttachmentsHtml = (p.attachments||[]).map((a,idx)=>noticeAttachmentHtml(a, 90, `removeBestPracticeAttachment('${p.id}', ${idx})`)).join('');
@@ -7354,7 +7354,7 @@ function renderBestPractice(){
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${p.id}','bestPractice')">
           <div>
             ${p.title ? `
-              <div class="nb-title" style="font-size:15px;">${escapeHtml(p.title)}</div>
+              <div class="nb-title">${escapeHtml(p.title)}</div>
               <div class="muted" style="font-size:11.5px;margin-top:2px;">${bpBranchDisplayName(p.branchId)} · ${p.managerName || '-'} · ${p.activityDate}</div>
             ` : `<div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>`}
           </div>
@@ -7364,10 +7364,10 @@ function renderBestPractice(){
           </div>
         </div>
         ${expandedBp ? `
-        <div style="white-space:pre-wrap;line-height:1.6;margin:8px 0;">${escapeHtml(p.content)}</div>
-        ${p.activityResult ? `<div style="background:#fff7f9;border:1px solid #f0c7d4;border-radius:8px;padding:8px 12px;margin-bottom:8px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
-        ${attachmentsHtml ? `<div>${attachmentsHtml}</div>` : ''}
-        <div class="flex-between" style="margin-top:8px;align-items:center;">
+        <div style="white-space:pre-wrap;line-height:1.7;margin:10px 0 0;font-size:13.5px;">${escapeHtml(p.content)}</div>
+        ${p.activityResult ? `<div style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
+        ${attachmentsHtml ? `<div class="attach-gallery">${attachmentsHtml}</div>` : ''}
+        <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
           <button class="btn btn-sm ${iLikedBp?'like-btn-active':''}" onclick="event.stopPropagation();toggleBestPracticeLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedByBp.length>0?` ${likedByBp.length}`:''}</button>
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="muted" style="font-size:11.5px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
@@ -7557,7 +7557,7 @@ function renderIssueCase(){
     const canEdit = canEditIssueCase(p);
     // 공통 헬퍼(noticeAttachmentHtml/isImageAttachment)를 사용해 Storage URL로 저장된 사진도
     // 파일명 링크가 아니라 썸네일로 정상 표시되도록 한다.
-    const attachmentsHtml = (p.attachments||[]).map(a=>noticeAttachmentHtml(a, 90, null)).join('');
+    const attachmentsHtml = (p.attachments||[]).map(a=>noticeAttachmentHtml(a, 108, null)).join('');
     // 수정 화면에서는 기존 첨부 사진마다 클릭 한 번으로 바로 삭제할 수 있도록 별도로 만든다
     // (우수 활동 사례 공유 게시판과 동일한 방식 — removeIssueCaseAttachment 참고).
     const editAttachmentsHtml = (p.attachments||[]).map((a,idx)=>noticeAttachmentHtml(a, 90, `removeIssueCaseAttachment('${p.id}', ${idx})`)).join('');
@@ -7619,7 +7619,7 @@ function renderIssueCase(){
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${p.id}','issueCase')">
           <div>
             ${p.title ? `
-              <div class="nb-title" style="font-size:15px;">${escapeHtml(p.title)}</div>
+              <div class="nb-title">${escapeHtml(p.title)}</div>
               <div class="muted" style="font-size:11.5px;margin-top:2px;">${bpBranchDisplayName(p.branchId)} · ${p.managerName || '-'} · ${p.activityDate}</div>
             ` : `<div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>`}
           </div>
@@ -7629,10 +7629,10 @@ function renderIssueCase(){
           </div>
         </div>
         ${expandedIc ? `
-        <div style="white-space:pre-wrap;line-height:1.6;margin:8px 0;">${escapeHtml(p.content)}</div>
-        ${p.activityResult ? `<div style="background:#fff7f9;border:1px solid #f0c7d4;border-radius:8px;padding:8px 12px;margin-bottom:8px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
-        ${attachmentsHtml ? `<div>${attachmentsHtml}</div>` : ''}
-        <div class="flex-between" style="margin-top:8px;align-items:center;">
+        <div style="white-space:pre-wrap;line-height:1.7;margin:10px 0 0;font-size:13.5px;">${escapeHtml(p.content)}</div>
+        ${p.activityResult ? `<div style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
+        ${attachmentsHtml ? `<div class="attach-gallery">${attachmentsHtml}</div>` : ''}
+        <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
           <button class="btn btn-sm ${iLikedIc?'like-btn-active':''}" onclick="event.stopPropagation();toggleIssueCaseLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedByIc.length>0?` ${likedByIc.length}`:''}</button>
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="muted" style="font-size:11.5px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
