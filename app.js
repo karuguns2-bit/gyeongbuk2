@@ -5599,6 +5599,17 @@ function renderExecPhotoGuide(){
       ${adminControls}
     </div>`;
 }
+// 각종 취합 4개(사진/상품권/구독연동사은품/구독4품목·금액대별·에어컨진열판매)도 교육 관리와
+// 같은 방식으로 사이드바 1항목("각종 취합") + 페이지 안 pill 전환으로 합친다. 각 tab 이름
+// (collectPhoto 등)과 저장 로직은 그대로 둬서 기존 export 툴바/권한/데이터 참조가 안 깨지게 한다.
+function collectHubPills(activeTab){
+  return `<div style="margin-bottom:14px;">
+    <span class="branch-pill ${activeTab==='collectPhoto'?'active':''}" onclick="renderTab('collectPhoto')">실행력 점검 사진</span>
+    <span class="branch-pill ${activeTab==='collectGiftcard'?'active':''}" onclick="renderTab('collectGiftcard')">모바일 상품권</span>
+    <span class="branch-pill ${activeTab==='collectContest'?'active':''}" onclick="renderTab('collectContest')">구독연동사은품</span>
+    <span class="branch-pill ${activeTab==='subTierContest'?'active':''}" onclick="renderTab('subTierContest')">구독4품목·금액대별·에어컨진열판매</span>
+  </div>`;
+}
 function renderCollectPhoto(){
   if(!state.epSelectedIds) state.epSelectedIds = new Set();
   const myBranch = collectScopeBranch();
@@ -5652,6 +5663,7 @@ function renderCollectPhoto(){
   }).join('') || `<div class="muted">등록된 사진이 없습니다.</div>`;
 
   return `
+    ${collectHubPills('collectPhoto')}
     <div class="page-title">실행력 점검 사진 취합</div>
     <div class="page-desc">지점별 실행력 점검 사진을 업로드·공유합니다.</div>
     ${renderExecPhotoGuide()}
@@ -5924,6 +5936,7 @@ function renderCollectGiftcard(){
   }).join('') || `<tr><td colspan="13" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
+    ${collectHubPills('collectGiftcard')}
     <div class="page-title">모바일 상품권 취합</div>
     <div class="page-desc">모바일 상품권 지급 건을 취합·관리합니다.</div>
 
@@ -6431,6 +6444,7 @@ function renderCollectContest(){
   }).join('') || `<tr><td colspan="12" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
+    ${collectHubPills('collectContest')}
     <div class="page-title">구독연동사은품 취합</div>
     <div class="page-desc">구독연동 사은품 발송 건을 취합·관리합니다.</div>
     ${collectBranchPills('collectContest')}
@@ -6834,6 +6848,7 @@ function renderSubTierContest(){
   }).join('') || `<tr><td colspan="8" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
+    ${collectHubPills('subTierContest')}
     <div class="page-title">구독4품목↑/금액대별 사은품/에어컨 진열판매 연동사은품 취합</div>
     <div class="page-desc">구독 4품목 이상 계약, 결제금액 기준, 에어컨 진열판매 연동 사은품 컨테스트 건을 취합·관리합니다.</div>
 
