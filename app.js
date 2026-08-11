@@ -7130,6 +7130,16 @@ function mistakeNoteStats(notes){
   }
   return {total, byCategory, byBranch, topCategory, topBranch, thisMonthCount, insightLines};
 }
+// 성장 지원 4개(오답노트/이슈제품 성공사례/우수 활동 사례/정책 숙지도 점검)도 동일 패턴으로
+// 사이드바 1항목("성장 지원") + 페이지 안 pill 전환으로 합친다.
+function growthHubPills(activeTab){
+  return `<div style="margin-bottom:14px;">
+    <span class="branch-pill ${activeTab==='mistakeNote'?'active':''}" onclick="renderTab('mistakeNote')">구독 오답노트</span>
+    <span class="branch-pill ${activeTab==='issueCase'?'active':''}" onclick="renderTab('issueCase')">이슈제품 성공사례</span>
+    <span class="branch-pill ${activeTab==='bestPractice'?'active':''}" onclick="renderTab('bestPractice')">우수 활동 사례</span>
+    <span class="branch-pill ${activeTab==='policyQuiz'?'active':''}" onclick="renderTab('policyQuiz')">정책 숙지도 점검</span>
+  </div>`;
+}
 function renderMistakeNote(){
   const isAdmin = SESSION.role==='admin';
   const myBranch = SESSION.branchId || DB.branches[0].id;
@@ -7183,6 +7193,7 @@ function renderMistakeNote(){
   }
 
   return `
+    ${growthHubPills('mistakeNote')}
     <div class="page-title">구독 오답노트</div>
     <div class="page-desc">구독 판매 과정에서 발생한 실수를 기록하면 AI가 즉시 분석 결과와 개선 방안을 알려드립니다.${isAdmin ? '' : ' (등록 내용의 누적 조회는 관리자만 가능합니다.)'}</div>
 
@@ -7394,6 +7405,7 @@ function renderBestPractice(){
   }).join('') || `<div class="muted">${allSorted.length===0 ? '등록된 활동 사례가 없습니다.' : '검색 결과가 없습니다.'}</div>`;
 
   return `
+    ${growthHubPills('bestPractice')}
     <div class="page-title">우수 활동 사례 공유</div>
     <div class="notice-banner" style="margin-bottom:16px;">
       <div style="font-weight:800;font-size:16px;">🏆 월별 최우수 사례 선정 시 판촉비 지원</div>
@@ -7707,6 +7719,7 @@ function renderIssueCase(){
     </div>` : '';
 
   return `
+    ${growthHubPills('issueCase')}
     <div class="page-title">이슈제품 판매 성공 사례</div>
     <div class="notice-banner" style="margin-bottom:16px;">
       <div style="font-weight:800;font-size:16px;">💡 이슈제품 판매 노하우/성공사례 등을 공유해주세요</div>
@@ -8139,6 +8152,7 @@ function renderPolicyQuiz(){
 
   if(SESSION.role!=='staff'){
     return `
+      ${growthHubPills('policyQuiz')}
       <div class="page-title">금주 주말 정책 숙지도 점검</div>
       <div class="page-desc">주말 판촉/정책 자료를 바탕으로 한 객관식/빈칸채우기 숙지도 점검입니다. (응시는 개별 판매사원 계정으로만 가능합니다.) 주차를 선택하면 해당 주차의 점검 현황을 볼 수 있고, 별도로 선택하지 않으면 가장 최근에 등록된 주차 현황이 표시됩니다.</div>
       ${weekSelectorHtml}
@@ -8216,6 +8230,7 @@ function renderPolicyQuiz(){
   }
 
   return `
+    ${growthHubPills('policyQuiz')}
     <div class="page-title">금주 주말 정책 숙지도 점검</div>
     <div class="page-desc">이번 주말 판촉/정책 자료를 바탕으로 한 객관식(일부 빈칸채우기) 숙지도 점검입니다. (아래 현황은 주차별로 선택해서 볼 수 있습니다. 내 퀴즈 응시는 항상 이번 주 기준입니다.)</div>
     ${weekSelectorHtml}
