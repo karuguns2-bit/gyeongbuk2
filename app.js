@@ -6328,7 +6328,7 @@ function renderCollectionNotice(key, tab){
   }).join('');
   const editorControls = showEditor ? `
     <div style="margin-top:${hasContent?'10px':'0'};display:flex;flex-direction:column;gap:8px;">
-      <textarea id="cn_${key}_text" rows="2" style="width:100%;font-size:13px;" placeholder="공지 문구를 입력하세요">${n.text?escapeHtml(n.text):''}</textarea>
+      <textarea id="cn_${key}_text" rows="8" style="width:100%;font-size:13px;min-height:160px;resize:vertical;line-height:1.5;padding:10px;" placeholder="공지 문구를 입력하세요">${n.text?escapeHtml(n.text):''}</textarea>
       <div class="field" style="margin:0;">
         <label style="font-size:11.5px;">파일 첨부 (사진/PPT/엑셀 등 여러 개 선택 가능, 이 위로 파일을 끌어다 놓아도 첨부됩니다)</label>
         <input id="cn_${key}_file" type="file" multiple onchange="addCollectionNoticeImage('${key}','${tab}',event)">
