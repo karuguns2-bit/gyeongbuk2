@@ -1014,11 +1014,6 @@ function migrateDB(){
     delete r.receiptDataUrl;
     delete r.receiptName;
   });
-  // LG전자 기준 총판/실판: 관리자가 업로드한 월별 파일을 그대로 파싱해 저장해두는 스냅샷.
-  // 기존 DB.goals(지점별 목표)와 별개로, 파일에 있는 "지점별 마스터(총판)"/"지점별 마스터(실판)"
-  // 시트 원본 구조를 최대한 그대로 보존해서 월(period)별로 쌓아둔다.
-  if(!DB.salesMaster) DB.salesMaster = {};
-
   if(JSON.stringify(DB) !== __migrateBefore) saveDB();
 }
 function saveDB(){ pushDBToServer(); }
@@ -1386,7 +1381,6 @@ function renderTab(tab){
   if(tab==='home') main.innerHTML = renderHome();
   if(tab==='systemAdmin') main.innerHTML = renderSystemAdmin();
   if(tab==='accountManagement') main.innerHTML = renderAccountManagement();
-  if(tab==='salesMaster') main.innerHTML = renderSalesMaster();
   if(tab==='goals') main.innerHTML = renderGoals();
   if(tab==='branches') main.innerHTML = renderBranches();
   if(tab==='notices') main.innerHTML = renderNoticesBoard();
@@ -1418,7 +1412,6 @@ function renderTab(tab){
   if(tab!=='kakaoFriends'){ state.kakaoContestEditing = false; state.kfEditKey = null; }
   if(tab!=='policyQuiz') state.policyQuizEditingId = null;
   if(tab!=='goals') state.goalsPeriod = null;
-  if(tab!=='salesMaster') state.smBranchSel = null;
   if(!['eduHq','eduInhouse','eduEtc'].includes(tab)) state.eduScheduleEditId = null;
   if(tab!=='collectContest') state.cgEditId = null;
   if(tab!=='subTierContest') state.stcEditId = null;
@@ -2083,13 +2076,6 @@ function renderSystemAdmin(){
       <h3>계정 관리 <small>(현재 등록된 매니저/사원 명단)</small></h3>
       <div class="muted" style="margin-bottom:10px;font-size:12.5px;">전체 계정 목록 조회, 사번·이름·지점명·직책 수정, 비밀번호 초기화·변경, 접속 기록 확인은 별도 화면에서 처리합니다. 계정 수가 많아지면 이 화면이 길어져 다른 관리 항목을 찾기 어려워지는 것을 막기 위함입니다.</div>
       <button class="btn btn-primary" onclick="renderTab('accountManagement')">계정관리 상세</button>
-    </div>
-
-    <div class="card" style="margin-bottom:16px;background:#fff7f9;border-color:#f0c7d4;">
-      <h3>📁 LG전자 기준 총판/실판 파일 업로드 <small>("지점별 마스터(총판)" + "지점별 마스터(실판)" 시트 포함 .xlsx)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">파일을 그대로 올리면 [실적 관리 > LG전자 기준 총판/실판] 페이지 데이터가 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) 기준으로 갱신됩니다. 지난 달 데이터는 그대로 보존되고, 이번 달 것만 새로 올리면 됩니다.</div>
-      <input type="file" id="salesMasterFileInput" accept=".xlsx,.xls" onchange="handleSalesMasterFile(event)">
-      <div id="salesMasterUploadMsg" class="small-note"></div>
     </div>
 
     <div class="card" style="margin-bottom:16px;background:#fff7f9;border-color:#f0c7d4;">
@@ -3320,167 +3306,6 @@ function parseGoalsMsisCompetitivenessSheet(rows){
   return out;
 }
 
-
-/* =========================================================================
-   LG전자 기준 총판/실판 (SALES MASTER)
-   업로드 파일의 "지점별 마스터(총판)"/"지점별 마스터(실판)" 시트는 152개 컬럼에 걸친
-   3단 병합 헤더(6~9행) + SUBTOTAL(전사 합계) 행 + 필터 잔재 행 + 지점별 데이터 행으로
-   구성되어 있다. 시트 구조(컬럼 순서/개수)가 매달 미세하게 달라져도(예: 실판 시트는
-   "상권" 컬럼이 하나 더 있어 총판 시트보다 모든 컬럼이 한 칸씩 밀림) 안정적으로 읽을 수
-   있도록, 고정 컬럼 번호 대신 "SR" 헤더 셀 위치를 기준으로 모든 블록의 시작/끝을
-   동적으로 찾는다.
-   ========================================================================= */
-// 병합된 셀 범위 안에서는 좌상단 셀에만 값이 들어있고 나머지는 비어 있으므로,
-// (행,열) -> 좌상단 값 매핑을 만들어 "실제로 보이는 값"을 어디서나 조회할 수 있게 한다.
-// ws['!merges']의 좌표는 시트의 "절대" 행/열(진짜 엑셀 행 번호 기준)인 반면, 아래에서 쓰는
-// rows 배열(XLSX.utils.sheet_to_json(ws,{header:1})의 결과)은 시트의 실제 사용범위(!ref)가
-// A1이 아니라 A2 같은 곳부터 시작하면 그만큼 밀려서 "상대" 행/열이 된다. 이 둘을 그대로 섞어
-// 쓰면 병합 셀 값이 엉뚱한 행에 스며드는 버그가 나서(예: 상위 마커 라벨이 하위 소제목 자리에
-// 겹쳐 보임), !ref의 시작 행/열만큼 오프셋을 빼서 rows 배열과 좌표계를 맞춰준다.
-function smBuildMergeLookup(ws, rows){
-  const lookup = {};
-  const ref = ws['!ref'];
-  const range = ref ? XLSX.utils.decode_range(ref) : {s:{r:0,c:0}};
-  const offR = range.s.r, offC = range.s.c;
-  const merges = ws['!merges'] || [];
-  merges.forEach(m=>{
-    const sr = m.s.r - offR, sc = m.s.c - offC, er = m.e.r - offR, ec = m.e.c - offC;
-    const topVal = (rows[sr] && rows[sr][sc]!=null) ? rows[sr][sc] : null;
-    for(let r=sr; r<=er; r++){
-      for(let c=sc; c<=ec; c++){
-        lookup[r+','+c] = topVal;
-      }
-    }
-  });
-  return lookup;
-}
-function parseSalesMasterSheet(ws){
-  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
-  const mergeLookup = smBuildMergeLookup(ws, rows);
-  function raw(r,c){ return (rows[r] && rows[r][c]!=null) ? rows[r][c] : null; }
-  function eff(r,c){ const k=r+','+c; if(k in mergeLookup && mergeLookup[k]!=null) return mergeLookup[k]; return raw(r,c); }
-
-  // 1) "SR" 헤더 셀을 찾아 헤더 행(hdrRow)과 SR 컬럼(srCol)을 확정한다.
-  let hdrRow=-1, srCol=-1;
-  const maxScan = Math.min(rows.length, 15);
-  for(let r=0;r<maxScan && hdrRow<0;r++){
-    const row = rows[r]||[];
-    for(let c=0;c<row.length;c++){
-      if(row[c]==='SR'){ hdrRow=r; srCol=c; break; }
-    }
-  }
-  if(hdrRow<0) throw new Error('"SR" 헤더 컬럼을 찾을 수 없습니다. 파일 형식을 확인해 주세요.');
-
-  let ncols = 0;
-  rows.forEach(r=>{ if(r && r.length>ncols) ncols=r.length; });
-
-  // 2) 지점 식별 컬럼(팀/채널/[상권]/지점명/마케터/SR)
-  const identityLabels = (rows[hdrRow]||[]).slice(0, srCol+1).map(v=>v==null?'':String(v));
-
-  // 3) Gross총판/Gross실판 지표 블록: SR 다음 칸부터, 헤더행(raw)에 다음 값이 나오기 전까지.
-  const metricStart = srCol+1;
-  const metricLabel = raw(hdrRow, metricStart);
-  let metricEnd = ncols-1;
-  for(let c=metricStart+1;c<ncols;c++){
-    if(raw(hdrRow,c)!=null){ metricEnd=c-1; break; }
-  }
-  const metricKeys = [];
-  for(let c=metricStart;c<=metricEnd;c++){
-    const parts=[];
-    for(let rr=hdrRow+1; rr<=hdrRow+3; rr++){
-      const v = eff(rr,c);
-      if(v!=null && parts.indexOf(String(v))===-1) parts.push(String(v));
-    }
-    metricKeys.push(parts.length ? parts.join('_') : ('col'+c));
-  }
-
-  // 4) 제품 블록 A(금액)/B(수량): "제품A" 마커 다음, 그 다음 마커(수량블록 시작) 다음.
-  const prodAMarkerCol = metricEnd+1;
-  let prodBMarkerCol = ncols;
-  for(let c=prodAMarkerCol+1;c<ncols;c++){
-    if(raw(hdrRow,c)!=null){ prodBMarkerCol=c; break; }
-  }
-  function readProducts(start,end){
-    const prods=[]; let c=start;
-    while(c<=end){
-      const name = eff(hdrRow+1, c);
-      if(name==null){ c++; continue; }
-      prods.push({ name:String(name), colPrev:c, colCur:c+1, colYoy:c+2 });
-      c+=3;
-    }
-    return prods;
-  }
-  const prodDefsAmt = readProducts(prodAMarkerCol, prodBMarkerCol-1);
-  const prodDefsQty = readProducts(prodBMarkerCol, ncols-1);
-
-  // 5) SUBTOTAL(전사 합계) 행과, 그 아래 지점별 데이터 행들("필터" 잔재 행/빈 행은 제외).
-  let subtotalRow=-1;
-  for(let r=hdrRow+1;r<rows.length;r++){
-    const v = raw(r,0);
-    if(v!=null && String(v).indexOf('SUBTOTAL')>=0){ subtotalRow=r; break; }
-  }
-  const dataRowIdxs = [];
-  if(subtotalRow>=0){
-    for(let r=subtotalRow+1;r<rows.length;r++){
-      const v1 = raw(r,0);
-      if(v1==='필터') continue;
-      const idVals = (rows[r]||[]).slice(0, srCol+1);
-      if(idVals.every(x=>x==null)) continue;
-      dataRowIdxs.push(r);
-    }
-  }
-  function readRow(r){
-    const identity = {};
-    identityLabels.forEach((lab,i)=>{ identity[lab] = raw(r,i); });
-    const metrics = metricKeys.map((k,i)=>({ label:k, value: raw(r, metricStart+i) }));
-    const productsAmt = prodDefsAmt.map(p=>({ name:p.name, prevYear: raw(r,p.colPrev), curMonth: raw(r,p.colCur), yoy: raw(r,p.colYoy) }));
-    const productsQty = prodDefsQty.map(p=>({ name:p.name, prevYear: raw(r,p.colPrev), curMonth: raw(r,p.colCur), yoy: raw(r,p.colYoy) }));
-    return { identity, metrics, productsAmt, productsQty };
-  }
-  const subtotal = subtotalRow>=0 ? readRow(subtotalRow) : null;
-  const branches = dataRowIdxs.map(r=>readRow(r));
-
-  // 6) 지표 라벨(metricKeys)은 총판/실판 시트마다 표기가 조금씩 달라서(예: 실판 시트는
-  //    "(영업 Ver)/(M-L Ver)" 구분이 없음) 라벨 문자열로 직접 찾기보다, 아래처럼 "패턴"으로
-  //    각 지표가 metrics 배열의 몇 번째 칸인지 한 번만 찾아 인덱스로 재사용한다.
-  function findAll(pred){ const out=[]; metricKeys.forEach((k,i)=>{ if(pred(k)) out.push(i); }); return out; }
-  const targetIdxs = findAll(k=>k==='목표' || k.indexOf('목표_')===0);
-  const targetGrowthIdxs = findAll(k=>k==='목표 伸');
-  const achieveIdxs = findAll(k=>k.indexOf('달성율')===0);
-  const metricIndex = {
-    cumPrevYear: metricKeys.indexOf('누적_전년'),
-    cumThisYear: metricKeys.indexOf('누적_전월'),
-    samePrevYear: metricKeys.indexOf('동기_전년'),
-    sameThisYear: metricKeys.indexOf('동기_전월'),
-    curMonth: metricKeys.indexOf('당월'),
-    yoy: metricKeys.indexOf('전년비'),
-    mom: metricKeys.indexOf('전월비'),
-    yesterday: metricKeys.indexOf('전일'),
-    targetIdxs, targetGrowthIdxs, achieveIdxs
-  };
-
-  return { metricLabel, identityLabels, metricKeys, metricIndex, subtotal, branches };
-}
-
-// 숫자 또는 "Δ4.4%" 같은 문자열을 화면 표시용으로 정리한다(원본 표기를 최대한 그대로 살림).
-function smFmtMetricValue(v){
-  if(v==null || v==='') return '-';
-  if(typeof v==='number'){
-    // 0~1 사이의 소수는 달성율류(비율) 값으로 보고 %로 환산 표기, 그 외는 KK 그대로.
-    if(Math.abs(v) < 1 && v!==0) return (Math.round(v*1000)/10).toLocaleString('ko-KR',{maximumFractionDigits:1}) + '%';
-    return v.toLocaleString('ko-KR', {maximumFractionDigits:1}) + 'KK';
-  }
-  return String(v);
-}
-function smNum(v){
-  if(v==null || v==='') return null;
-  if(typeof v==='number') return v;
-  const s = String(v).replace(/[^\d.\-]/g,'');
-  if(s==='' || s==='-') return null;
-  const n = Number(s);
-  return isNaN(n) ? null : n;
-}
-
 function parseGoalsFileWorkbook(wb){
   const out = { branchGrossTargetsWon:{}, branchSubTargetsRaw:{}, branchManagers:{}, employeePerf:[], subscriptionPerf:[], competitiveness:null, warnings:[], monthUsedGross:null, monthUsedSub:null };
   const period = currentGoalsPeriod();
@@ -3707,50 +3532,6 @@ function applyGoalsFileUpload(parsed){
   return { branchTargetCount, subTargetCount, employeeCount: parsed.employeePerf.length, subPerfCount, competCount, warnings: parsed.warnings };
 }
 
-// LG전자 기준 총판/실판 파일 업로드: "지점별 마스터(총판)"/"지점별 마스터(실판)" 시트가 담긴
-// 파일을 그대로 올리면, 파싱된 결과를 이번 달(period) 스냅샷으로 서버에 저장한다.
-// (목표/실적 업로드와 마찬가지로 지난 달 데이터는 그대로 보존되고, 이번 달 것만 갱신됨)
-function findSalesMasterSheetName(wb, keyword){
-  return wb.SheetNames.find(n=> n.indexOf(keyword)>=0 && n.indexOf('마스터')>=0)
-      || wb.SheetNames.find(n=> n.indexOf(keyword)>=0);
-}
-function handleSalesMasterFile(evt){
-  if(SESSION.role!=='admin') return;
-  const file = evt.target.files[0];
-  if(!file) return;
-  const msgEl = document.getElementById('salesMasterUploadMsg');
-  if(msgEl) msgEl.textContent = '처리 중...';
-  const reader = new FileReader();
-  reader.onload = function(e){
-    try{
-      const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, {type:'array'});
-      const panName = findSalesMasterSheetName(wb, '총판');
-      const silName = findSalesMasterSheetName(wb, '실판');
-      if(!panName || !silName){
-        throw new Error('"지점별 마스터(총판)"/"지점별 마스터(실판)" 시트를 찾을 수 없습니다.');
-      }
-      const pan = parseSalesMasterSheet(wb.Sheets[panName]);
-      const sil = parseSalesMasterSheet(wb.Sheets[silName]);
-      const period = currentGoalsPeriod();
-      if(!DB.salesMaster) DB.salesMaster = {};
-      DB.salesMaster[period] = {
-        period, pan, sil,
-        uploadedAt: todayStr(),
-        uploadedBy: SESSION.name
-      };
-      saveDB();
-      logActivity('update', `${SESSION.name}님(관리자)이 [LG전자 기준 총판/실판] 파일을 갱신했습니다 (${goalsPeriodLabel(period)})`);
-      const msg = `반영 완료 — ${goalsPeriodLabel(period)} 기준 총판 ${pan.branches.length}개 지점 / 실판 ${sil.branches.length}개 지점 데이터가 저장되었습니다.`;
-      renderTab('systemAdmin');
-      showUploadResult('salesMasterUploadMsg', true, msg);
-    }catch(err){
-      showUploadResult('salesMasterUploadMsg', false, '파일 처리 중 오류: ' + err.message);
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-
 function handleGoalsFile(evt){
   if(SESSION.role!=='admin') return;
   const file = evt.target.files[0];
@@ -3829,410 +3610,6 @@ function setGoalsPeriod(period){
   state.goalsPeriod = period;
   renderTab('goals');
 }
-
-/* =========================================================================
-   RENDER: LG전자 기준 총판/실판
-   ========================================================================= */
-function salesMasterPeriods(){
-  return Object.keys(DB.salesMaster||{}).sort().reverse();
-}
-function setSalesMasterPeriod(period){
-  state.smPeriod = period;
-  state.smBranchSel = null;
-  renderTab('salesMaster');
-}
-function setSmScope(scope){
-  state.smScope = scope;
-  renderTab('salesMaster');
-}
-function setSmBranchSel(name){
-  state.smBranchSel = name;
-  renderTab('salesMaster');
-}
-function setSmProductUnit(unit){
-  state.smProductUnit = unit;
-  renderTab('salesMaster');
-}
-// metrics 배열에서 인덱스로 값을 꺼낸다(라벨이 총판/실판 시트마다 조금씩 달라도, 미리 계산해둔
-// metricIndex를 통해 위치로 접근하면 항상 안전하다).
-function smMetric(row, idx){
-  if(idx==null || idx<0 || !row || !row.metrics || !row.metrics[idx]) return null;
-  return row.metrics[idx].value;
-}
-function smPctFmt(pct){
-  if(pct==null || !isFinite(pct)) return '-';
-  const sign = pct>0 ? '+' : '';
-  return `${sign}${(Math.round(pct*10)/10).toLocaleString('ko-KR',{maximumFractionDigits:1})}%`;
-}
-// 달성율처럼 "증감"이 아니라 "수준(절대 비율)"을 나타내는 값은 +기호를 붙이면 성장한 것처럼
-// 오해를 줄 수 있어, 부호 없이 순수 퍼센트로만 표기한다.
-function smPctPlain(pct){
-  if(pct==null || !isFinite(pct)) return '-';
-  return `${(Math.round(pct*10)/10).toLocaleString('ko-KR',{maximumFractionDigits:1})}%`;
-}
-function smPctColor(pct){
-  if(pct==null || !isFinite(pct)) return 'inherit';
-  return pct>=0 ? 'var(--good)' : 'var(--bad)';
-}
-function smKK(v){
-  if(v==null || v==='') return '-';
-  const n = typeof v==='number' ? v : smNum(v);
-  if(n==null) return String(v);
-  return n.toLocaleString('ko-KR',{maximumFractionDigits:1}) + 'KK';
-}
-// 원본 파일 표기값(숫자 또는 "Δ4.4%" 같은 문자열)을 그대로 보기 좋게 표시.
-function smRaw(v){
-  if(v==null || v==='') return '-';
-  if(typeof v==='number'){
-    if(Math.abs(v) < 1 && v!==0) return smPctFmt(v*100);
-    return v.toLocaleString('ko-KR',{maximumFractionDigits:1});
-  }
-  return String(v);
-}
-function smFindBranchRow(sheetData, storeName){
-  if(!sheetData) return null;
-  return sheetData.branches.find(b=> b.identity['지점명']===storeName) || null;
-}
-// SR(관리자)별로 지점 행들을 묶어서, 당월/목표/동기_전년 등 "더해도 의미있는" 절대값 지표들을 합산한다.
-// (달성율/전년비 같은 비율 지표는 합산 대신, 합산된 절대값으로 다시 계산해서 보여준다 — 비율의
-// 단순 합산/평균은 의미가 왜곡되기 때문)
-function smAggregateBySR(sheetData){
-  const groups = {};
-  (sheetData.branches||[]).forEach(b=>{
-    const sr = b.identity['SR'] || '미지정';
-    if(!groups[sr]) groups[sr] = { sr, curMonth:0, target:0, samePrevYear:0, cumPrevYear:0, cumThisYear:0, branchCount:0 };
-    const idx = sheetData.metricIndex;
-    groups[sr].curMonth += (smMetric(b, idx.curMonth) || 0);
-    groups[sr].target += (smMetric(b, idx.targetIdxs[0]) || 0);
-    groups[sr].samePrevYear += (smMetric(b, idx.samePrevYear) || 0);
-    groups[sr].cumPrevYear += (smMetric(b, idx.cumPrevYear) || 0);
-    groups[sr].cumThisYear += (smMetric(b, idx.cumThisYear) || 0);
-    groups[sr].branchCount += 1;
-  });
-  Object.values(groups).forEach(g=>{
-    g.achievePct = g.target>0 ? (g.curMonth/g.target*100) : null;
-    g.yoyPct = g.samePrevYear>0 ? ((g.curMonth-g.samePrevYear)/g.samePrevYear*100) : null;
-  });
-  return groups;
-}
-let smSrChartInstance = null;
-function renderSalesMaster(){
-  const periods = salesMasterPeriods();
-  if(periods.length===0){
-    return `
-    <div class="card">
-      <h3>LG전자 기준 총판/실판</h3>
-      <div class="muted">아직 업로드된 데이터가 없습니다. ${SESSION.role==='admin' ? '[시스템 관리] 화면 상단의 "LG전자 기준 총판/실판 파일 업로드"에서 파일을 올려주세요.' : '관리자에게 파일 업로드를 요청해 주세요.'}</div>
-    </div>`;
-  }
-  if(!state.smPeriod || !DB.salesMaster[state.smPeriod]) state.smPeriod = periods[0];
-  const period = state.smPeriod;
-  const rec = DB.salesMaster[period];
-  const pan = rec.pan, sil = rec.sil;
-
-  const periodSelectorHtml = `
-    <div class="form-row" style="margin-bottom:10px;">
-      <div class="field">
-        <label>조회 월</label>
-        <select style="width:140px" onchange="setSalesMasterPeriod(this.value)">
-          ${periods.map(p=>`<option value="${p}" ${p===period?'selected':''}>${goalsPeriodLabel(p)}</option>`).join('')}
-        </select>
-      </div>
-      <div class="muted" style="align-self:center;font-size:12.5px;">${rec.uploadedAt ? `업로드: ${rec.uploadedAt} (${rec.uploadedBy||'-'})` : ''}</div>
-    </div>`;
-
-  const noticeHtml = `
-    <div class="card" style="margin-bottom:14px;background:#fff7f9;border-color:#f0c7d4;">
-      <div style="font-weight:700;">📌 일시불+구독 GROSS 실적입니다.</div>
-      <div class="muted" style="margin-top:4px;font-size:12.5px;">금액 단위는 KK(백만원)입니다. "총판"은 지점별 마스터(총판), "실판"은 지점별 마스터(실판) 시트를 기준으로 합니다.</div>
-    </div>`;
-
-  // ---- 1) SR별 총합계 대시보드 (총판 vs 실판) ----
-  const panBySR = smAggregateBySR(pan);
-  const silBySR = smAggregateBySR(sil);
-  const srList = [...new Set([...Object.keys(panBySR), ...Object.keys(silBySR)])].sort();
-  const srRows = srList.map(sr=>{
-    const p = panBySR[sr] || {curMonth:0,target:0,achievePct:null,yoyPct:null};
-    const s = silBySR[sr] || {curMonth:0,target:0,achievePct:null,yoyPct:null};
-    return `<tr>
-      <td><b>${sr}</b></td>
-      <td>${smKK(p.curMonth)}</td><td>${smKK(p.target)}</td><td style="color:${smPctColor(p.achievePct-100)}">${p.achievePct!=null?p.achievePct.toFixed(1)+'%':'-'}</td>
-      <td>${smKK(s.curMonth)}</td><td>${smKK(s.target)}</td><td style="color:${smPctColor(s.achievePct-100)}">${s.achievePct!=null?s.achievePct.toFixed(1)+'%':'-'}</td>
-    </tr>`;
-  }).join('');
-
-  setTimeout(()=>{
-    const ctx = document.getElementById('smSrChart');
-    if(ctx){
-      if(smSrChartInstance) smSrChartInstance.destroy();
-      smSrChartInstance = new Chart(ctx, {
-        type:'bar',
-        data:{
-          labels: srList,
-          datasets:[
-            { label:'총판 당월(KK)', data: srList.map(sr=>Math.round((panBySR[sr]?panBySR[sr].curMonth:0)*10)/10), backgroundColor:'#A50034' },
-            { label:'실판 당월(KK)', data: srList.map(sr=>Math.round((silBySR[sr]?silBySR[sr].curMonth:0)*10)/10), backgroundColor:'#adb5bd' }
-          ]
-        },
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
-      });
-    }
-  }, 0);
-
-  const srDashboardHtml = `
-    <div class="card" style="margin-bottom:14px;">
-      <h3>SR별 총합계 대시보드 <small>(총판 vs 실판 한눈에 비교 · 당월 실적 기준 · KK)</small></h3>
-      <div style="overflow-x:auto;">
-        <table>
-          <thead><tr><th rowspan="2">SR</th><th colspan="3">총판</th><th colspan="3">실판</th></tr>
-          <tr><th>당월</th><th>목표</th><th>달성율</th><th>당월</th><th>목표</th><th>달성율</th></tr></thead>
-          <tbody>${srRows}</tbody>
-        </table>
-      </div>
-      <div style="position:relative;height:240px;margin-top:14px;">
-        <canvas id="smSrChart"></canvas>
-      </div>
-    </div>`;
-
-  // ---- 2) 지점 선택(전체/지점별) ----
-  if(!state.smScope) state.smScope = 'all';
-  const scope = state.smScope;
-  const storeNames = pan.branches.map(b=>b.identity['지점명']).filter(Boolean);
-  const scopeButtonsHtml = `
-    <div style="margin-bottom:10px;">
-      <span class="branch-pill ${scope==='all'?'active':''}" onclick="setSmScope('all')">전체</span>
-      <span class="branch-pill ${scope==='branch'?'active':''}" onclick="setSmScope('branch')">지점별</span>
-    </div>`;
-  let branchSelectorHtml = '';
-  let panRow, silRow, scopeLabel;
-  if(scope==='branch'){
-    const sel = (state.smBranchSel && storeNames.includes(state.smBranchSel)) ? state.smBranchSel : storeNames[0];
-    state.smBranchSel = sel;
-    branchSelectorHtml = `<div class="form-row" style="margin-bottom:10px;"><div class="field">
-      <label>지점 선택</label>
-      <select style="width:220px" onchange="setSmBranchSel(this.value)">
-        ${storeNames.map(n=>`<option value="${n}" ${n===sel?'selected':''}>${n}</option>`).join('')}
-      </select>
-    </div></div>`;
-    panRow = smFindBranchRow(pan, sel);
-    silRow = smFindBranchRow(sil, sel);
-    scopeLabel = sel;
-  } else {
-    panRow = pan.subtotal;
-    silRow = sil.subtotal;
-    scopeLabel = '전체(SUBTOTAL)';
-  }
-
-  // ---- 3) 지점별 GROSS 총판/실판 전년 대비 신장율 (그래프) ----
-  const idxP = pan.metricIndex, idxS = sil.metricIndex;
-  // 누적_전년/누적_전월/동기_전년/동기_전월은 전부 파일이 그대로 준 "절대값(KK)"이라 믿을 수
-  // 있는 값이므로, 신장율(=(금년-전년)/전년*100)은 여기서 직접 계산해서 보여준다(제품별
-  // 전년비처럼 파일이 이미 가공해 놓은 표기가 아니라서 별도 해석/추정이 필요 없음).
-  function smGrowthPct(prev, cur){
-    if(prev==null || cur==null || !isFinite(prev) || !isFinite(cur) || prev===0) return null;
-    return (cur-prev)/Math.abs(prev)*100;
-  }
-  const panCumPrev = panRow ? smNum(smMetric(panRow, idxP.cumPrevYear)) : null;
-  const panCumCur = panRow ? smNum(smMetric(panRow, idxP.cumThisYear)) : null;
-  const silCumPrev = silRow ? smNum(smMetric(silRow, idxS.cumPrevYear)) : null;
-  const silCumCur = silRow ? smNum(smMetric(silRow, idxS.cumThisYear)) : null;
-  const panSamePrev = panRow ? smNum(smMetric(panRow, idxP.samePrevYear)) : null;
-  const panSameCur = panRow ? smNum(smMetric(panRow, idxP.sameThisYear)) : null;
-  const silSamePrev = silRow ? smNum(smMetric(silRow, idxS.samePrevYear)) : null;
-  const silSameCur = silRow ? smNum(smMetric(silRow, idxS.sameThisYear)) : null;
-  const panCumGrowth = smGrowthPct(panCumPrev, panCumCur);
-  const silCumGrowth = smGrowthPct(silCumPrev, silCumCur);
-  const panSameGrowth = smGrowthPct(panSamePrev, panSameCur);
-  const silSameGrowth = smGrowthPct(silSamePrev, silSameCur);
-
-  setTimeout(()=>{
-    const ctx = document.getElementById('smCumChart');
-    if(ctx){
-      if(window.__smCumChartInstance) window.__smCumChartInstance.destroy();
-      window.__smCumChartInstance = new Chart(ctx, {
-        type:'bar',
-        data:{
-          labels:['전년 누적','금년 누적','전년 동기','금년 동기'],
-          datasets:[
-            { label:'총판(KK)', data:[panCumPrev||0, panCumCur||0, panSamePrev||0, panSameCur||0], backgroundColor:'#A50034' },
-            { label:'실판(KK)', data:[silCumPrev||0, silCumCur||0, silSamePrev||0, silSameCur||0], backgroundColor:'#adb5bd' }
-          ]
-        },
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
-      });
-    }
-  }, 0);
-
-  const cumCompareHtml = `
-    <div class="card" style="margin-bottom:14px;">
-      <h3>GROSS 총판/실판 전년 대비 신장율 <small>(${scopeLabel} · KK)</small></h3>
-      <div style="position:relative;height:260px;">
-        <canvas id="smCumChart"></canvas>
-      </div>
-      <div style="margin-top:12px;font-size:13px;display:flex;gap:28px;flex-wrap:wrap;">
-        <div>누적 신장율 — 총판: <b style="color:${smPctColor(panCumGrowth)}">${smPctFmt(panCumGrowth)}</b> · 실판: <b style="color:${smPctColor(silCumGrowth)}">${smPctFmt(silCumGrowth)}</b></div>
-        <div>동기 신장율 — 총판: <b style="color:${smPctColor(panSameGrowth)}">${smPctFmt(panSameGrowth)}</b> · 실판: <b style="color:${smPctColor(silSameGrowth)}">${smPctFmt(silSameGrowth)}</b></div>
-      </div>
-    </div>`;
-
-  // ---- 4) 목표 대비 달성율 · 총판/실판 비교 ----
-  // "목표 구분"(영업 Ver/M-L Ver)별로 목표(伸이 아니라) 달성율을 함께 보여준다. achieveIdxs가
-  // targetIdxs보다 짧을 수 있어(실판 시트는 버전 구분 없이 달성율이 1개뿐) 부족하면 마지막
-  // 값을 그대로 재사용한다(파일 자체가 버전별로 따로 안 나눠 놓은 것뿐, 값 자체는 유효함).
-  function targetRows(sheetData, row){
-    const idx = sheetData.metricIndex;
-    return idx.targetIdxs.map((tIdx,i)=>{
-      const aIdx = idx.achieveIdxs[i]!=null ? idx.achieveIdxs[i] : idx.achieveIdxs[idx.achieveIdxs.length-1];
-      const label = sheetData.metricKeys[tIdx];
-      const achieveRaw = (row && aIdx!=null) ? smMetric(row,aIdx) : null;
-      const achievePct = (typeof achieveRaw==='number') ? achieveRaw*100 : null;
-      return { label, target: row?smMetric(row,tIdx):null, achievePct };
-    });
-  }
-  const panTargets = targetRows(pan, panRow);
-  const silTargets = targetRows(sil, silRow);
-  const maxTargetRows = Math.max(panTargets.length, silTargets.length);
-  let targetRowsHtml = '';
-  for(let i=0;i<maxTargetRows;i++){
-    const pt = panTargets[i], st = silTargets[i];
-    targetRowsHtml += `<tr>
-      <td>${(pt&&pt.label)||(st&&st.label)||'-'}</td>
-      <td>${pt?smKK(pt.target):'-'}</td><td>${pt&&pt.achievePct!=null?smPctPlain(pt.achievePct):'-'}</td>
-      <td>${st?smKK(st.target):'-'}</td><td>${st&&st.achievePct!=null?smPctPlain(st.achievePct):'-'}</td>
-    </tr>`;
-  }
-
-  setTimeout(()=>{
-    const ctx = document.getElementById('smAchieveChart');
-    if(ctx){
-      if(window.__smAchieveChartInstance) window.__smAchieveChartInstance.destroy();
-      window.__smAchieveChartInstance = new Chart(ctx, {
-        type:'bar',
-        data:{
-          labels: panTargets.map((t,i)=> (t&&t.label) || (silTargets[i]&&silTargets[i].label) || `구분${i+1}`),
-          datasets:[
-            { label:'총판 달성율(%)', data: panTargets.map(t=>t.achievePct!=null?Math.round(t.achievePct*10)/10:0), backgroundColor:'#A50034' },
-            { label:'실판 달성율(%)', data: silTargets.map(t=>t.achievePct!=null?Math.round(t.achievePct*10)/10:0), backgroundColor:'#adb5bd' }
-          ]
-        },
-        options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
-      });
-    }
-  }, 0);
-
-  const targetCompareHtml = `
-    <div class="card" style="margin-bottom:14px;">
-      <h3>목표 대비 달성율 · 총판/실판 비교 <small>(${scopeLabel})</small></h3>
-      <table>
-        <thead><tr><th rowspan="2">목표 구분</th><th colspan="2">총판</th><th colspan="2">실판</th></tr>
-        <tr><th>목표(KK)</th><th>달성율</th><th>목표(KK)</th><th>달성율</th></tr></thead>
-        <tbody>${targetRowsHtml}</tbody>
-      </table>
-      <div style="position:relative;height:220px;margin-top:14px;">
-        <canvas id="smAchieveChart"></canvas>
-      </div>
-      <div style="margin-top:10px;font-size:13px;">
-        <div>당월: 총판 <b>${smKK(panRow?smMetric(panRow, idxP.curMonth):null)}</b> · 실판 <b>${smKK(silRow?smMetric(silRow, idxS.curMonth):null)}</b></div>
-        <div style="margin-top:4px;">전년비 — 총판: <b>${smRaw(panRow?smMetric(panRow,idxP.yoy):null)}</b> · 실판: <b>${smRaw(silRow?smMetric(silRow,idxS.yoy):null)}</b></div>
-      </div>
-    </div>`;
-
-  // ---- 5) 제품별 총판/실판 전년비 비교 (금액/수량 토글 + 그래프) ----
-  if(!state.smProductUnit) state.smProductUnit = 'amt';
-  const unit = state.smProductUnit;
-  const panProds = panRow ? (unit==='amt'?panRow.productsAmt:panRow.productsQty) : [];
-  const silProds = silRow ? (unit==='amt'?silRow.productsAmt:silRow.productsQty) : [];
-  const prodNames = panProds.map(p=>p.name);
-  // Δ로 시작하는 원본 표기 문자열(예: "Δ4.4%")은 실제 증감 부호를 텍스트만으로는 확실히
-  // 알 수 없어(파일 자체가 부호 없이 변화폭만 표기) 색상을 임의로 추정하지 않고, 순수 숫자로
-  // 들어온 값(양/음이 명확한 경우)만 색상을 입혀 오해를 방지한다.
-  function smYoyColor(v){ return (typeof v==='number') ? smPctColor(v*100) : 'inherit'; }
-  // 총판/실판 시트는 제품 "개수"는 같아도 나열 순서가 살짝 다를 수 있어(예: 김치냉장고/일반냉장고
-  // 순서가 서로 바뀌어 있는 경우가 실제로 있었음), 위치(인덱스)가 아니라 제품명으로 맞춰 짝짓는다.
-  const silProdsByName = {};
-  silProds.forEach(p=>{ silProdsByName[p.name] = p; });
-  const productRowsHtml = prodNames.map((name,i)=>{
-    const pp = panProds[i] || {}; const sp = silProdsByName[name] || {};
-    return `<tr>
-      <td>${name}</td>
-      <td>${smRaw(pp.prevYear)}</td><td>${smRaw(pp.curMonth)}</td><td style="color:${smYoyColor(pp.yoy)}">${smRaw(pp.yoy)}</td>
-      <td>${smRaw(sp.prevYear)}</td><td>${smRaw(sp.curMonth)}</td><td style="color:${smYoyColor(sp.yoy)}">${smRaw(sp.yoy)}</td>
-    </tr>`;
-  }).join('');
-
-  // 제품별 "전년비" 그래프용 수치 변환: 파일이 "Δxx.x%" 문자열로 명시한 항목만 그 크기를
-  // 그대로 숫자로 뽑아 쓴다(이 파일에서는 Δ 표기가 전부 양수만 관찰됨 — 실제 부호는 알 수
-  // 없으므로 임의로 부호를 추정하지 않는다). 반면 같은 칸인데 문자열이 아니라 순수 숫자로만
-  // 들어있는 항목은 전년/당월 실측값으로 역산해봐도 그 숫자와 맞아떨어지지 않아(표기 방식이
-  // 다른 것으로 추정) 그래프에서는 신뢰할 수 없다고 보고 제외한다(표에는 원본 값 그대로 표시).
-  function smYoyChartNum(v){
-    if(typeof v==='string'){
-      const m = v.match(/(\d+(\.\d+)?)/);
-      return m ? parseFloat(m[1]) : null;
-    }
-    return null;
-  }
-  const hasAmbiguousYoy = prodNames.some(n=>{
-    const pp = panProds.find(p=>p.name===n); const sp = silProdsByName[n];
-    return (pp && typeof pp.yoy==='number') || (sp && typeof sp.yoy==='number');
-  });
-  setTimeout(()=>{
-    const ctx = document.getElementById('smProdChart');
-    if(ctx){
-      if(window.__smProdChartInstance) window.__smProdChartInstance.destroy();
-      window.__smProdChartInstance = new Chart(ctx, {
-        type:'bar',
-        data:{
-          labels: prodNames,
-          datasets:[
-            { label:'총판 전년비(%)', data: panProds.map(p=>smYoyChartNum(p.yoy)||0), backgroundColor:'#A50034' },
-            { label:'실판 전년비(%)', data: prodNames.map(n=>{ const sp = silProdsByName[n]; return sp ? (smYoyChartNum(sp.yoy)||0) : 0; }), backgroundColor:'#adb5bd' }
-          ]
-        },
-        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{x:{beginAtZero:true, title:{display:true, text:'전년비 증감폭(%)'}}} }
-      });
-    }
-  }, 0);
-
-  const productCompareHtml = `
-    <div class="card" style="margin-bottom:14px;">
-      <h3>제품별 총판/실판 전년비 비교 <small>(${scopeLabel})</small></h3>
-      <div style="margin-bottom:10px;">
-        <span class="branch-pill ${unit==='amt'?'active':''}" onclick="setSmProductUnit('amt')">금액</span>
-        <span class="branch-pill ${unit==='qty'?'active':''}" onclick="setSmProductUnit('qty')">수량</span>
-      </div>
-      <div style="position:relative;height:520px;">
-        <canvas id="smProdChart"></canvas>
-      </div>
-      ${hasAmbiguousYoy ? `<div class="small-note" style="margin-top:6px;">※ 원본 파일에 숫자로만 표기되어 그래프에서 제외된 항목이 있습니다(아래 표에서 확인 가능).</div>` : ''}
-      <details style="margin-top:12px;">
-        <summary style="cursor:pointer;color:var(--muted);font-size:12.5px;">상세 표 보기</summary>
-        <div style="overflow-x:auto;margin-top:8px;">
-          <table>
-            <thead><tr><th rowspan="2">제품</th><th colspan="3">총판</th><th colspan="3">실판</th></tr>
-            <tr><th>전년</th><th>당월</th><th>전년비</th><th>전년</th><th>당월</th><th>전년비</th></tr></thead>
-            <tbody>${productRowsHtml}</tbody>
-          </table>
-        </div>
-      </details>
-    </div>`;
-
-  return `
-    <h2>LG전자 기준 총판/실판</h2>
-    ${periodSelectorHtml}
-    ${noticeHtml}
-    ${srDashboardHtml}
-    <div class="card" style="margin-bottom:14px;">
-      <h3>지점 선택</h3>
-      ${scopeButtonsHtml}
-      ${branchSelectorHtml}
-    </div>
-    ${cumCompareHtml}
-    ${targetCompareHtml}
-    ${productCompareHtml}
-  `;
-}
-
 function renderGoals(){
   // 지점 전체(다른 지점) 조회/전환은 관리자만 가능 - 매니저(지점 소속 직원)는 항상 본인 소속 지점으로 고정됨
   const branchId = SESSION.role==='admin' ? state.viewBranchId : SESSION.branchId;
@@ -8973,6 +8350,24 @@ function eduTargetNamesTitle(s){
   if(!s.targetEmpIds || s.targetEmpIds.length===0) return '';
   return s.targetEmpIds.map(id=>{ const u = DB.users.find(x=>x.empId===id); return u ? u.name : id; }).join(', ');
 }
+// 교육 일정(본부/사내/기타)과 교육 이수율(화상교육/월간test/AI R-P)은 사이드바에 각각
+// 3개씩 흩어져 있던 걸 "교육 일정 안내"/"교육 이수율 확인" 2개 항목으로 합치면서, 대신 이
+// 페이지 안에서 pill로 세부 카테고리를 전환할 수 있게 한다(실제 데이터/권한 로직은 기존과
+// 완전히 동일 — tab 이름(eduHq/eduInhouse 등)도 그대로 유지해서 다른 곳의 참조는 안 건드림).
+function eduScheduleCatPills(activeCat){
+  return `<div style="margin-bottom:14px;">
+    <span class="branch-pill ${activeCat==='hq'?'active':''}" onclick="renderTab('eduHq')">본부(평택)교육</span>
+    <span class="branch-pill ${activeCat==='inhouse'?'active':''}" onclick="renderTab('eduInhouse')">사내교육</span>
+    <span class="branch-pill ${activeCat==='etc'?'active':''}" onclick="renderTab('eduEtc')">기타교육</span>
+  </div>`;
+}
+function eduCompletionCatPills(activeCat){
+  return `<div style="margin-bottom:14px;">
+    <span class="branch-pill ${activeCat==='video'?'active':''}" onclick="renderTab('eduVideo')">화상교육</span>
+    <span class="branch-pill ${activeCat==='test'?'active':''}" onclick="renderTab('eduTest')">월간test</span>
+    <span class="branch-pill ${activeCat==='aiRp'?'active':''}" onclick="renderTab('eduAiRp')">AI R/P</span>
+  </div>`;
+}
 function renderEduSchedule(cat){
   const isAdmin = SESSION.role==='admin';
   const list = (DB.eduSchedules[cat]||[]);
@@ -9061,6 +8456,7 @@ function renderEduSchedule(cat){
     </div>` : '';
 
   return `
+    ${eduScheduleCatPills(cat)}
     <div class="page-title">${eduCategoryLabel(cat)} 안내</div>
     <div class="page-desc">${cat==='hq' ? '본부(평택)에서 진행되는 교육 일정을 안내합니다.' : (cat==='inhouse' ? '사내(지점/본부)에서 진행되는 교육 일정을 안내합니다.' : '위 항목에 속하지 않는 기타 교육 일정을 안내합니다.')} 대상자로 지정된 경우 참석일 기준 알람일(D-N) 전부터 로그인 시 안내됩니다 (대상자 미지정 시 대상 지점 전체, 기본 D-2).</div>
     ${formHtml}
@@ -9198,6 +8594,7 @@ function renderEduCompletion(cat){
     </div>` : '';
 
   return `
+    ${eduCompletionCatPills(cat)}
     <div class="page-title">${w.pageTitle}</div>
     <div class="page-desc">혼매경북팀(경북2담당) 소속 인원 기준 ${eduCategoryLabel(cat)} 현황입니다.</div>
     ${cat==='aiRp' ? renderCollectionNotice('eduAiRp', eduTabName(cat)) : ''}
@@ -9511,6 +8908,7 @@ function renderEduVideoRich(){
     </div>` : '';
 
   return `
+    ${eduCompletionCatPills('video')}
     <div class="page-title">화상교육 이수율 확인</div>
     <div class="page-desc">혼매경북팀(경북2담당) 소속 인원 기준 화상교육 현황입니다. (기준날짜: <b>${rich.refDate}</b>)</div>
     ${branchPills}
