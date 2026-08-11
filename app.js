@@ -5599,17 +5599,6 @@ function renderExecPhotoGuide(){
       ${adminControls}
     </div>`;
 }
-// 각종 취합 4개(사진/상품권/구독연동사은품/구독4품목·금액대별·에어컨진열판매)도 교육 관리와
-// 같은 방식으로 사이드바 1항목("각종 취합") + 페이지 안 pill 전환으로 합친다. 각 tab 이름
-// (collectPhoto 등)과 저장 로직은 그대로 둬서 기존 export 툴바/권한/데이터 참조가 안 깨지게 한다.
-function collectHubPills(activeTab){
-  return `<div style="margin-bottom:14px;">
-    <span class="branch-pill ${activeTab==='collectPhoto'?'active':''}" onclick="renderTab('collectPhoto')">실행력 점검 사진</span>
-    <span class="branch-pill ${activeTab==='collectGiftcard'?'active':''}" onclick="renderTab('collectGiftcard')">모바일 상품권</span>
-    <span class="branch-pill ${activeTab==='collectContest'?'active':''}" onclick="renderTab('collectContest')">구독연동사은품</span>
-    <span class="branch-pill ${activeTab==='subTierContest'?'active':''}" onclick="renderTab('subTierContest')">구독4품목·금액대별·에어컨진열판매</span>
-  </div>`;
-}
 function renderCollectPhoto(){
   if(!state.epSelectedIds) state.epSelectedIds = new Set();
   const myBranch = collectScopeBranch();
@@ -5663,7 +5652,6 @@ function renderCollectPhoto(){
   }).join('') || `<div class="muted">등록된 사진이 없습니다.</div>`;
 
   return `
-    ${collectHubPills('collectPhoto')}
     <div class="page-title">실행력 점검 사진 취합</div>
     <div class="page-desc">지점별 실행력 점검 사진을 업로드·공유합니다.</div>
     ${renderExecPhotoGuide()}
@@ -5936,7 +5924,6 @@ function renderCollectGiftcard(){
   }).join('') || `<tr><td colspan="13" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
-    ${collectHubPills('collectGiftcard')}
     <div class="page-title">모바일 상품권 취합</div>
     <div class="page-desc">모바일 상품권 지급 건을 취합·관리합니다.</div>
 
@@ -6444,7 +6431,6 @@ function renderCollectContest(){
   }).join('') || `<tr><td colspan="12" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
-    ${collectHubPills('collectContest')}
     <div class="page-title">구독연동사은품 취합</div>
     <div class="page-desc">구독연동 사은품 발송 건을 취합·관리합니다.</div>
     ${collectBranchPills('collectContest')}
@@ -6848,7 +6834,6 @@ function renderSubTierContest(){
   }).join('') || `<tr><td colspan="8" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
-    ${collectHubPills('subTierContest')}
     <div class="page-title">구독4품목↑/금액대별 사은품/에어컨 진열판매 연동사은품 취합</div>
     <div class="page-desc">구독 4품목 이상 계약, 결제금액 기준, 에어컨 진열판매 연동 사은품 컨테스트 건을 취합·관리합니다.</div>
 
@@ -7130,16 +7115,6 @@ function mistakeNoteStats(notes){
   }
   return {total, byCategory, byBranch, topCategory, topBranch, thisMonthCount, insightLines};
 }
-// 성장 지원 4개(오답노트/이슈제품 성공사례/우수 활동 사례/정책 숙지도 점검)도 동일 패턴으로
-// 사이드바 1항목("성장 지원") + 페이지 안 pill 전환으로 합친다.
-function growthHubPills(activeTab){
-  return `<div style="margin-bottom:14px;">
-    <span class="branch-pill ${activeTab==='mistakeNote'?'active':''}" onclick="renderTab('mistakeNote')">구독 오답노트</span>
-    <span class="branch-pill ${activeTab==='issueCase'?'active':''}" onclick="renderTab('issueCase')">이슈제품 성공사례</span>
-    <span class="branch-pill ${activeTab==='bestPractice'?'active':''}" onclick="renderTab('bestPractice')">우수 활동 사례</span>
-    <span class="branch-pill ${activeTab==='policyQuiz'?'active':''}" onclick="renderTab('policyQuiz')">정책 숙지도 점검</span>
-  </div>`;
-}
 function renderMistakeNote(){
   const isAdmin = SESSION.role==='admin';
   const myBranch = SESSION.branchId || DB.branches[0].id;
@@ -7193,7 +7168,6 @@ function renderMistakeNote(){
   }
 
   return `
-    ${growthHubPills('mistakeNote')}
     <div class="page-title">구독 오답노트</div>
     <div class="page-desc">구독 판매 과정에서 발생한 실수를 기록하면 AI가 즉시 분석 결과와 개선 방안을 알려드립니다.${isAdmin ? '' : ' (등록 내용의 누적 조회는 관리자만 가능합니다.)'}</div>
 
@@ -7405,7 +7379,6 @@ function renderBestPractice(){
   }).join('') || `<div class="muted">${allSorted.length===0 ? '등록된 활동 사례가 없습니다.' : '검색 결과가 없습니다.'}</div>`;
 
   return `
-    ${growthHubPills('bestPractice')}
     <div class="page-title">우수 활동 사례 공유</div>
     <div class="notice-banner" style="margin-bottom:16px;">
       <div style="font-weight:800;font-size:16px;">🏆 월별 최우수 사례 선정 시 판촉비 지원</div>
@@ -7719,7 +7692,6 @@ function renderIssueCase(){
     </div>` : '';
 
   return `
-    ${growthHubPills('issueCase')}
     <div class="page-title">이슈제품 판매 성공 사례</div>
     <div class="notice-banner" style="margin-bottom:16px;">
       <div style="font-weight:800;font-size:16px;">💡 이슈제품 판매 노하우/성공사례 등을 공유해주세요</div>
@@ -8152,7 +8124,6 @@ function renderPolicyQuiz(){
 
   if(SESSION.role!=='staff'){
     return `
-      ${growthHubPills('policyQuiz')}
       <div class="page-title">금주 주말 정책 숙지도 점검</div>
       <div class="page-desc">주말 판촉/정책 자료를 바탕으로 한 객관식/빈칸채우기 숙지도 점검입니다. (응시는 개별 판매사원 계정으로만 가능합니다.) 주차를 선택하면 해당 주차의 점검 현황을 볼 수 있고, 별도로 선택하지 않으면 가장 최근에 등록된 주차 현황이 표시됩니다.</div>
       ${weekSelectorHtml}
@@ -8230,7 +8201,6 @@ function renderPolicyQuiz(){
   }
 
   return `
-    ${growthHubPills('policyQuiz')}
     <div class="page-title">금주 주말 정책 숙지도 점검</div>
     <div class="page-desc">이번 주말 판촉/정책 자료를 바탕으로 한 객관식(일부 빈칸채우기) 숙지도 점검입니다. (아래 현황은 주차별로 선택해서 볼 수 있습니다. 내 퀴즈 응시는 항상 이번 주 기준입니다.)</div>
     ${weekSelectorHtml}
