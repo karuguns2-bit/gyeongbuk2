@@ -5600,6 +5600,7 @@ function renderExecPhotoGuide(){
     </div>`;
 }
 function renderCollectPhoto(){
+  if(!state.epSelectedIds) state.epSelectedIds = new Set();
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.execPhotos);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -5637,7 +5638,10 @@ function renderCollectPhoto(){
     return `
     <div class="card" style="width:220px;">
       <div class="flex-between" style="margin-bottom:6px;">
-        <div style="font-weight:600;">${branchName(r.branchId)}</div>
+        <div style="font-weight:600;display:flex;align-items:center;gap:6px;">
+          ${SESSION.role==='admin' ? `<input type="checkbox" ${state.epSelectedIds.has(r.id)?'checked':''} onchange="toggleExecPhotoSelect('${r.id}', this.checked)" title="선택">` : ''}
+          ${branchName(r.branchId)}
+        </div>
         ${r.week ? `<span class="tag">${escapeHtml(r.week)}</span>` : ''}
       </div>
       ${photosHtml}
@@ -5750,6 +5754,90 @@ function deleteExecPhoto(id){
   if(!confirm('삭제하시겠습니까?')) return;
   DB.execPhotos = DB.execPhotos.filter(r=>r.id!==id);
   if(target) (target.photos||[]).forEach(p=>{ if(p.dataUrl) deleteFromStorage(p.dataUrl); });
+  saveDB();
+  renderTab('collectPhoto');
+}
+
+// 실행력 점검 사진 취합 - 관리자가 카드별 체크박스로 여러 건을 골라서, 상단 툴바의
+// "선택 항목 내려받기"/"선택 항목 삭제하기" 버튼으로 한 번에 처리할 수 있게 한다.
+// 체크박스를 누를 때마다 화면 전체를 다시 그리면 스크롤 위치가 튀고 깜빡이므로, 선택 상태는
+// state에 Set으로만 들고 있다가 툴바 버튼의 표시 건수만 가볍게 갱신한다(전체 재렌더 없음).
+function toggleExecPhotoSelect(id, checked){
+  if(!state.epSelectedIds) state.epSelectedIds = new Set();
+  if(checked) state.epSelectedIds.add(id); else state.epSelectedIds.delete(id);
+  updateExecPhotoSelectionToolbar();
+}
+function updateExecPhotoSelectionToolbar(){
+  const n = state.epSelectedIds ? state.epSelectedIds.size : 0;
+  const label = n>0 ? ` (${n})` : '';
+  ['execPhotoSelCountDl','execPhotoSelCountDel'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.textContent = label;
+  });
+}
+// 실행력 점검 사진 취합 - 체크박스로 선택한 건들의 사진만 zip으로 묶어 다운로드한다.
+// downloadAllExecPhotos()(현재 화면에 보이는 전체)와 로직은 같고 대상만 선택된 건으로 좁힌다.
+async function downloadSelectedExecPhotos(){
+  if(SESSION.role!=='admin') return;
+  const ids = state.epSelectedIds ? [...state.epSelectedIds] : [];
+  if(ids.length===0){ alert('선택된 항목이 없습니다. 다운로드할 건의 체크박스를 먼저 선택해 주세요.'); return; }
+  if(typeof JSZip==='undefined'){
+    alert('압축 파일 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
+    return;
+  }
+  const idSet = new Set(ids);
+  const selected = (DB.execPhotos||[]).filter(r=>idSet.has(r.id));
+  const items = [];
+  selected.forEach(r=>{
+    (r.photos||[]).forEach(p=>{
+      if(p && p.dataUrl) items.push({ branch: branchName(r.branchId), file: p });
+    });
+  });
+  if(items.length===0){ alert('선택한 건에 다운로드할 사진(첨부파일)이 없습니다.'); return; }
+
+  const btn = document.getElementById('execPhotoDownloadSelectedBtn');
+  const btnOrigHtml = btn ? btn.innerHTML : null;
+  if(btn){ btn.disabled = true; btn.innerHTML = '압축 중...'; }
+  try{
+    const zip = new JSZip();
+    const counters = {};
+    let okCount = 0, failCount = 0;
+    for(const { branch, file } of items){
+      try{
+        const res = await fetch(file.dataUrl);
+        if(!res.ok) throw new Error('fetch failed: ' + res.status);
+        const arrBuf = await res.arrayBuffer();
+        const ext = guessAttachmentExt(file.name);
+        counters[branch] = (counters[branch]||0) + 1;
+        zip.file(`${branch}${counters[branch]}${ext}`, arrBuf);
+        okCount++;
+      }catch(e){
+        failCount++; // 이 파일 하나만 건너뛰고 나머지는 계속 압축
+      }
+    }
+    if(okCount===0){ alert('사진을 하나도 내려받지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'); return; }
+    const blob = await zip.generateAsync({type:'blob'});
+    downloadBlob(blob, `실행력점검사진_선택항목_${todayStr()}.zip`);
+    if(failCount>0) alert(`${okCount}개 사진은 정상적으로 압축했지만, ${failCount}개는 내려받는 데 실패해서 제외했습니다.`);
+  }catch(e){
+    alert('사진 압축 파일 생성 중 오류가 발생했습니다: ' + e.message);
+  }finally{
+    if(btn){ btn.disabled = false; btn.innerHTML = btnOrigHtml; }
+  }
+}
+// 실행력 점검 사진 취합 - 체크박스로 선택한 건들을 한 번에 삭제한다(스토리지에 올라간 실제
+// 파일도 함께 정리). 개별 삭제(deleteExecPhoto)와 동일한 권한 기준(관리자)으로, 여러 건을
+// 매번 하나씩 지우지 않아도 되게 하는 일괄 처리 버튼이다.
+function deleteSelectedExecPhotos(){
+  if(SESSION.role!=='admin') return;
+  const ids = state.epSelectedIds ? [...state.epSelectedIds] : [];
+  if(ids.length===0){ alert('선택된 항목이 없습니다. 삭제할 건의 체크박스를 먼저 선택해 주세요.'); return; }
+  if(!confirm(`선택한 ${ids.length}건을 삭제하시겠습니까? 삭제한 사진은 복구할 수 없습니다.`)) return;
+  const idSet = new Set(ids);
+  const targets = (DB.execPhotos||[]).filter(r=>idSet.has(r.id));
+  targets.forEach(r=>(r.photos||[]).forEach(p=>{ if(p.dataUrl) deleteFromStorage(p.dataUrl); }));
+  DB.execPhotos = (DB.execPhotos||[]).filter(r=>!idSet.has(r.id));
+  state.epSelectedIds.clear();
   saveDB();
   renderTab('collectPhoto');
 }
@@ -9992,10 +10080,16 @@ function updateExportToolbarVisibility(tab){
   const el = document.getElementById('exportToolbar');
   if(!el) return;
   el.style.display = (tab==='subscription') ? 'none' : '';
+  const isPhotoAdmin = (tab==='collectPhoto' && SESSION && SESSION.role==='admin');
   const photoBtn = document.getElementById('execPhotoDownloadBtn');
-  if(photoBtn){
-    photoBtn.style.display = (tab==='collectPhoto' && SESSION && SESSION.role==='admin') ? '' : 'none';
-  }
+  if(photoBtn) photoBtn.style.display = isPhotoAdmin ? '' : 'none';
+  const dlSelBtn = document.getElementById('execPhotoDownloadSelectedBtn');
+  const delSelBtn = document.getElementById('execPhotoDeleteSelectedBtn');
+  if(dlSelBtn) dlSelBtn.style.display = isPhotoAdmin ? '' : 'none';
+  if(delSelBtn) delSelBtn.style.display = isPhotoAdmin ? '' : 'none';
+  // 실행력 점검 사진 화면을 벗어나면 이전에 체크해 둔 선택 상태가 계속 남아있지 않도록 비운다.
+  if(!isPhotoAdmin && state.epSelectedIds) state.epSelectedIds.clear();
+  updateExecPhotoSelectionToolbar();
 }
 function updateInventoryNavLabel(){
   const el = document.getElementById('navInventoryDate');
