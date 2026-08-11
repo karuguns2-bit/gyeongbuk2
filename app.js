@@ -6751,6 +6751,9 @@ function syncSubTierGiftNameFor(selectId, giftId, addressId, addressBtnId){
       const btnEl = document.getElementById(addressBtnId);
       if(btnEl) btnEl.disabled = !needsAddress;
     }
+    // "에어컨 진열 판매"는 매장이 아니라 고객 댁으로 직접 배송되는 항목이라, 선택하는 순간
+    // 주소를 반드시 입력해야 한다는 것을 바로 알려준다.
+    if(needsAddress) alert('고객 댁으로 배송됩니다. 주소창에 배송지를 입력해주세요.');
   }
 }
 // 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
