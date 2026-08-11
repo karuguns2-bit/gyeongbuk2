@@ -2746,7 +2746,7 @@ function noticeBodyHtml(n){
   const moreBtn = noticeContentIsLong(n.content) ? `<button type="button" class="nb-more-btn" onclick="openNoticeDetail('${n.id}')">자세히 보기 ›</button>` : '';
   return `
     <div class="nb-title">${escapeHtml(n.title)}</div>
-    <div class="nb-content">${escapeHtml(n.content)}</div>
+    <div class="nb-content">${richContentHtml(n.content)}</div>
     ${moreBtn}
     ${photosHtml}
     <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
@@ -2767,7 +2767,7 @@ function openNoticeDetail(id){
   if(bodyEl){
     bodyEl.innerHTML = `
       <div style="font-weight:800;font-size:17px;margin-bottom:10px;">${escapeHtml(n.title)}</div>
-      <div style="font-size:13.5px;line-height:1.75;white-space:pre-wrap;">${escapeHtml(n.content)}</div>
+      <div style="font-size:13.5px;line-height:1.75;">${richContentHtml(n.content)}</div>
       ${photosHtml}
       <div style="font-size:11.5px;color:var(--text-sub);margin-top:16px;">${escapeHtml(n.author)} · ${dtStr}</div>
     `;
@@ -2850,7 +2850,7 @@ function renderNoticeForm(){
       <div class="form-row">
         <div class="field" style="flex:1;">
           <label>내용</label>
-          <textarea id="noticeContentInput" rows="3" placeholder="공지 내용을 입력하세요">${editing?escapeHtml(editing.content):''}</textarea>
+          ${richEditorHtml('noticeContentInput', editing?richContentHtml(editing.content):'', '공지 내용을 입력하세요', 110)}
         </div>
       </div>
       <div class="form-row">
@@ -2862,7 +2862,7 @@ function renderNoticeForm(){
 }
 function saveNotice(){
   const title = document.getElementById('noticeTitleInput').value.trim();
-  const content = document.getElementById('noticeContentInput').value.trim();
+  const content = richEditorValue('noticeContentInput');
   if(!title){ alert('제목을 입력해 주세요.'); return; }
   if(state.noticeEditId){
     const n = DB.notices.find(x=>x.id===state.noticeEditId);
@@ -4956,8 +4956,20 @@ function shifteeNormalizeEmpId(v){
 // 행 구분 라벨("근무일정 시작시간"/"근무일정 종료시간"/"지점")도 문자열로 정규화 후
 // trim/포함 비교로 판정한다 — 내보내기 버전에 따라 앞뒤 공백이 붙어 있어도 인식되도록.
 function shifteeRowLabel(v){ return v==null ? '' : String(v).trim(); }
+// 파일의 "본지점" 열 값(예: "(신)이마트 성서점", 접두어 없이 "성서점"만 있는 경우도 있음)을
+// DB.branches의 실제 지점명과 대조한다. 접두어/공백 차이를 정규화해서 비교하므로 표기가
+// 조금 달라도 매칭된다.
+function shifteeMatchBranch(branchNameRaw){
+  if(!branchNameRaw) return null;
+  const norm = s => String(s).replace(/^\(신\)\s*이마트\s*/,'').replace(/\s+/g,'').trim();
+  const target = norm(branchNameRaw);
+  if(!target) return null;
+  return DB.branches.find(b=>norm(b.name)===target)
+    || DB.branches.find(b=>norm(b.name).includes(target) || target.includes(norm(b.name)))
+    || null;
+}
 function parseShifteeScheduleRows(rows, year, month){
-  const result = { byEmpDate:{}, matchedEmp:0, unmatchedEmp:0, unmatchedNames:[], dayCount:0, minDay:null, maxDay:null };
+  const result = { byEmpDate:{}, matchedEmp:0, createdEmp:0, createdNames:[], unmatchedEmp:0, unmatchedNames:[], dayCount:0, minDay:null, maxDay:null };
   if(!rows || rows.length===0) return result;
   const header = rows[0] || [];
   // 1~31일 컬럼: "N/요일" 형식, 5번째 열(0-based index 5)부터 시작
@@ -4980,10 +4992,24 @@ function parseShifteeScheduleRows(rows, year, month){
     if(rowLabel === '근무일정 시작시간'){
       const empId = shifteeNormalizeEmpId(row[0]);
       const empName = row[1] != null ? String(row[1]).trim() : '';
+      const homeBranchName = row[2] != null ? String(row[2]).trim() : '';
       const startRow = row;
       const endRow = (rows[i+1] && shifteeRowLabel(rows[i+1][4]) === '근무일정 종료시간') ? rows[i+1] : null;
       const branchRow = (rows[i+2] && shifteeRowLabel(rows[i+2][4]) === '지점') ? rows[i+2] : null;
-      const user = DB.users.find(u=>shifteeNormalizeEmpId(u.empId)===empId);
+      let user = DB.users.find(u=>shifteeNormalizeEmpId(u.empId)===empId);
+      // 사번이 아직 계정으로 등록되어 있지 않은 실제 신규 직원이면(=이 시스템에 처음 반영되는
+      // 경우), 기존 목표/실적 파일 업로드와 동일하게 "본지점" 열로 지점을 매칭해 사원 계정을
+      // 자동 생성한다 — 이렇게 하지 않으면 계정이 없다는 이유만으로 근무일정이 통째로
+      // 건너뛰어져서 "매칭이 안 된다"처럼 보이게 된다.
+      if(!user && empId && empName){
+        const matchedBranch = shifteeMatchBranch(homeBranchName);
+        if(matchedBranch){
+          user = { empId, pw:'1234', name: empName, role:'staff', branchId: matchedBranch.id };
+          DB.users.push(user);
+          result.createdEmp++;
+          result.createdNames.push(`${empName}(${empId})`);
+        }
+      }
       if(user){
         result.matchedEmp++;
         dayCols.forEach(({col, day})=>{
@@ -5001,8 +5027,9 @@ function parseShifteeScheduleRows(rows, year, month){
           result.byEmpDate[user.empId][dateStr] = entry;
         });
       } else if(empId){
+        // 계정도 없고, 지점명도 매칭이 안 되면(오타·미등록 지점 등) 그때만 건너뛴다.
         result.unmatchedEmp++;
-        result.unmatchedNames.push(`${empName}(${empId})`);
+        result.unmatchedNames.push(`${empName}(${empId})${homeBranchName?' · '+homeBranchName:''}`);
       }
       i += (endRow && branchRow) ? 3 : 1;
     } else {
@@ -5025,7 +5052,7 @@ function handleWorkScheduleFile(evt){
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
       const parsed = parseShifteeScheduleRows(rows, year, month);
       if(parsed.matchedEmp===0){
-        showUploadResult('workScheduleUploadMsg', false, '일치하는 사번을 찾지 못했습니다. 근무일정 내보내기 파일(사번/직원/근무일정 시작시간/종료시간/지점 형식)이 맞는지 확인해 주세요.');
+        showUploadResult('workScheduleUploadMsg', false, '일치하는 사번을 찾지 못했습니다(계정 자동생성용 지점명도 매칭되지 않았습니다). 근무일정 내보내기 파일(사번/직원/본지점/근무일정 시작시간/종료시간/지점 형식)이 맞는지, 지점명이 [시스템관리]에 등록된 지점명과 비슷한지 확인해 주세요.');
         return;
       }
       // 사번+날짜 단위로 병합 — 이번 파일에 없는 다른 직원/다른 날짜 데이터는 그대로 유지된다.
@@ -5037,7 +5064,8 @@ function handleWorkScheduleFile(evt){
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [근무일정] 파일을 업로드했습니다: ${file.name}`);
       renderTab('systemAdmin');
-      const unmatchedMsg = parsed.unmatchedEmp>0 ? ` / 미등록 사번 ${parsed.unmatchedEmp}명 제외(${parsed.unmatchedNames.slice(0,5).join(', ')}${parsed.unmatchedNames.length>5?' 외':''})` : '';
+      const createdMsg = parsed.createdEmp>0 ? ` / 신규 계정 ${parsed.createdEmp}명 자동생성(초기 비밀번호 1234, ${parsed.createdNames.slice(0,5).join(', ')}${parsed.createdNames.length>5?' 외':''})` : '';
+      const unmatchedMsg = parsed.unmatchedEmp>0 ? ` / 지점명 매칭 실패로 ${parsed.unmatchedEmp}명 제외(${parsed.unmatchedNames.slice(0,5).join(', ')}${parsed.unmatchedNames.length>5?' 외':''})` : '';
       // 오늘 날짜가 이번에 올린 파일의 기간(예: 8/1~8/31)에 아예 포함되지 않으면, 반영은 됐어도
       // "오늘 출근 현황"에는 당장 아무 변화가 없어 보일 수 있으므로 눈에 띄게 경고해 준다.
       let rangeWarning = '';
@@ -5049,7 +5077,7 @@ function handleWorkScheduleFile(evt){
           rangeWarning = `<br><span style="color:var(--bad);font-weight:700;">⚠ 이 파일의 기간은 ${rangeStart} ~ ${rangeEnd} 입니다. 오늘(${today})이 이 기간에 포함되지 않아 "오늘 출근 현황"에는 아직 반영되지 않습니다 — 이번 달 파일을 올려주세요.</span>`;
         }
       }
-      showUploadResult('workScheduleUploadMsg', true, `"${sheetName}" 기준 ${parsed.matchedEmp}명 근무일정 반영 완료${unmatchedMsg}${rangeWarning}`);
+      showUploadResult('workScheduleUploadMsg', true, `"${sheetName}" 기준 ${parsed.matchedEmp}명 근무일정 반영 완료${createdMsg}${unmatchedMsg}${rangeWarning}`);
     }catch(err){
       showUploadResult('workScheduleUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
