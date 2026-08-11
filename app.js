@@ -891,6 +891,11 @@ function migrateDB(){
     }
   });
   if(!DB.subTierContestGifts) DB.subTierContestGifts = [];
+  // 근무일정(Shiftee) 업로드 데이터: 사번+날짜로 조회하는 평면 구조. 지점별로 파일을 나눠 올려도
+  // 사번 단위로 병합되므로 여러 지점 파일을 순서에 상관없이 추가해도 서로 덮어쓰지 않는다.
+  if(!DB.workSchedule) DB.workSchedule = { byEmpDate:{}, uploads:[] };
+  if(!DB.workSchedule.byEmpDate) DB.workSchedule.byEmpDate = {};
+  if(!DB.workSchedule.uploads) DB.workSchedule.uploads = [];
   // 장기 미사용 시 자동 전환되는 스크린세이버 사용 여부 (관리자가 시스템 관리에서 설정, 기본값 사용함)
   if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
   if(!DB.eduSchedules) DB.eduSchedules = { hq: [], inhouse: [], etc: [] };
@@ -1719,7 +1724,15 @@ function renderHome(){
   const msisTarget = target * 1.25;
   const achieved = branchAchieved(myBranch, homePeriod);
   const pct = pctOf(achieved, target);
-  const att = DB.attendance[myBranch];
+  // 매니저는 본인 소속 지점(myBranch)에 고정되어 있지만, "오늘 출근 현황" 카드만은 다른 지점
+  // 매니저의 출근 현황도 참고로 조회할 수 있도록 카드 우측 상단에 별도 지점 선택을 둔다
+  // (관리자는 이미 상단 전체 지점 pill로 페이지 전체를 전환할 수 있으므로 대상에서 제외).
+  const attBranchId = (SESSION.role==='manager' && state.homeAttBranchId) ? state.homeAttBranchId : myBranch;
+  const attBranch = DB.branches.find(b=>b.id===attBranchId) || branch;
+  const attRecords = attendanceRecordsForBranch(attBranchId, todayStr());
+  const attBranchSelectorHtml = SESSION.role==='manager'
+    ? `<select style="width:120px;font-size:12px;" onchange="setHomeAttBranch(this.value)">${DB.branches.map(b=>`<option value="${b.id}" ${b.id===attBranchId?'selected':''}>${b.name}</option>`).join('')}</select>`
+    : '';
 
   let branchSelectorHtml = '';
   if(SESSION.role==='admin'){
@@ -1728,7 +1741,7 @@ function renderHome(){
       `</div>`;
   }
 
-  const attRows = att.records.map(r=>`
+  const attRows = attRecords.map(r=>`
     <tr>
       <td>${r.name}</td><td class="muted">${r.empId}</td>
       <td>${statusBadge(r.status)}</td>
@@ -1766,12 +1779,14 @@ function renderHome(){
 
     <div class="grid grid-2">
       <div class="card">
-        <h3>오늘 출근 현황 <small>(${branch?branch.name:''})</small></h3>
-        <table>
+        <div class="flex-between" style="align-items:center;">
+          <h3 style="margin:0;">오늘 출근 현황 <small>(${attBranch?attBranch.name:''})</small></h3>
+          ${attBranchSelectorHtml}
+        </div>
+        <table style="margin-top:10px;">
           <thead><tr><th>이름</th><th>사번</th><th>상태</th><th>출근</th><th>퇴근</th></tr></thead>
           <tbody>${attRows}</tbody>
         </table>
-        ${canEditAttendance(myBranch) ? `<div class="small-note">근태는 [전체 지점 현황] 탭에서도 수정할 수 있습니다.</div>`:''}
       </div>
       <div class="card">
         <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
@@ -1974,12 +1989,20 @@ function statusBadge(status){
   if(status==='휴가') return `<span class="badge bad">휴가</span>`;
   if(status==='교육') return `<span class="badge warn">교육</span>`;
   if(status==='휴무') return `<span class="badge">휴무</span>`;
+  if(status==='미등록') return `<span class="muted">미등록</span>`;
+  // 근무일정(Shiftee) 업로드에서 온 상태 텍스트: "대체 주휴무"/"공휴일 대체휴무" 등은 대체휴무로,
+  // "주휴무"/"공휴일 휴무" 등은 휴무로, 그 외(연차 등)는 휴가와 같은 톤으로 보여준다.
+  if(typeof status==='string' && status.includes('대체')) return `<span class="badge warn">${status}</span>`;
+  if(typeof status==='string' && status.includes('휴무')) return `<span class="badge">${status}</span>`;
+  if(status==='연차') return `<span class="badge bad">연차</span>`;
   return status;
 }
 function canEditAttendance(branchId){
   return SESSION.role==='admin' || (SESSION.role==='manager' && SESSION.branchId===branchId);
 }
 function setViewBranch(id){ state.viewBranchId = id; renderTab(state.tab); }
+// 매니저가 홈 대시보드 [오늘 출근 현황] 카드에서만 다른 지점을 참고 조회할 때 사용(본인 소속 지점 자체는 그대로 유지됨).
+function setHomeAttBranch(id){ state.homeAttBranchId = id; renderTab('home'); }
 
 /* =========================================================================
    5a. RENDER: 시스템 관리 (관리자 전용) — 계정 관리 / 신규 계정 생성 / 데이터 업로드 허브
@@ -2095,6 +2118,14 @@ function renderSystemAdmin(){
       <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 단, 아래 "소진집중 소진율 카운팅 기준선"이 저장되어 있으면, 기준선 대비 수량이 0이 되었거나 이번 파일에서 아예 사라진 소진집중 품목은 구분(상태)이 자동으로 "소진완료"로 표시됩니다(이 경우에 한해 매니저가 다시 수정하기 전까지 자동 반영).</div>
       <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
       <div id="inventoryUploadMsg" class="small-note"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>근무일정 파일 업로드 <small>(Shiftee 내보내기 .xlsx · 오늘 출근 현황에 반영)</small></h3>
+      <div class="muted" style="margin-bottom:10px;">Shiftee에서 내보낸 월별 근무일정 파일을 올리면 사번을 기준으로 자동 매칭되어, 홈 대시보드와 [전체 지점 현황]의 "오늘 출근 현황/근태"에 출퇴근시간·휴무·대체휴무가 실제 일정 그대로 표시됩니다. 지점별로 파일이 따로 있으면 순서에 상관없이 하나씩 올리면 됩니다 — 사번 단위로 합쳐지므로 먼저 올린 다른 지점 데이터는 지워지지 않습니다.</div>
+      <input type="file" id="workScheduleFileInput" accept=".xlsx,.xls" onchange="handleWorkScheduleFile(event)">
+      <div id="workScheduleUploadMsg" class="small-note"></div>
+      ${(DB.workSchedule.uploads&&DB.workSchedule.uploads.length>0) ? `<div class="muted" style="font-size:11.5px;margin-top:8px;">최근 업로드: ${DB.workSchedule.uploads.slice(-3).reverse().map(u=>`${escapeHtml(u.fileName)}(${u.matchedEmp}명)`).join(', ')}</div>` : ''}
     </div>
 
     <div class="card" style="margin-bottom:16px;">
@@ -2464,6 +2495,11 @@ function richExec(id, cmd, value){
   document.execCommand(cmd, false, value===undefined ? null : value);
   richSaveSelection(id);
 }
+function richApplyColor(id){
+  const colorEl = document.getElementById(id+'_colorPick');
+  if(!colorEl) return;
+  richExec(id, 'foreColor', colorEl.value);
+}
 function richSetFontSize(id, px){
   const el = document.getElementById(id);
   if(!el) return;
@@ -2505,12 +2541,8 @@ function richToolbarHtml(id){
     <button type="button" class="rt-btn" title="밑줄" onclick="richExec('${id}','underline')"><u>U</u></button>
     <button type="button" class="rt-btn" title="취소선" onclick="richExec('${id}','strikeThrough')"><s>S</s></button>
     <span class="rt-divider"></span>
-    <label class="rt-btn rt-color" title="글자 색">A<input type="color" value="#a50034" onchange="richExec('${id}','foreColor', this.value)"></label>
-    <select class="rt-sel" title="글꼴" onchange="richExec('${id}','fontName', this.value)">
-      <option value="LGSmartH,Pretendard,sans-serif">LG스마트체</option>
-      <option value="Malgun Gothic">맑은 고딕</option>
-      <option value="Arial">Arial</option>
-    </select>
+    <label class="rt-btn rt-color" title="글자 색 선택">A<input type="color" id="${id}_colorPick" value="#a50034"></label>
+    <button type="button" class="rt-btn rt-btn-wide" title="선택한 색 적용" onclick="richApplyColor('${id}')">적용</button>
     <span class="rt-divider"></span>
     <button type="button" class="rt-btn" title="왼쪽 정렬" onclick="richExec('${id}','justifyLeft')">${RICH_ICONS.alignLeft}</button>
     <button type="button" class="rt-btn" title="가운데 정렬" onclick="richExec('${id}','justifyCenter')">${RICH_ICONS.alignCenter}</button>
@@ -4087,9 +4119,9 @@ function renderBranches(){
     const target = branchTarget(b.id, period);
     const achieved = branchAchieved(b.id, period);
     const pct = pctOf(achieved, target);
-    const att = DB.attendance[b.id];
-    const present = att.records.filter(r=>r.status==='출근'||r.status==='반차').length;
-    return {b, target, achieved, pct, present, total: att.records.length};
+    const attRecs = attendanceRecordsForBranch(b.id, todayStr());
+    const present = attRecs.filter(r=>r.status==='출근'||r.status==='반차').length;
+    return {b, target, achieved, pct, present, total: attRecs.length};
   });
 
   // 지점별 경쟁력(msis경쟁력 시트 기준)도 이 카드에 함께 보여준다.
@@ -4120,8 +4152,7 @@ function renderBranches(){
     const pct = pctOf(achieved, a.target);
     return `<tr><td>${a.name}</td><td>${fmtKK(a.target)}</td><td>${fmtKK(achieved)}</td><td>${pct.toFixed(1)}% ${pctBadge(pct)}</td></tr>`;
   }).join('');
-  const att = DB.attendance[detailBranch];
-  const attRows = att.records.map(r=>`<tr><td>${r.name}</td><td>${statusBadge(r.status)}</td><td>${r.checkin}</td><td>${r.checkout}</td></tr>`).join('');
+  const attRows = attendanceRecordsForBranch(detailBranch, todayStr()).map(r=>`<tr><td>${r.name}</td><td>${statusBadge(r.status)}</td><td>${r.checkin}</td><td>${r.checkout}</td></tr>`).join('');
 
   // 지점별 달성률 비교: 세로 막대(컬럼) 그래프로 표시한다(가로형에서 요청에 따라 원복).
   setTimeout(()=>{
@@ -4811,6 +4842,141 @@ function handleInventoryFile(evt){
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+/* =========================================================================
+   5a2. 근무일정(Shiftee 내보내기) 파일 업로드 — 오늘 출근 현황을 실제 근무일정 기준으로 표시
+   내보내기 형식: 시트명이 "YYYYMMDD-YYYYMMDD"(해당 달의 시작일-종료일), 직원 1명당 3행
+   (근무일정 시작시간/근무일정 종료시간/지점)으로 구성되고, 1~31일 컬럼에 시간("11:00")
+   또는 상태 텍스트("주휴무"/"대체 주휴무"/"공휴일 대체휴무"/"연차" 등)가 들어있다.
+   사번(1열)으로 DB.users와 매칭하므로 지점명 표기가 파일마다 달라도(예: "(신)이마트 성서점"
+   vs "성서점") 문제없이 반영되고, 다른 지점 파일을 순서에 상관없이 추가로 올려도 사번 단위로
+   병합되어 기존에 반영된 다른 직원 데이터를 지우지 않는다.
+   ========================================================================= */
+function shifteeClassifyStatus(text){
+  if(text==null || text==='') return null;
+  const t = String(text).trim();
+  if(/^\d{1,2}:\d{2}$/.test(t)) return 'work';
+  if(t.includes('대체')) return 'substitute';
+  if(t.includes('휴무')) return 'off';
+  return 'leave'; // 연차 등 그 외 상태 텍스트는 모두 "휴가성" 상태로 취급
+}
+function shifteeStatusLabel(rec){
+  if(!rec) return '-';
+  if(rec.status==='work') return '출근';
+  return rec.label || '휴무';
+}
+// 시트명("20260801-20260831")에서 연/월을 추출한다. 못 찾으면 오늘 날짜의 연/월로 대체한다.
+function shifteeSheetPeriod(sheetName){
+  const m = String(sheetName||'').match(/^(\d{4})(\d{2})\d{2}-(\d{4})(\d{2})\d{2}$/);
+  if(m) return { year: Number(m[1]), month: Number(m[2]) };
+  const now = new Date();
+  return { year: now.getFullYear(), month: now.getMonth()+1 };
+}
+function parseShifteeScheduleRows(rows, year, month){
+  const result = { byEmpDate:{}, matchedEmp:0, unmatchedEmp:0, unmatchedNames:[], dayCount:0 };
+  if(!rows || rows.length===0) return result;
+  const header = rows[0] || [];
+  // 1~31일 컬럼: "N/요일" 형식, 5번째 열(0-based index 5)부터 시작
+  const dayCols = []; // { col, day }
+  for(let col=5; col<header.length; col++){
+    const h = header[col];
+    const m = h!=null ? String(h).match(/^(\d{1,2})\//) : null;
+    if(m) dayCols.push({ col, day: Number(m[1]) });
+  }
+  result.dayCount = dayCols.length;
+
+  let i = 1;
+  while(i < rows.length){
+    const row = rows[i] || [];
+    const rowLabel = row[4];
+    if(rowLabel === '근무일정 시작시간'){
+      const empId = row[0] != null ? String(row[0]).trim() : '';
+      const empName = row[1] != null ? String(row[1]).trim() : '';
+      const startRow = row;
+      const endRow = (rows[i+1] && rows[i+1][4] === '근무일정 종료시간') ? rows[i+1] : null;
+      const branchRow = (rows[i+2] && rows[i+2][4] === '지점') ? rows[i+2] : null;
+      const user = DB.users.find(u=>u.empId===empId);
+      if(user){
+        result.matchedEmp++;
+        dayCols.forEach(({col, day})=>{
+          const cell = startRow[col];
+          const cat = shifteeClassifyStatus(cell);
+          if(!cat) return; // 빈 칸(일정 미입력)은 저장하지 않음 — 기존/다른 출처 데이터를 덮어쓰지 않기 위함
+          const dateStr = `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+          const entry = { status: cat, label: String(cell).trim(), checkin:null, checkout:null };
+          if(cat==='work'){
+            entry.checkin = String(cell).trim();
+            entry.checkout = endRow && endRow[col]!=null ? String(endRow[col]).trim() : null;
+            entry.label = '출근';
+          }
+          if(!result.byEmpDate[empId]) result.byEmpDate[empId] = {};
+          result.byEmpDate[empId][dateStr] = entry;
+        });
+      } else if(empId){
+        result.unmatchedEmp++;
+        result.unmatchedNames.push(`${empName}(${empId})`);
+      }
+      i += (endRow && branchRow) ? 3 : 1;
+    } else {
+      i += 1; // "지점"만 있는 근무일정 없는 직원(SR 등) 등은 건너뜀
+    }
+  }
+  return result;
+}
+function handleWorkScheduleFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const msgEl = document.getElementById('workScheduleUploadMsg');
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const raw = new Uint8Array(e.target.result);
+      const wb = XLSX.read(raw, {type:'array'});
+      const sheetName = wb.SheetNames.find(n=>/^\d{8}-\d{8}$/.test(n)) || wb.SheetNames[0];
+      const { year, month } = shifteeSheetPeriod(sheetName);
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
+      const parsed = parseShifteeScheduleRows(rows, year, month);
+      if(parsed.matchedEmp===0){
+        showUploadResult('workScheduleUploadMsg', false, '일치하는 사번을 찾지 못했습니다. 근무일정 내보내기 파일(사번/직원/근무일정 시작시간/종료시간/지점 형식)이 맞는지 확인해 주세요.');
+        return;
+      }
+      // 사번+날짜 단위로 병합 — 이번 파일에 없는 다른 직원/다른 날짜 데이터는 그대로 유지된다.
+      Object.entries(parsed.byEmpDate).forEach(([empId, dates])=>{
+        if(!DB.workSchedule.byEmpDate[empId]) DB.workSchedule.byEmpDate[empId] = {};
+        Object.assign(DB.workSchedule.byEmpDate[empId], dates);
+      });
+      DB.workSchedule.uploads.push({ fileName:file.name, sheetName, year, month, matchedEmp:parsed.matchedEmp, uploadedAt:new Date().toISOString(), uploadedBy:SESSION.name });
+      saveDB();
+      logActivity('update', `${SESSION.name}님(관리자)이 [근무일정] 파일을 업로드했습니다: ${file.name}`);
+      renderTab('systemAdmin');
+      const unmatchedMsg = parsed.unmatchedEmp>0 ? ` / 미등록 사번 ${parsed.unmatchedEmp}명 제외(${parsed.unmatchedNames.slice(0,5).join(', ')}${parsed.unmatchedNames.length>5?' 외':''})` : '';
+      showUploadResult('workScheduleUploadMsg', true, `"${sheetName}" 기준 ${parsed.matchedEmp}명 근무일정 반영 완료${unmatchedMsg}`);
+    }catch(err){
+      showUploadResult('workScheduleUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+// 지점의 "오늘 출근 현황" 테이블에 쓰이는 실제 근무일정 조회 — 업로드된 근무일정이 있으면 그것을,
+// 없는 직원/지점은 기존 방식(DB.attendance 시드 데이터)으로 자연스럽게 대체된다.
+function attendanceRecordsForBranch(branchId, dateStr){
+  const members = DB.users.filter(u=>u.branchId===branchId);
+  const fallbackRecords = (DB.attendance[branchId] && DB.attendance[branchId].records) || [];
+  return members.map(u=>{
+    const rec = DB.workSchedule.byEmpDate[u.empId] && DB.workSchedule.byEmpDate[u.empId][dateStr];
+    if(rec){
+      return {
+        empId: u.empId, name: u.name,
+        status: shifteeStatusLabel(rec),
+        checkin: rec.status==='work' ? (rec.checkin || '-') : '-',
+        checkout: rec.status==='work' ? (rec.checkout || '-') : '-'
+      };
+    }
+    const fb = fallbackRecords.find(r=>r.empId===u.empId);
+    if(fb) return fb;
+    return { empId: u.empId, name: u.name, status:'미등록', checkin:'-', checkout:'-' };
+  });
 }
 function updateSubscriptionRepField(period, branchId, repName, field, value){
   if(SESSION.role!=='admin') return;
