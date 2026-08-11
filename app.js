@@ -1646,7 +1646,8 @@ function goalsManagerSummary(period){
     const g = getGoals(b.id, period);
     const achieved = branchAchieved(b.id, period);
     if(!byManager[mgr]) byManager[mgr] = {manager:mgr, target:0, achieved:0, branchCount:0};
-    byManager[mgr].target += (g.target||0);
+    // 관리자별 합산 목표는 GROSS가 아니라 MSIS실판매등록 기준 예상 목표치(GROSS×1.25)로 집계한다.
+    byManager[mgr].target += (g.target||0) * 1.25;
     byManager[mgr].achieved += achieved;
     byManager[mgr].branchCount += 1;
   });
@@ -1668,7 +1669,7 @@ function renderHomeGoalsManagerBanner(){
     </div>`).join('');
   return `
     <div class="card" style="margin-bottom:16px;">
-      <h3>👥 관리자별 목표 달성 현황 <small>(${goalsPeriodLabel(period)} · GROSS 목표 기준 · 전체 지점 공개)</small></h3>
+      <h3>👥 관리자별 목표 달성 현황 <small>(${goalsPeriodLabel(period)} · MSIS실판매등록 기준 예상 목표치 · 전체 지점 공개)</small></h3>
       <div style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
@@ -2431,6 +2432,131 @@ function isImageAttachment(f){
   if(/\.(png|jpe?g|gif|webp|bmp|avif)$/i.test(name)) return true;
   return false;
 }
+/* =========================================================================
+   6a0. 게시글 작성용 리치 텍스트 에디터 (공지사항/정보보고/각종 취합 공지/
+   우수 활동 사례/이슈제품 판매 성공 사례 등 여러 게시판이 공통으로 사용)
+   - contenteditable 기반, document.execCommand로 굵게/기울임/색상/정렬 등 처리
+   - 저장 시 innerHTML(=HTML)을 그대로 보관하고, 읽기 화면에서는 richContentHtml()로
+     출력한다. 과거(플레인 텍스트로 저장된) 게시글도 태그가 없으면 그대로 줄바꿈만
+     살려서 보여주므로 기존 데이터는 깨지지 않는다.
+   ========================================================================= */
+const richSavedRange = {};
+function richSaveSelection(id){
+  const sel = window.getSelection();
+  if(sel && sel.rangeCount>0){
+    const range = sel.getRangeAt(0);
+    const el = document.getElementById(id);
+    if(el && el.contains(range.commonAncestorContainer)) richSavedRange[id] = range.cloneRange();
+  }
+}
+function richRestoreSelection(id){
+  const range = richSavedRange[id];
+  if(!range) return;
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+function richExec(id, cmd, value){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.focus();
+  richRestoreSelection(id);
+  document.execCommand(cmd, false, value===undefined ? null : value);
+  richSaveSelection(id);
+}
+function richSetFontSize(id, px){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.focus();
+  richRestoreSelection(id);
+  document.execCommand('fontSize', false, '7');
+  el.querySelectorAll('font[size="7"]').forEach(f=>{
+    const span = document.createElement('span');
+    span.style.fontSize = px+'px';
+    while(f.firstChild) span.appendChild(f.firstChild);
+    f.parentNode.replaceChild(span, f);
+  });
+  richSaveSelection(id);
+}
+const RICH_ICONS = {
+  alignLeft:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="13" y2="10"/><line x1="3" y1="15" x2="15" y2="15"/></svg>',
+  alignCenter:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="3" y1="5" x2="17" y2="5"/><line x1="5.5" y1="10" x2="14.5" y2="10"/><line x1="4" y1="15" x2="16" y2="15"/></svg>',
+  alignRight:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="3" y1="5" x2="17" y2="5"/><line x1="7" y1="10" x2="17" y2="10"/><line x1="5" y1="15" x2="17" y2="15"/></svg>',
+  alignJustify:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/></svg>',
+  listUl:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="3.5" cy="5" r="1" fill="currentColor" stroke="none"/><circle cx="3.5" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="3.5" cy="15" r="1" fill="currentColor" stroke="none"/><line x1="7.5" y1="5" x2="17" y2="5"/><line x1="7.5" y1="10" x2="17" y2="10"/><line x1="7.5" y1="15" x2="17" y2="15"/></svg>',
+  listOl:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><text x="1.5" y="7" font-size="5.5" fill="currentColor" stroke="none">1</text><text x="1.5" y="12" font-size="5.5" fill="currentColor" stroke="none">2</text><text x="1.5" y="17" font-size="5.5" fill="currentColor" stroke="none">3</text><line x1="7.5" y1="5" x2="17" y2="5"/><line x1="7.5" y1="10" x2="17" y2="10"/><line x1="7.5" y1="15" x2="17" y2="15"/></svg>',
+  outdent:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="5" x2="17" y2="5"/><line x1="9" y1="10" x2="17" y2="10"/><line x1="9" y1="15" x2="17" y2="15"/><polyline points="6,7 3,10 6,13"/></svg>',
+  indent:'<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="9" y1="5" x2="17" y2="5"/><line x1="9" y1="10" x2="17" y2="10"/><line x1="9" y1="15" x2="17" y2="15"/><polyline points="3,7 6,10 3,13"/></svg>'
+};
+function richToolbarHtml(id){
+  return `
+  <div class="rich-toolbar" onmousedown="event.preventDefault()">
+    <select class="rt-sel" title="글자 크기" onchange="richSetFontSize('${id}', this.value)">
+      <option value="12">12px</option>
+      <option value="13.5" selected>14px</option>
+      <option value="16">16px</option>
+      <option value="18">18px</option>
+      <option value="20">20px</option>
+      <option value="24">24px</option>
+    </select>
+    <span class="rt-divider"></span>
+    <button type="button" class="rt-btn" title="굵게" onclick="richExec('${id}','bold')"><b>B</b></button>
+    <button type="button" class="rt-btn" title="기울임" onclick="richExec('${id}','italic')"><i>I</i></button>
+    <button type="button" class="rt-btn" title="밑줄" onclick="richExec('${id}','underline')"><u>U</u></button>
+    <button type="button" class="rt-btn" title="취소선" onclick="richExec('${id}','strikeThrough')"><s>S</s></button>
+    <span class="rt-divider"></span>
+    <label class="rt-btn rt-color" title="글자 색">A<input type="color" value="#a50034" onchange="richExec('${id}','foreColor', this.value)"></label>
+    <select class="rt-sel" title="글꼴" onchange="richExec('${id}','fontName', this.value)">
+      <option value="LGSmartH,Pretendard,sans-serif">LG스마트체</option>
+      <option value="Malgun Gothic">맑은 고딕</option>
+      <option value="Arial">Arial</option>
+    </select>
+    <span class="rt-divider"></span>
+    <button type="button" class="rt-btn" title="왼쪽 정렬" onclick="richExec('${id}','justifyLeft')">${RICH_ICONS.alignLeft}</button>
+    <button type="button" class="rt-btn" title="가운데 정렬" onclick="richExec('${id}','justifyCenter')">${RICH_ICONS.alignCenter}</button>
+    <button type="button" class="rt-btn" title="오른쪽 정렬" onclick="richExec('${id}','justifyRight')">${RICH_ICONS.alignRight}</button>
+    <button type="button" class="rt-btn" title="양쪽 정렬" onclick="richExec('${id}','justifyFull')">${RICH_ICONS.alignJustify}</button>
+    <span class="rt-divider"></span>
+    <button type="button" class="rt-btn" title="글머리 기호" onclick="richExec('${id}','insertUnorderedList')">${RICH_ICONS.listUl}</button>
+    <button type="button" class="rt-btn" title="번호 매기기" onclick="richExec('${id}','insertOrderedList')">${RICH_ICONS.listOl}</button>
+    <button type="button" class="rt-btn" title="내어쓰기" onclick="richExec('${id}','outdent')">${RICH_ICONS.outdent}</button>
+    <button type="button" class="rt-btn" title="들여쓰기" onclick="richExec('${id}','indent')">${RICH_ICONS.indent}</button>
+  </div>`;
+}
+function richEditorHtml(id, initialHtml, placeholder, minHeight){
+  return `
+  <div class="rich-editor-wrap">
+    ${richToolbarHtml(id)}
+    <div id="${id}" class="rich-editor" contenteditable="true" data-placeholder="${escapeHtml(placeholder||'')}"
+      style="${minHeight?`min-height:${minHeight}px;`:''}"
+      onmouseup="richSaveSelection('${id}')" onkeyup="richSaveSelection('${id}')">${initialHtml||''}</div>
+  </div>`;
+}
+// 저장 시 최소한의 방어: 스크립트/이벤트 핸들러 속성 제거
+function richSanitize(html){
+  if(!html) return '';
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+="[^"]*"/gi, '')
+    .replace(/\son\w+='[^']*'/gi, '');
+}
+function richEditorValue(id){
+  const el = document.getElementById(id);
+  if(!el) return '';
+  return richSanitize(el.innerHTML.trim());
+}
+// 읽기 화면 출력용: 리치에디터로 작성된 HTML은 그대로, 과거 플레인 텍스트 게시글(태그가
+// 전혀 없는 경우)은 기존처럼 escapeHtml + 줄바꿈 처리로 보여준다.
+function richContentHtml(text){
+  if(!text) return '';
+  if(!/<[a-z][\s\S]*>/i.test(text)) return escapeHtml(text).replace(/\n/g,'<br>');
+  return text;
+}
+// 검색 인덱스용: 리치 HTML에서 태그만 제거하고 순수 텍스트만 남긴다.
+function richStripTags(text){
+  if(!text) return '';
+  return String(text).replace(/<[^>]*>/g,' ');
+}
 function noticeAttachmentHtml(f, size, removeOnClick){
   const removeBtn = removeOnClick ? `<span onclick="${removeOnClick}" title="삭제" style="position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;border-radius:50%;width:16px;height:16px;font-size:11px;line-height:16px;text-align:center;cursor:pointer;">×</span>` : '';
   if(isImageAttachment(f)){
@@ -2682,7 +2808,7 @@ function renderNoticesBoard(){
   const allNotices = sortedNotices();
   const { items: notices, barHtml: noticeBarHtml, pagerHtml: noticePagerHtml } = applyBoardSearchAndPaging(
     'notice', 'notices', allNotices,
-    n => `${n.title||''} ${n.content||''} ${n.author||''}`,
+    n => `${n.title||''} ${richStripTags(n.content)} ${n.author||''}`,
     '제목·내용·작성자로 검색'
   );
 
@@ -2693,7 +2819,7 @@ function renderNoticesBoard(){
         <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="nbTitle" style="width:100%" placeholder="공지 제목"></div>
       </div>
       <div class="form-row">
-        <div class="field" style="flex:1;"><label>내용</label><textarea id="nbContent" rows="3" placeholder="공지 내용을 입력하세요"></textarea></div>
+        <div class="field" style="flex:1;"><label>내용</label>${richEditorHtml('nbContent','','공지 내용을 입력하세요',110)}</div>
       </div>
       <div class="form-row">
         <div class="field" style="flex:1;">
@@ -2715,7 +2841,7 @@ function renderNoticesBoard(){
             <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="nbe_${n.id}_title" style="width:100%" value="${escapeHtml(n.title)}"></div>
           </div>
           <div class="form-row">
-            <div class="field" style="flex:1;"><label>내용</label><textarea id="nbe_${n.id}_content" rows="3">${escapeHtml(n.content)}</textarea></div>
+            <div class="field" style="flex:1;"><label>내용</label>${richEditorHtml('nbe_'+n.id+'_content', richContentHtml(n.content), '', 110)}</div>
           </div>
           <div class="form-row">
             <div class="field" style="flex:1;">
@@ -2750,7 +2876,7 @@ function renderNoticesBoard(){
           </div>
         </div>
         ${expanded ? `
-        <div class="nb-content" style="margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(n.content)}</div>
+        <div class="nb-content" style="margin:10px 0 0;">${richContentHtml(n.content)}</div>
         ${photosHtml ? `<div class="attach-gallery">${photosHtml}</div>` : ''}
         <div class="flex-between" style="align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;">
           <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
@@ -2801,7 +2927,7 @@ function removeNoticeAttachment(id, idx){
 function submitNoticeBoard(){
   if(!canEditNotice()) return;
   const title = document.getElementById('nbTitle').value.trim();
-  const content = document.getElementById('nbContent').value.trim();
+  const content = richEditorValue('nbContent');
   const msgEl = document.getElementById('nbMsg');
   if(!title){ if(msgEl) msgEl.textContent = '제목을 입력해 주세요.'; return; }
   const fileInput = document.getElementById('nbFiles');
@@ -2824,7 +2950,7 @@ function saveEditNoticeBoard(id){
   const n = DB.notices.find(x=>x.id===id);
   if(!n) return;
   const title = document.getElementById(`nbe_${id}_title`).value.trim();
-  const content = document.getElementById(`nbe_${id}_content`).value.trim();
+  const content = richEditorValue(`nbe_${id}_content`);
   if(!title){ alert('제목을 입력해 주세요.'); return; }
   const fileInput = document.getElementById(`nbe_${id}_files`);
   const files = (fileInput && fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
@@ -2859,7 +2985,7 @@ function renderInfoReports(){
   const allReports = sortedInfoReports();
   const { items: reports, barHtml: irBarHtml, pagerHtml: irPagerHtml } = applyBoardSearchAndPaging(
     'infoReport', 'infoReports', allReports,
-    r => `${r.title||''} ${r.content||''} ${r.authorName||''} ${branchName(r.branchId)||''}`,
+    r => `${r.title||''} ${richStripTags(r.content)} ${r.authorName||''} ${branchName(r.branchId)||''}`,
     '제목·내용·작성자로 검색'
   );
 
@@ -2870,7 +2996,7 @@ function renderInfoReports(){
         <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="irTitle" style="width:100%" placeholder="정보보고 제목"></div>
       </div>
       <div class="form-row">
-        <div class="field" style="flex:1;"><label>내용</label><textarea id="irContent" rows="3" placeholder="정보보고 내용을 입력하세요"></textarea></div>
+        <div class="field" style="flex:1;"><label>내용</label>${richEditorHtml('irContent','','정보보고 내용을 입력하세요',110)}</div>
       </div>
       <div class="form-row">
         <div class="field" style="flex:1;">
@@ -2893,7 +3019,7 @@ function renderInfoReports(){
             <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="ire_${r.id}_title" style="width:100%" value="${escapeHtml(r.title)}"></div>
           </div>
           <div class="form-row">
-            <div class="field" style="flex:1;"><label>내용</label><textarea id="ire_${r.id}_content" rows="3">${escapeHtml(r.content)}</textarea></div>
+            <div class="field" style="flex:1;"><label>내용</label>${richEditorHtml('ire_'+r.id+'_content', richContentHtml(r.content), '', 110)}</div>
           </div>
           <div class="form-row">
             <div class="field" style="flex:1;">
@@ -2931,7 +3057,7 @@ function renderInfoReports(){
           </div>
         </div>
         ${expanded ? `
-        <div class="nb-content" style="margin:10px 0 0;white-space:pre-wrap;">${escapeHtml(r.content)}</div>
+        <div class="nb-content" style="margin:10px 0 0;">${richContentHtml(r.content)}</div>
         ${filesHtml ? `<div class="attach-gallery">${filesHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
           <button class="btn btn-sm ${iLiked?'like-btn-active':''}" onclick="event.stopPropagation();toggleInfoReportLike('${r.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedBy.length>0?` ${likedBy.length}`:''}</button>
@@ -2998,7 +3124,7 @@ function toggleInfoReportLike(id){
 }
 function submitInfoReport(){
   const title = document.getElementById('irTitle').value.trim();
-  const content = document.getElementById('irContent').value.trim();
+  const content = richEditorValue('irContent');
   const msgEl = document.getElementById('irMsg');
   if(!title){ if(msgEl) msgEl.textContent = '제목을 입력해 주세요.'; return; }
   const fileInput = document.getElementById('irFiles');
@@ -3024,7 +3150,7 @@ function saveEditInfoReport(id){
   const r = DB.infoReports.find(x=>x.id===id);
   if(!canEditInfoReport(r)){ alert('본인이 작성한 글 또는 관리자만 수정할 수 있습니다.'); return; }
   const title = document.getElementById(`ire_${id}_title`).value.trim();
-  const content = document.getElementById(`ire_${id}_content`).value.trim();
+  const content = richEditorValue(`ire_${id}_content`);
   if(!title){ alert('제목을 입력해 주세요.'); return; }
   const fileInput = document.getElementById(`ire_${id}_files`);
   const files = (fileInput && fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
@@ -6248,9 +6374,8 @@ function toggleCollectionNoticeEdit(key, tab, on){
 }
 function saveCollectionNoticeText(key, tab){
   if(SESSION.role!=='admin') return;
-  const el = document.getElementById('cn_'+key+'_text');
   const n = getCollectionNotice(key);
-  n.text = el ? el.value.trim() : '';
+  n.text = richEditorValue('cn_'+key+'_text');
   n.updatedAt = todayStr(); n.updatedBy = SESSION.name;
   if(state.collectionNoticeEditing) state.collectionNoticeEditing[key] = false;
   saveDB();
@@ -6336,7 +6461,7 @@ function renderCollectionNotice(key, tab){
   }).join('');
   const editorControls = showEditor ? `
     <div style="margin-top:${hasContent?'10px':'0'};display:flex;flex-direction:column;gap:8px;">
-      <textarea id="cn_${key}_text" rows="8" style="width:100%;font-size:13px;min-height:160px;resize:vertical;line-height:1.5;padding:10px;" placeholder="공지 문구를 입력하세요">${n.text?escapeHtml(n.text):''}</textarea>
+      ${richEditorHtml('cn_'+key+'_text', richContentHtml(n.text), '공지 문구를 입력하세요', 160)}
       <div class="field" style="margin:0;">
         <label style="font-size:11.5px;">파일 첨부 (사진/PPT/엑셀 등 여러 개 선택 가능, 이 위로 파일을 끌어다 놓아도 첨부됩니다)</label>
         <input id="cn_${key}_file" type="file" multiple onchange="addCollectionNoticeImage('${key}','${tab}',event)">
@@ -6363,7 +6488,7 @@ function renderCollectionNotice(key, tab){
   return `
     <div class="card" style="margin-bottom:16px;">
       <div style="font-size:11.5px;font-weight:700;opacity:.7;">📌 공지</div>
-      ${n.text ? `<div style="font-size:13.5px;line-height:1.7;white-space:pre-wrap;margin-top:6px;">${escapeHtml(n.text)}</div>` : ''}
+      ${n.text ? `<div style="font-size:13.5px;line-height:1.7;margin-top:6px;">${richContentHtml(n.text)}</div>` : ''}
       ${imagesHtml ? `<div class="attach-gallery" style="margin-top:${n.text?'12px':'6px'};">${imagesHtml}</div>` : ''}
       ${imagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진은 클릭하면 확대, 그 외 파일은 클릭하면 다운로드됩니다.</div>` : ''}
       ${editorControls}
@@ -7283,7 +7408,7 @@ function renderBestPractice(){
   const allSorted = [...DB.bestPractices].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const { items: sorted, barHtml: bpBarHtml, pagerHtml: bpPagerHtml } = applyBoardSearchAndPaging(
     'bestPractice', 'bestPractice', allSorted,
-    p => `${p.title||''} ${p.content||''} ${p.activityResult||''} ${p.managerName||''} ${bpBranchDisplayName(p.branchId)||''} ${p.authorName||''}`,
+    p => `${p.title||''} ${richStripTags(p.content)} ${p.activityResult||''} ${p.managerName||''} ${bpBranchDisplayName(p.branchId)||''} ${p.authorName||''}`,
     '제목·내용·지점·매니저로 검색'
   );
   const editId = state.bpEditId;
@@ -7323,7 +7448,7 @@ function renderBestPractice(){
         <div class="form-row">
           <div class="field" style="flex:1;min-width:320px;">
             <label>활동 내용</label>
-            <textarea id="bpe_${p.id}_content" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다.">${escapeHtml(p.content||'')}</textarea>
+            ${richEditorHtml('bpe_'+p.id+'_content', richContentHtml(p.content||''), '상세하게 작성 부탁드립니다.', 130)}
           </div>
         </div>
         <div class="form-row">
@@ -7364,7 +7489,7 @@ function renderBestPractice(){
           </div>
         </div>
         ${expandedBp ? `
-        <div style="white-space:pre-wrap;line-height:1.7;margin:10px 0 0;font-size:13.5px;">${escapeHtml(p.content)}</div>
+        <div style="line-height:1.7;margin:10px 0 0;font-size:13.5px;">${richContentHtml(p.content)}</div>
         ${p.activityResult ? `<div style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
         ${attachmentsHtml ? `<div class="attach-gallery">${attachmentsHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
@@ -7410,7 +7535,7 @@ function renderBestPractice(){
       <div class="form-row">
         <div class="field" style="flex:1;min-width:320px;">
           <label>활동 내용</label>
-          <textarea id="bpContent" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다."></textarea>
+          ${richEditorHtml('bpContent','','상세하게 작성 부탁드립니다.',130)}
           <div class="small-note">※ 상세하게 작성 부탁드립니다.</div>
         </div>
       </div>
@@ -7443,7 +7568,7 @@ function submitBestPractice(){
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById('bpActivityDate').value;
   const title = document.getElementById('bpTitle').value.trim();
-  const content = document.getElementById('bpContent').value.trim();
+  const content = richEditorValue('bpContent');
   const activityResult = document.getElementById('bpResult').value.trim();
   const fileInput = document.getElementById('bpFiles');
   if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
@@ -7495,7 +7620,7 @@ function saveEditBestPractice(id){
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById(`bpe_${id}_date`).value;
   const title = document.getElementById(`bpe_${id}_title`).value.trim();
-  const content = document.getElementById(`bpe_${id}_content`).value.trim();
+  const content = richEditorValue(`bpe_${id}_content`);
   const activityResult = document.getElementById(`bpe_${id}_result`).value.trim();
   const fileInput = document.getElementById(`bpe_${id}_files`);
   if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
@@ -7549,7 +7674,7 @@ function renderIssueCase(){
   const allSorted = [...DB.issueCases].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const { items: sorted, barHtml: icBarHtml, pagerHtml: icPagerHtml } = applyBoardSearchAndPaging(
     'issueCase', 'issueCase', allSorted,
-    p => `${p.title||''} ${p.content||''} ${p.activityResult||''} ${p.managerName||''} ${bpBranchDisplayName(p.branchId)||''} ${p.authorName||''}`,
+    p => `${p.title||''} ${richStripTags(p.content)} ${p.activityResult||''} ${p.managerName||''} ${bpBranchDisplayName(p.branchId)||''} ${p.authorName||''}`,
     '제목·내용·지점·매니저로 검색'
   );
   const editId = state.icEditId;
@@ -7588,7 +7713,7 @@ function renderIssueCase(){
         <div class="form-row">
           <div class="field" style="flex:1;min-width:320px;">
             <label>활동 내용</label>
-            <textarea id="ice_${p.id}_content" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다.">${escapeHtml(p.content||'')}</textarea>
+            ${richEditorHtml('ice_'+p.id+'_content', richContentHtml(p.content||''), '상세하게 작성 부탁드립니다.', 130)}
           </div>
         </div>
         <div class="form-row">
@@ -7629,7 +7754,7 @@ function renderIssueCase(){
           </div>
         </div>
         ${expandedIc ? `
-        <div style="white-space:pre-wrap;line-height:1.7;margin:10px 0 0;font-size:13.5px;">${escapeHtml(p.content)}</div>
+        <div style="line-height:1.7;margin:10px 0 0;font-size:13.5px;">${richContentHtml(p.content)}</div>
         ${p.activityResult ? `<div style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
         ${attachmentsHtml ? `<div class="attach-gallery">${attachmentsHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
@@ -7671,7 +7796,7 @@ function renderIssueCase(){
       <div class="form-row">
         <div class="field" style="flex:1;min-width:320px;">
           <label>활동 내용</label>
-          <textarea id="icContent" rows="5" style="width:100%;" placeholder="상세하게 작성 부탁드립니다."></textarea>
+          ${richEditorHtml('icContent','','상세하게 작성 부탁드립니다.',130)}
           <div class="small-note">※ 상세하게 작성 부탁드립니다.</div>
         </div>
       </div>
@@ -7722,7 +7847,7 @@ function submitIssueCase(){
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById('icActivityDate').value;
   const title = document.getElementById('icTitle').value.trim();
-  const content = document.getElementById('icContent').value.trim();
+  const content = richEditorValue('icContent');
   const activityResult = document.getElementById('icResult').value.trim();
   const fileInput = document.getElementById('icFiles');
   if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
@@ -7774,7 +7899,7 @@ function saveEditIssueCase(id){
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById(`ice_${id}_date`).value;
   const title = document.getElementById(`ice_${id}_title`).value.trim();
-  const content = document.getElementById(`ice_${id}_content`).value.trim();
+  const content = richEditorValue(`ice_${id}_content`);
   const activityResult = document.getElementById(`ice_${id}_result`).value.trim();
   const fileInput = document.getElementById(`ice_${id}_files`);
   if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
