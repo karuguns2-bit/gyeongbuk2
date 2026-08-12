@@ -4093,6 +4093,13 @@ function renderGoals(){
     return `<tr><td>${a.name}</td>${cells}</tr>`;
   }).join('');
 
+  // 팀원별 목표 배분 표 상단에 표시할 합계 (배분 목표/누적 실적/달성률)
+  const allocAchievedSum = g.allocations.reduce((s,a)=>s+empAchieved(branchId,a.empId,period),0);
+  const allocAchievedPct = pctOf(allocAchievedSum, allocSum);
+  // 주차별 목표 달성 현황 표 상단에 표시할 지점 합계 — 팀원별 배분 목표 합계(allocSum)를 기준으로
+  // 지점 전체 주차별 누적 실적(branchWeeklyActualsCum)을 넣어 동일한 로직으로 주차별 배분/재분배를 계산한다.
+  const weeklyTotal = computeWeeklyGoalBreakdown(allocSum, branchWeeklyActualsCum(branchId, period), nowWeekIdx);
+
   const canSetBranchTarget = isAdmin;
   const canSetSubTarget = canManageAllocations; // 관리자 + 소속 지점 매니저 모두 구독 목표를 직접 설정 가능
 
@@ -4116,8 +4123,13 @@ function renderGoals(){
     </tr>`;
   }).join('');
 
+  // 구독 판매 목표 설정 표 상단에 표시할 합계 (구독 실적 건수/금액 및 금액 달성률)
+  const subActualQtySum = g.allocations.reduce((s,a)=>s+empSubscriptionActual(branchId,a.empId,period).qty,0);
+  const subActualAmtSum = g.allocations.reduce((s,a)=>s+empSubscriptionActual(branchId,a.empId,period).amt,0);
+  const subActualAmtPctTotal = pctOf(subActualAmtSum, subAllocSumAmt);
+
   return `
-    <div class="page-title">목표 관리</div>
+    <div class="page-title">목표 관리(MSIS기준)</div>
     <div class="page-desc">${branch.name} · ${goalsPeriodLabel(period)}${isCurrentPeriod?'':' <span class="badge warn">이번달 아님</span>'}</div>
     ${branchSelectorHtml}
     ${periodSelectorHtml}
@@ -4155,6 +4167,12 @@ function renderGoals(){
     <div class="card" style="margin-bottom:16px;">
       <h3>2. 팀원별 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
       <div class="small-note" style="margin-bottom:10px;">※ MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 기준으로 팀원별 목표를 나눠서 설정해 주세요.</div>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
+        <div><span class="muted">합계 배분 목표</span> <b>${fmtKK(allocSum)}</b></div>
+        <div><span class="muted">합계 누적 실적</span> <b>${fmtKK(allocAchievedSum)}</b></div>
+        <div><span class="muted">합계 달성률</span> <b>${allocAchievedPct.toFixed(1)}%</b> ${pctBadge(allocAchievedPct)}</div>
+        <div style="flex:1;min-width:100px;"><div class="progress-bar"><div style="width:${Math.min(allocAchievedPct,100)}%"></div></div></div>
+      </div>
       <table>
         <thead><tr><th>이름</th><th>배분 목표</th><th>누적 실적</th><th>달성률</th><th style="width:120px">진행률</th></tr></thead>
         <tbody>${allocRows}</tbody>
@@ -4163,6 +4181,13 @@ function renderGoals(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>주차별 목표 달성 현황 <small>(1주 55% / 2주 25% / 3주 10% / 4주 10% 자동 배분 · 미달성분은 다음 주차에 비중대로 재배분)</small></h3>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
+        ${weeklyTotal.map(w=>{
+          const style = w.isCurrent ? 'font-weight:800;color:var(--primary);' : 'font-weight:700;';
+          const body = w.known ? `실적 ${fmtKK(w.actual)} · <b>${w.pct}%</b>` : `<span class="muted">미집계</span>`;
+          return `<div style="${style}">${goalsWeekLabel(period,w.week)} 합계<br><span style="font-weight:400;font-size:12px;">목표 ${fmtKK(w.target)}<br>${body}</span></div>`;
+        }).join('')}
+      </div>
       <div style="overflow-x:auto;">
       <table>
         <thead><tr><th>이름</th><th>${goalsWeekLabel(period,1)}</th><th>${goalsWeekLabel(period,2)}</th><th>${goalsWeekLabel(period,3)}</th><th>${goalsWeekLabel(period,4)}</th></tr></thead>
@@ -4190,6 +4215,12 @@ function renderGoals(){
       ${canSetSubTarget ? `<button class="btn btn-primary" onclick="updateSubTargets('${branchId}')">저장</button>` : ''}
 
       <h3 style="margin-top:20px;">팀원별 구독 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
+        <div><span class="muted">합계 건수 목표</span> <b>${subAllocSumQty}건</b></div>
+        <div><span class="muted">합계 금액 목표</span> <b>${subAllocSumAmt}KK</b></div>
+        <div><span class="muted">합계 실적</span> <b>${subActualQtySum}건 / ${roundKK1(subActualAmtSum)}KK</b></div>
+        <div><span class="muted">합계 금액 달성률</span> <b>${subAllocSumAmt>0 ? subActualAmtPctTotal.toFixed(1) : '0.0'}%</b> ${pctBadge(subActualAmtPctTotal)}</div>
+      </div>
       <table>
         <thead><tr><th>이름</th><th>구독 건수 목표</th><th>구독 금액 목표(KK)</th><th>구독 실적(건수/금액)</th><th>금액 달성률</th></tr></thead>
         <tbody>${subAllocRows}</tbody>
@@ -5317,6 +5348,7 @@ function renderMetricsOverview(){
   if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
     return `
     <div class="page-title">지표 한 눈에 보기</div>
+    <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자 DATA기준)</div>
     <div class="page-desc">관리자별·지점별 GROSS/구독/고수익 실적을 한 화면에서 확인합니다.</div>
     <div class="card"><div class="muted">아직 업로드된 자료가 없습니다. [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다.${SESSION.role==='admin'?` <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
   }
@@ -5588,6 +5620,7 @@ function renderMetricsOverview(){
 
   return `
     <div class="page-title">지표 한 눈에 보기</div>
+    <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자 DATA기준)</div>
     <div class="page-desc">기준일자 <b>${DB.metricsOverview.asOfDate}</b> (D-1, 전일) · ${DB.metricsOverview.rows.length}개 지점 · 전체 직원 조회 가능</div>
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
