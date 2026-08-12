@@ -896,6 +896,9 @@ function migrateDB(){
   if(!DB.workSchedule) DB.workSchedule = { byEmpDate:{}, uploads:[] };
   if(!DB.workSchedule.byEmpDate) DB.workSchedule.byEmpDate = {};
   if(!DB.workSchedule.uploads) DB.workSchedule.uploads = [];
+  // "지표 한 눈에 보기" 업로드 데이터(대형마트채널 지점Master 시트 스냅샷). 매번 올릴 때마다
+  // 통째로 최신 스냅샷으로 교체된다(과거 값을 누적 보관하지 않음 — 필요해지면 이후 이력화 가능).
+  if(!DB.metricsOverview) DB.metricsOverview = { asOfDate:null, rows:[], uploadedAt:null, uploadedBy:null, fileName:null };
   // 장기 미사용 시 자동 전환되는 스크린세이버 사용 여부 (관리자가 시스템 관리에서 설정, 기본값 사용함)
   if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
   if(!DB.eduSchedules) DB.eduSchedules = { hq: [], inhouse: [], etc: [] };
@@ -1386,8 +1389,8 @@ function renderTab(tab){
   if(tab==='home') main.innerHTML = renderHome();
   if(tab==='systemAdmin') main.innerHTML = renderSystemAdmin();
   if(tab==='accountManagement') main.innerHTML = renderAccountManagement();
+  if(tab==='metricsOverview') main.innerHTML = renderMetricsOverview();
   if(tab==='goals') main.innerHTML = renderGoals();
-  if(tab==='branches') main.innerHTML = renderBranches();
   if(tab==='notices') main.innerHTML = renderNoticesBoard();
   if(tab==='infoReports') main.innerHTML = renderInfoReports();
   if(tab==='subscription') main.innerHTML = renderSubscription();
@@ -2103,6 +2106,14 @@ function renderSystemAdmin(){
       <h3>계정 관리 <small>(현재 등록된 매니저/사원 명단)</small></h3>
       <div class="muted" style="margin-bottom:10px;font-size:12.5px;">전체 계정 목록 조회, 사번·이름·지점명·직책 수정, 비밀번호 초기화·변경, 접속 기록 확인은 별도 화면에서 처리합니다. 계정 수가 많아지면 이 화면이 길어져 다른 관리 항목을 찾기 어려워지는 것을 막기 위함입니다.</div>
       <button class="btn btn-primary" onclick="renderTab('accountManagement')">계정관리 상세</button>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>📊 지표 한 눈에 보기 파일 업로드 <small>("일일실적 현황" 파일 · MASTER/Gross(CC포함)/구독/고수익 시트 포함 .xlsb/.xlsx)</small></h3>
+      <div class="muted" style="margin-bottom:10px;">"(인터비즈) 일일실적 현황" 파일을 그대로 올리면 됩니다. 파일명의 날짜를 기준일자(D-1, 전일)로 자동 인식하고, Gross(CC포함)/구독/고수익 시트에서 우리 팀 소속 지점(이마트 채널)만 자동으로 골라내어 [지표 한 눈에 보기] 페이지의 관리자별·지점별 GROSS 총판/실판, 구독, 고수익(HIGH-END) 비중 지표를 최신 스냅샷으로 한 번에 갱신합니다. 올릴 때마다 이전 스냅샷을 덮어쓰고 최신 값으로 교체됩니다.<br>※ 파일 용량이 커서(약 20~30MB) 읽어오는 데 30초 이상 걸릴 수 있습니다. 업로드 중 메시지가 뜨면 창을 벗어나지 말고 잠시 기다려 주세요.
+      ${DB.metricsOverview && DB.metricsOverview.uploadedAt ? `<br>현재 반영된 자료: <b>${DB.metricsOverview.asOfDate||'-'}</b> 기준(D-1) · ${DB.metricsOverview.rows.length}개 지점 · ${escapeHtml(DB.metricsOverview.fileName||'')} (${DB.metricsOverview.uploadedBy||''} 업로드)` : '<br>아직 업로드된 자료가 없습니다.'}</div>
+      <input type="file" id="metricsOverviewFileInput" accept=".xlsb,.xlsx,.xls" onchange="handleMetricsOverviewFile(event)">
+      <div id="metricsOverviewUploadMsg" class="small-note"></div>
     </div>
 
     <div class="card" style="margin-bottom:16px;background:#fff7f9;border-color:#f0c7d4;">
@@ -4130,340 +4141,8 @@ function shiftScheduleWeek(delta){
 /* =========================================================================
    8. RENDER: ALL BRANCHES (cross-branch visibility)
    ========================================================================= */
-let branchChartInstance = null;
 let kakaoTrendChartInstance = null;
 let kakaoBranchTrendChartInstance = null;
-let competQtyMsChartInstance = null;
-let competAmtMsChartInstance = null;
-function setBranchesPeriod(period){
-  state.branchesPeriod = period;
-  renderTab('branches');
-}
-function setCompetScope(scope){
-  state.competScope = scope;
-  if(scope==='manager' && !state.competManagerSel){
-    const managers = [...new Set(DB.branches.map(b=>b.manager).filter(Boolean))].sort();
-    state.competManagerSel = managers[0] || null;
-  }
-  if(scope==='branch' && !state.competBranchSel){
-    state.competBranchSel = DB.branches[0] ? DB.branches[0].id : null;
-  }
-  renderTab('branches');
-}
-function setCompetManager(mgr){ state.competManagerSel = mgr; renderTab('branches'); }
-function setCompetBranchSel(bid){ state.competBranchSel = bid; renderTab('branches'); }
-function renderBranches(){
-  const period = state.branchesPeriod || currentGoalsPeriod();
-  const isCurrentPeriod = period === currentGoalsPeriod();
-
-  const periodOptions = Array.from(new Set([
-    ...DB.branches.reduce((acc,b)=>acc.concat(goalsPeriodsFor(b.id)), []),
-    ...Object.keys(DB.competitivenessHistory||{}),
-    currentGoalsPeriod()
-  ])).sort();
-  const periodSelectorHtml = `<div style="margin-bottom:14px;">` +
-    periodOptions.map(p=>`<span class="branch-pill ${p===period?'active':''}" onclick="setBranchesPeriod('${p}')">${p}${p===currentGoalsPeriod()?' (이번달)':''}</span>`).join('') +
-    `</div>`;
-
-  const rows = DB.branches.map(b=>{
-    const target = branchTarget(b.id, period);
-    const achieved = branchAchieved(b.id, period);
-    const pct = pctOf(achieved, target);
-    const attRecs = attendanceRecordsForBranch(b.id, todayStr());
-    const present = attRecs.filter(r=>r.status==='출근'||r.status==='반차').length;
-    return {b, target, achieved, pct, present, total: attRecs.length};
-  });
-
-  // 지점별 경쟁력(msis경쟁력 시트 기준)도 이 카드에 함께 보여준다.
-  const competDataForCards = competitivenessDataForPeriod(period);
-  const competByBranchForCards = (competDataForCards && competDataForCards.competitiveness) || {};
-
-  const cards = rows.map(r=>{
-    const c = competByBranchForCards[r.b.id];
-    return `
-    <div class="card" style="cursor:pointer" onclick="setViewBranch('${r.b.id}'); renderTab('branches')">
-      <div class="flex-between">
-        <h3 style="margin:0">${r.b.name} ${r.b.id===state.viewBranchId?'<span class="tag">선택됨</span>':''}</h3>
-        ${pctBadge(r.pct)}
-      </div>
-      <div class="stat-num"><span style="font-size:13px;font-weight:600;color:var(--text-sub);">목표달성율</span> ${r.pct.toFixed(1)}%</div>
-      <div class="progress-bar"><div style="width:${Math.min(r.pct,100)}%"></div></div>
-      <div class="stat-sub" style="margin-top:8px;">목표 ${fmtWon(r.target)} · 실적 ${fmtWon(r.achieved)}</div>
-      <div class="stat-sub">오늘 출근 ${r.present}/${r.total}명</div>
-      ${c ? `<div class="stat-sub" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">경쟁력 MS <b>${c.msPct}%</b> <span class="muted">(LG ${fmtKK(c.lgWon)} · SS ${fmtKK(c.ssWon)})</span> GAP ${gapCell(c.gapWon)}</div>` : ''}
-    </div>
-  `;
-  }).join('');
-
-  const detailBranch = (state.viewBranchId && state.viewBranchId!=='ALL') ? state.viewBranchId : DB.branches[0].id;
-  const g = getGoals(detailBranch, period);
-  const detailRows = g.allocations.map(a=>{
-    const achieved = empAchieved(detailBranch, a.empId, period);
-    const pct = pctOf(achieved, a.target);
-    return `<tr><td>${a.name}</td><td>${fmtKK(a.target)}</td><td>${fmtKK(achieved)}</td><td>${pct.toFixed(1)}% ${pctBadge(pct)}</td></tr>`;
-  }).join('');
-  const attRows = attendanceRecordsForBranch(detailBranch, todayStr()).map(r=>`<tr><td>${r.name}</td><td>${statusBadge(r.status)}</td><td>${r.checkin}</td><td>${r.checkout}</td></tr>`).join('');
-
-  // 지점별 달성률 비교: 세로 막대(컬럼) 그래프로 표시한다(가로형에서 요청에 따라 원복).
-  setTimeout(()=>{
-    const ctx = document.getElementById('branchCompareChart');
-    if(!ctx) return;
-    if(branchChartInstance) branchChartInstance.destroy();
-    const sorted = [...rows].sort((a,b)=>b.pct-a.pct);
-    branchChartInstance = new Chart(ctx, {
-      type:'bar',
-      data:{
-        labels: sorted.map(r=>r.b.name),
-        datasets:[{ label:'달성률(%)', data: sorted.map(r=>Number(r.pct.toFixed(1))), backgroundColor:'#A50034' }]
-      },
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>`달성률 ${ctx.parsed.y}%`}}}, scales:{y:{beginAtZero:true}} }
-    });
-  }, 0);
-
-  return `
-    <div class="page-title">전체 지점 현황</div>
-    <div class="page-desc">모든 매니저는 다른 지점의 운영 현황을 조회할 수 있습니다 (조회 전용) · ${period} 기준${isCurrentPeriod?'':' <span class="badge">이번달 아님</span>'}</div>
-    ${periodSelectorHtml}
-    <div class="grid grid-3" style="margin-bottom:16px;">${cards}</div>
-    <div class="card" style="margin-bottom:16px;">
-      <h3>지점별 달성률 비교</h3>
-      <div style="position:relative;height:260px;">
-        <canvas id="branchCompareChart"></canvas>
-      </div>
-    </div>
-    <div class="grid grid-2">
-      <div class="card">
-        <h3>${branchName(detailBranch)} · 목표 배분 상세 <small>(조회 전용 · KK단위)</small></h3>
-        <table><thead><tr><th>이름</th><th>목표(KK)</th><th>실적(KK)</th><th>달성률</th></tr></thead><tbody>${detailRows}</tbody></table>
-      </div>
-      <div class="card">
-        <h3>${branchName(detailBranch)} · 오늘 근태</h3>
-        <table><thead><tr><th>이름</th><th>상태</th><th>출근</th><th>퇴근</th></tr></thead><tbody>${attRows}</tbody></table>
-      </div>
-    </div>
-    ${renderCompetitivenessSection(period)}
-  `;
-}
-
-/* ---- 지점별 경쟁력 현황 (LG vs 경쟁사 SS, 자체 점유율 MS, 격차 GAP) ---- */
-function fmtMillion(won){ return (won/1e6).toLocaleString('ko-KR',{maximumFractionDigits:1, minimumFractionDigits:1}); }
-function competitivenessDataForPeriod(period){
-  if(DB.competitivenessHistory && DB.competitivenessHistory[period]) return DB.competitivenessHistory[period];
-  // 이력 스냅샷이 없는 경우, 이번 달이면 기존(월별 구분 없이 최신 업로드로 교체되던) 방식과의
-  // 호환을 위해 현재 flat 데이터를 그대로 사용한다.
-  if(period === currentGoalsPeriod()){
-    return { competitiveness: DB.competitiveness, summary: DB.competitivenessSummary, asOf: DB.competitivenessAsOf };
-  }
-  return null;
-}
-// 제품군별로 LG(자사)/SS(경쟁사) 수량·금액을 선택된 지점 범위(전체/관리자/지점) 안에서 합산해서,
-// 표 아래 "타사 대비 제품별 대수/금액 MS 비교" 그래프에 쓴다.
-function competitivenessCategoryAggregate(period, branchIds){
-  const data = competitivenessDataForPeriod(period);
-  if(!data) return [];
-  const comp = data.competitiveness || {};
-  const agg = {};
-  (branchIds||[]).forEach(bid=>{
-    const c = comp[bid];
-    if(!c || !c.categories) return;
-    c.categories.forEach(cat=>{
-      if(!agg[cat.category]) agg[cat.category] = {lgQty:0, lgAmtWon:0, ssQty:0, ssAmtWon:0};
-      agg[cat.category].lgQty += cat.lgQty;
-      agg[cat.category].lgAmtWon += cat.lgAmtWon;
-      agg[cat.category].ssQty += cat.ssQty;
-      agg[cat.category].ssAmtWon += cat.ssAmtWon;
-    });
-  });
-  return Object.entries(agg).map(([category, v])=>{
-    const qtyTotal = v.lgQty + v.ssQty;
-    const amtTotal = v.lgAmtWon + v.ssAmtWon;
-    return {
-      category, ...v,
-      qtyMsPct: qtyTotal>0 ? Math.round(v.lgQty/qtyTotal*1000)/10 : null,
-      amtMsPct: amtTotal>0 ? Math.round(v.lgAmtWon/amtTotal*1000)/10 : null
-    };
-  }).filter(c=>c.qtyMsPct!==null || c.amtMsPct!==null)
-    .sort((a,b)=>(b.amtMsPct||0)-(a.amtMsPct||0));
-}
-function renderCompetitivenessSection(period){
-  period = period || currentGoalsPeriod();
-  const data = competitivenessDataForPeriod(period);
-  if(!data || (!data.summary && Object.keys(data.competitiveness||{}).length===0)){
-    return `
-    <div class="card" style="margin-top:16px;">
-      <h3>지점별 경쟁력 현황</h3>
-      <div class="muted">${period} 월의 경쟁력 데이터가 없습니다. (목표 관리 파일의 "msis경쟁력" 시트 업로드 시 해당 월 데이터로 저장됩니다)</div>
-    </div>`;
-  }
-  const s = data.summary;
-  const comp = data.competitiveness || {};
-  const managers = [...new Set(DB.branches.map(b=>b.manager).filter(Boolean))].sort();
-
-  if(!state.competScope) state.competScope = 'all';
-  const scope = state.competScope;
-
-  const scopeButtonsHtml = `
-    <div style="margin-bottom:10px;">
-      <span class="branch-pill ${scope==='all'?'active':''}" onclick="setCompetScope('all')">전체</span>
-      <span class="branch-pill ${scope==='manager'?'active':''}" onclick="setCompetScope('manager')">관리자별</span>
-      <span class="branch-pill ${scope==='branch'?'active':''}" onclick="setCompetScope('branch')">지점별</span>
-    </div>`;
-
-  let selectorHtml = '';
-  let tableHtml = '';
-  let scopeBranchIds = [];
-  let chartTitleSuffix = '전체';
-
-  if(scope==='manager'){
-    const mgrSel = (state.competManagerSel && managers.includes(state.competManagerSel)) ? state.competManagerSel : (managers[0]||null);
-    state.competManagerSel = mgrSel;
-    selectorHtml = `<div class="form-row" style="margin-bottom:10px;"><div class="field">
-      <label>관리자 선택</label>
-      <select style="width:180px" onchange="setCompetManager(this.value)">
-        ${managers.map(m=>`<option value="${m}" ${m===mgrSel?'selected':''}>${m}</option>`).join('')}
-      </select>
-    </div></div>`;
-    const branchesOfMgr = DB.branches.filter(b=>b.manager===mgrSel && comp[b.id]);
-    scopeBranchIds = branchesOfMgr.map(b=>b.id);
-    chartTitleSuffix = mgrSel || '관리자';
-    const mgrLg = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].lgWon||0),0);
-    const mgrSs = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].ssWon||0),0);
-    const mgrMs = (mgrLg+mgrSs)>0 ? Math.round(mgrLg/(mgrLg+mgrSs)*1000)/10 : 0;
-    const rows = branchesOfMgr.map(b=>{
-      const c = comp[b.id];
-      return `<tr><td>${b.name}</td><td>${fmtKK(c.lgWon)}</td><td>${c.msPct}%</td><td>${fmtKK(c.ssWon)}</td><td>${gapCell(c.gapWon)}</td></tr>`;
-    }).join('') || `<tr><td colspan="5" class="muted">데이터 없음</td></tr>`;
-    tableHtml = `
-      <table>
-        <thead><tr><th>지점명</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th></tr></thead>
-        <tbody>
-          <tr style="font-weight:700;background:#fafafa;"><td>${mgrSel||'-'} 소계</td><td>${fmtKK(mgrLg)}</td><td>${mgrMs}%</td><td>${fmtKK(mgrSs)}</td><td>${gapCell(mgrLg-mgrSs)}</td></tr>
-          ${rows}
-        </tbody>
-      </table>`;
-  } else if(scope==='branch'){
-    const brSel = (state.competBranchSel && DB.branches.some(b=>b.id===state.competBranchSel)) ? state.competBranchSel : (DB.branches[0]?DB.branches[0].id:null);
-    state.competBranchSel = brSel;
-    selectorHtml = `<div class="form-row" style="margin-bottom:10px;"><div class="field">
-      <label>지점 선택</label>
-      <select style="width:180px" onchange="setCompetBranchSel(this.value)">
-        ${DB.branches.map(b=>`<option value="${b.id}" ${b.id===brSel?'selected':''}>${b.name}</option>`).join('')}
-      </select>
-    </div></div>`;
-    const c = comp[brSel];
-    scopeBranchIds = (brSel && c) ? [brSel] : [];
-    const brName = branchName(brSel);
-    chartTitleSuffix = brName;
-    tableHtml = c ? `
-      <table>
-        <thead><tr><th>지점명</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th></tr></thead>
-        <tbody><tr><td>${brName}</td><td>${fmtKK(c.lgWon)}</td><td>${c.msPct}%</td><td>${fmtKK(c.ssWon)}</td><td>${gapCell(c.gapWon)}</td></tr></tbody>
-      </table>` : `<div class="muted">${brName}의 ${period} 월 경쟁력 데이터가 없습니다.</div>`;
-  } else {
-    // 전체: 지점을 낱낱이 나열하지 않고 관리자별로 요약해서 표 길이를 줄인다(지점별 상세는
-    // [관리자별]/[지점별] 필터에서 조회).
-    scopeBranchIds = Object.keys(comp);
-    chartTitleSuffix = '전체';
-    const summaryRow = s ? `
-      <tr style="font-weight:700;background:#fafafa;">
-        <td>이마트 전체(소계)</td><td>${fmtKK(s.lgWon)}</td><td>${s.msPct}%</td>
-        <td>${fmtKK(s.ssWon)}</td><td>${gapCell(s.gapWon)}</td><td></td>
-      </tr>` : '';
-    const mgrRows = managers.map(mgr=>{
-      const branchesOfMgr = DB.branches.filter(b=>b.manager===mgr && comp[b.id]);
-      if(branchesOfMgr.length===0) return '';
-      const lg = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].lgWon||0),0);
-      const ss = branchesOfMgr.reduce((sum,b)=>sum+(comp[b.id].ssWon||0),0);
-      const ms = (lg+ss)>0 ? Math.round(lg/(lg+ss)*1000)/10 : 0;
-      return `<tr><td><b>${mgr}</b></td><td>${fmtKK(lg)}</td><td>${ms}%</td><td>${fmtKK(ss)}</td><td>${gapCell(lg-ss)}</td><td class="muted">${branchesOfMgr.length}개 지점</td></tr>`;
-    }).join('');
-    if(!s && !mgrRows) return '';
-    tableHtml = `
-      <table>
-        <thead><tr><th>구분</th><th>LG</th><th>MS</th><th>SS</th><th>GAP</th><th></th></tr></thead>
-        <tbody>${summaryRow}<tr><td colspan="6" style="border-bottom:none;height:4px;"></td></tr>${mgrRows}</tbody>
-      </table>
-      <div class="small-note" style="margin-top:6px;">지점별 상세는 위 [관리자별] 또는 [지점별] 필터에서 조회할 수 있습니다.</div>`;
-  }
-
-  // ---- 표 아래: 제품군별 LG(자사) vs SS(경쟁사) 수량/금액 MS% 비교 그래프 ----
-  // 캔버스를 감싸는 컨테이너에 "고정 높이"를 명시하고 Chart.js도 maintainAspectRatio:false로
-  // 둬서, 관리자/지점을 바꿔 다시 그릴 때마다 그래프 영역 크기가 들쭉날쭉 변하지 않고 항상
-  // 동일한 크기를 유지하도록 한다(카테고리 개수가 달라져도 표 레이아웃이 흔들리지 않음).
-  // 자사(LG) vs 타사(SS)를 나란히 비교하기 쉽도록, MS% 단일 막대 대신 엑셀처럼 가로 그룹
-  // 막대(자사/타사 각각 한 막대씩)로 그린다.
-  const catData = competitivenessCategoryAggregate(period, scopeBranchIds);
-  const catDataAmtKK = catData.map(c=>({ category:c.category, lg: Math.round((c.lgAmtWon/1000000)*10)/10, ss: Math.round((c.ssAmtWon/1000000)*10)/10 }));
-  setTimeout(()=>{
-    const qtyCtx = document.getElementById('competQtyMsChart');
-    if(qtyCtx){
-      if(competQtyMsChartInstance) competQtyMsChartInstance.destroy();
-      competQtyMsChartInstance = new Chart(qtyCtx, {
-        type:'bar',
-        data:{
-          labels: catData.map(c=>c.category),
-          datasets:[
-            { label:'자사(LG) 수량', data: catData.map(c=>c.lgQty), backgroundColor:'#A50034' },
-            { label:'타사(SS) 수량', data: catData.map(c=>c.ssQty), backgroundColor:'#adb5bd' }
-          ]
-        },
-        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}}, scales:{x:{beginAtZero:true}} }
-      });
-    }
-    const amtCtx = document.getElementById('competAmtMsChart');
-    if(amtCtx){
-      if(competAmtMsChartInstance) competAmtMsChartInstance.destroy();
-      competAmtMsChartInstance = new Chart(amtCtx, {
-        type:'bar',
-        data:{
-          labels: catDataAmtKK.map(c=>c.category),
-          datasets:[
-            { label:'자사(LG) 금액(KK)', data: catDataAmtKK.map(c=>c.lg), backgroundColor:'#A50034' },
-            { label:'타사(SS) 금액(KK)', data: catDataAmtKK.map(c=>c.ss), backgroundColor:'#adb5bd' }
-          ]
-        },
-        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:12, font:{size:11}}}, tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${ctx.parsed.x}KK`}}}, scales:{x:{beginAtZero:true}} }
-      });
-    }
-  }, 0);
-
-  // 카테고리 개수와 무관하게 항상 같은 높이로 고정한다(필터를 바꿔도 그래프 영역 크기가
-  // 흔들리지 않아야 한다는 요청 반영 — 안에서 스크롤이 필요하면 canvas가 알아서 줄어든다).
-  const chartHeight = 260;
-
-  return `
-    <div class="card" id="competCard" style="margin-top:16px;">
-      <h3>지점별 경쟁력 현황 <small>(${data.asOf ? data.asOf+' 기준 · ' : ''}${period} 월 · msis경쟁력 시트 기준 · 금액은 KK(백만원) 단위, MS=자사 점유율%, LG=자사 매출, SS=경쟁사 매출, GAP=LG−SS(마이너스는 빨간색))</small></h3>
-      ${scopeButtonsHtml}
-      <!-- 전체/관리자별/지점별 필터마다 표 행 수가 크게 달라지면(예: 전체=관리자 요약 5~6행,
-           지점별=1행) 페이지 전체 높이가 줄어들어 브라우저가 스크롤 위치를 새 최대값으로
-           강제로 clamp해버린다 — 이게 "필터를 누르면 화면이 움직인다" 버그의 실제 원인이다
-           (renderTab의 scrollTop 복원 로직 자체는 정상 동작해도, 복원하려는 위치가 새 콘텐츠
-           높이를 벗어나면 브라우저가 그 위치로 스크롤을 허용하지 않는다). 그래서 표 영역에
-           가장 큰 경우(전체 보기)에 맞춘 min-height를 둬서 필터를 바꿔도 카드 전체 높이가
-           거의 변하지 않게 만들어 근본적으로 clamp가 발생하지 않도록 한다. -->
-      <div style="min-height:340px;">
-        ${selectorHtml}
-        ${tableHtml}
-      </div>
-      <div class="grid grid-2" style="margin-top:14px;">
-        <div class="card">
-          <h4 style="margin:0 0 6px;font-size:13px;">제품군별 수량 비교 <small class="muted">(${chartTitleSuffix} · 자사 vs 타사)</small></h4>
-          <div style="position:relative;height:${chartHeight}px;">
-            <canvas id="competQtyMsChart"></canvas>
-          </div>
-        </div>
-        <div class="card">
-          <h4 style="margin:0 0 6px;font-size:13px;">제품군별 금액 비교(KK) <small class="muted">(${chartTitleSuffix} · 자사 vs 타사)</small></h4>
-          <div style="position:relative;height:${chartHeight}px;">
-            <canvas id="competAmtMsChart"></canvas>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
-// GAP(LG−SS, 원 단위)을 KK 단위로 표기하고, 마이너스면 빨간색+마이너스 부호를 함께 보여준다.
 function gapCell(gapWon){
   const kk = Math.round(((Number(gapWon)||0)/1000000)*10)/10;
   const sign = kk>0 ? '+' : '';
@@ -5109,6 +4788,447 @@ function handleWorkScheduleFile(evt){
   };
   reader.readAsArrayBuffer(file);
 }
+
+/* =========================================================================
+   5a3. "지표 한 눈에 보기" 업로드 — 대형마트채널 "지점Master" 시트 파싱
+   시트 구조: 0행=제목/기준일, 2~4행=병합 헤더(3줄), 5행부터 데이터. 팀/채널리더/채널은
+   그룹 첫 행에만 값이 있고(엑셀 병합 셀 표시 방식) 이후 행은 비어있어 이전 값을 이어받아야
+   한다. 지점 행 사이사이에 "N점" 소계 행(관리자계/채널계/팀계)이 섞여 있어 실제 지점 행만
+   가려내야 한다.
+   ========================================================================= */
+/* =========================================================================
+   5a3. "지표 한 눈에 보기" 업로드 — 인터비즈 "일일실적 현황" 파일의 Gross(CC포함)/구독/고수익
+   3개 시트에서 각각 우측의 "◆ 지점별" 표(담당/팀/채널/지점명/관리자 + 지표들)를 읽어
+   지점명 기준으로 병합한다. 각 시트 우측 블록의 컬럼 위치는 파일 구조를 직접 확인해서
+   고정값으로 잡았다(매번 같은 템플릿으로 올라오는 정기 보고서 파일이라고 함).
+   ========================================================================= */
+// 시트별 "지점별" 블록: idCols=담당/팀/채널/지점명/관리자 시작 컬럼, dataStartRow=첫 지점 데이터 행,
+// metrics=[key, col] 목록. 세 시트 모두 헤더가 9행(0-based row8)까지이고 10행(row9)부터 지점
+// 데이터가 시작된다.
+const METRICS_OVERVIEW_BLOCKS = {
+  gross: { sheetMatch: s=>s.trim()==='Gross(CC포함)', idCol:16, dataStartRow:9, metrics:[
+    ['g_target',21],
+    ['g_tp_lyClose',22],['g_tp_lySame',23],['g_tp_cur',24],['g_tp_rate',25],['g_tp_yoy',26],
+    ['g_sp_lyClose',28],['g_sp_lySame',29],['g_sp_cur',30],['g_sp_rate',31],['g_sp_yoy',32]
+  ]},
+  sub: { sheetMatch: s=>s.trim()==='구독', idCol:36, dataStartRow:9, metrics:[
+    ['s_target',41],
+    ['s_tp_cur',45],['s_tp_rate',46],
+    ['s_sp_cur',61],['s_sp_rate',62],['s_sp_ratio',67],['s_sp_qty',71]
+  ]},
+  high: { sheetMatch: s=>s.trim()==='고수익', idCol:18, dataStartRow:9, metrics:[
+    ['h_tp_pool',23],['h_tp_high',24],['h_tp_highRatio',25],
+    ['h_sp_pool',30],['h_sp_high',31],['h_sp_highRatio',32]
+  ]}
+};
+function metricsOverviewNormName(s){
+  return String(s||'').replace(/^\(신\)\s*이마트\s*/,'').replace(/\s+/g,'').trim();
+}
+// 시트 하나의 "지점별" 블록을 읽어 { 정규화된지점명: {담당,팀,채널,지점명,관리자,m:{...}} } 형태로 반환.
+// colOffset: 시트의 실제 사용범위(!ref)가 A열이 아니라 B열 등에서 시작하면 XLSX.utils.sheet_to_json의
+// header:1 배열 인덱스가 그만큼 왼쪽으로 밀린다 — 파일에서 실측한 절대 컬럼번호(idCol 등)를 이
+// 오프셋만큼 보정해야 정확한 값을 읽는다(실제로 이 파일의 Gross(CC포함) 시트가 B열부터 시작해서
+// 보정 없이는 컬럼이 한 칸씩 밀려 읽히는 문제가 있었다).
+function metricsOverviewParseBlock(rows, block, colOffset){
+  const off = colOffset || 0;
+  const out = {};
+  const idCol = block.idCol - off;
+  for(let i=block.dataStartRow; i<rows.length; i++){
+    const row = rows[i];
+    if(!row) continue;
+    const branchNameRaw = row[idCol+3];
+    if(branchNameRaw==null || branchNameRaw==='' || branchNameRaw==='필터') continue;
+    const channel = row[idCol+2]!=null ? String(row[idCol+2]).trim() : '';
+    if(channel !== '이마트') continue; // 이 사이트는 이마트 채널 지점만 관리
+    const key = metricsOverviewNormName(branchNameRaw);
+    if(!key) continue;
+    const m = {};
+    block.metrics.forEach(([mkey,col])=>{
+      const v = row[col-off];
+      let n = (typeof v==='number') ? v : (v==null || v==='' ? null : Number(v));
+      if(n!=null && isNaN(n)) n = null;
+      m[mkey] = n;
+    });
+    out[key] = {
+      team: row[idCol+1]!=null ? String(row[idCol+1]).trim() : '',
+      manager: row[idCol+4]!=null ? String(row[idCol+4]).trim() : '',
+      branchNameRaw: String(branchNameRaw).trim(),
+      m
+    };
+  }
+  return out;
+}
+function metricsOverviewSheetColOffset(ws){
+  if(!ws || !ws['!ref']) return 0;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  return range.s.c || 0;
+}
+// 시트 안에는 기준일이 별도 셀로 들어있지 않아서(이 파일 형식 기준), 파일명("...26년 8월 11일
+// 기준...")에서 날짜를 추출한다. 못 찾으면 업로드 시각 기준 D-1(전일)로 대체한다 — 이 일일실적
+// 파일은 항상 "전일까지 집계"이므로 D-1 표기가 기본값으로도 합리적이다.
+function metricsOverviewDateFromFileName(fileName){
+  const m = String(fileName||'').match(/(\d{2,4})년\s*(\d{1,2})월\s*(\d{1,2})일/);
+  if(!m) return null;
+  let year = Number(m[1]);
+  if(year < 100) year += 2000;
+  const month = Number(m[2]), day = Number(m[3]);
+  return `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
+function parseMetricsOverviewWorkbook(wb){
+  const sheetFor = matcher => wb.SheetNames.find(matcher);
+  const grossSheetName = sheetFor(METRICS_OVERVIEW_BLOCKS.gross.sheetMatch);
+  const subSheetName = sheetFor(METRICS_OVERVIEW_BLOCKS.sub.sheetMatch);
+  const highSheetName = sheetFor(METRICS_OVERVIEW_BLOCKS.high.sheetMatch);
+  if(!grossSheetName || !subSheetName || !highSheetName){
+    return { ok:false, missing: [
+      !grossSheetName?'Gross(CC포함)':null, !subSheetName?'구독':null, !highSheetName?'고수익':null
+    ].filter(Boolean) };
+  }
+  const grossWs = wb.Sheets[grossSheetName], subWs = wb.Sheets[subSheetName], highWs = wb.Sheets[highSheetName];
+  const grossRows = XLSX.utils.sheet_to_json(grossWs, {header:1, defval:null, raw:true});
+  const subRows = XLSX.utils.sheet_to_json(subWs, {header:1, defval:null, raw:true});
+  const highRows = XLSX.utils.sheet_to_json(highWs, {header:1, defval:null, raw:true});
+  const gross = metricsOverviewParseBlock(grossRows, METRICS_OVERVIEW_BLOCKS.gross, metricsOverviewSheetColOffset(grossWs));
+  const sub = metricsOverviewParseBlock(subRows, METRICS_OVERVIEW_BLOCKS.sub, metricsOverviewSheetColOffset(subWs));
+  const high = metricsOverviewParseBlock(highRows, METRICS_OVERVIEW_BLOCKS.high, metricsOverviewSheetColOffset(highWs));
+  const allKeys = new Set([...Object.keys(gross), ...Object.keys(sub), ...Object.keys(high)]);
+  const rows = [];
+  allKeys.forEach(key=>{
+    const g = gross[key], s = sub[key], h = high[key];
+    const base = g || s || h;
+    rows.push({
+      normName: key, team: base.team, manager: base.manager, branchNameRaw: base.branchNameRaw,
+      m: { ...(g?g.m:{}), ...(s?s.m:{}), ...(h?h.m:{}) }
+    });
+  });
+  return { ok:true, rows };
+}
+function handleMetricsOverviewFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const msgEl = document.getElementById('metricsOverviewUploadMsg');
+  if(msgEl) msgEl.textContent = '파일을 읽는 중입니다... (용량이 커서 시간이 다소 걸릴 수 있습니다)';
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const raw = new Uint8Array(e.target.result);
+      const wb = XLSX.read(raw, {type:'array'});
+      const parsed = parseMetricsOverviewWorkbook(wb);
+      if(!parsed.ok){
+        showUploadResult('metricsOverviewUploadMsg', false, `다음 시트를 찾지 못했습니다: ${parsed.missing.join(', ')}. 인터비즈 일일실적 현황 파일이 맞는지 확인해 주세요.`);
+        return;
+      }
+      const norm = s => String(s||'').replace(/^\(신\)\s*이마트\s*/,'').replace(/\s+/g,'').trim();
+      const branchByNorm = {};
+      DB.branches.forEach(b=>{ branchByNorm[norm(b.name)] = b; });
+      const matchedRows = [];
+      const unmatchedNames = [];
+      parsed.rows.forEach(r=>{
+        const b = branchByNorm[r.normName];
+        if(b) matchedRows.push({ branchId:b.id, branchName:b.name, manager:r.manager, m:r.m });
+        else unmatchedNames.push(r.branchNameRaw);
+      });
+      if(matchedRows.length===0){
+        showUploadResult('metricsOverviewUploadMsg', false, '일치하는 지점을 찾지 못했습니다. Gross(CC포함)/구독/고수익 시트의 지점명이 이 사이트에 등록된 지점명과 다른지 확인해 주세요.');
+        return;
+      }
+      let asOfDate = metricsOverviewDateFromFileName(file.name);
+      if(!asOfDate){
+        const d = new Date(); d.setDate(d.getDate()-1); // 파일명에서 날짜를 못 찾으면 업로드 시점 기준 D-1(전일)로 대체
+        asOfDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      }
+      DB.metricsOverview = { asOfDate, rows: matchedRows, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name };
+      saveDB();
+      logActivity('update', `${SESSION.name}님(관리자)이 [지표 한 눈에 보기] 파일을 업로드했습니다: ${file.name}`);
+      renderTab('systemAdmin');
+      const unmatchedMsg = unmatchedNames.length>0 ? ` / 지점 매칭 실패 ${unmatchedNames.length}건 제외(${unmatchedNames.slice(0,5).join(', ')}${unmatchedNames.length>5?' 외':''})` : '';
+      showUploadResult('metricsOverviewUploadMsg', true, `${asOfDate} 기준(D-1) ${matchedRows.length}개 지점 반영 완료${unmatchedMsg}`);
+    }catch(err){
+      showUploadResult('metricsOverviewUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+/* =========================================================================
+   지표 한 눈에 보기 (METRICS OVERVIEW) — 관리자별/지점별 GROSS·구독·고수익 대시보드
+   ========================================================================= */
+function moFmt(n, digits){
+  const v = Number(n);
+  if(n==null || isNaN(v)) return '-';
+  return v.toLocaleString('ko-KR', {maximumFractionDigits: digits==null?1:digits, minimumFractionDigits:0}) + 'KK';
+}
+function moPct(n, digits){
+  const v = Number(n);
+  if(n==null || isNaN(v)) return '-';
+  return v.toFixed(digits==null?1:digits) + '%';
+}
+function moYoy(n){
+  const v = Number(n);
+  if(n==null || isNaN(v)) return '-';
+  const sign = v>=0 ? '+' : '';
+  return `<span style="color:${v>=0?'#1a7f37':'#c62828'};font-weight:700;">${sign}${v.toFixed(1)}%</span>`;
+}
+// 지점 목록(원본 파일 매칭 결과) 중 특정 관리자 소속만 필터링
+function moBranchesOf(manager){
+  const rows = DB.metricsOverview.rows || [];
+  return manager ? rows.filter(r=>r.manager===manager) : rows;
+}
+// 관리자 목록(업로드된 파일에 실제로 존재하는 관리자만, 이름 가나다 정렬 대신 지점 수 많은 순)
+function moManagerList(){
+  const rows = DB.metricsOverview.rows || [];
+  const names = [...new Set(rows.map(r=>r.manager).filter(Boolean))];
+  const order = {};
+  names.forEach(n=>{ order[n] = rows.filter(r=>r.manager===n).length; });
+  return names.sort((a,b)=>order[b]-order[a] || a.localeCompare(b,'ko'));
+}
+// 지점 배열을 합산해서 관리자/전체 단위 집계값을 만든다 (달성률·신장률·비중은 합산된 원시값으로 재계산 — 지점별 %를 단순평균하면 왜곡되므로 반드시 분자/분모를 합산 후 계산)
+function moAggregate(rows){
+  const s = { g_target:0, g_tp_cur:0, g_tp_lySame:0, g_tp_lyClose:0, g_sp_cur:0, g_sp_lySame:0, g_sp_lyClose:0,
+    s_target:0, s_tp_cur:0, s_sp_cur:0, s_sp_qty:0,
+    h_tp_pool:0, h_tp_high:0, h_sp_pool:0, h_sp_high:0, branchCount: rows.length };
+  rows.forEach(r=>{
+    const m = r.m || {};
+    Object.keys(s).forEach(k=>{ if(k!=='branchCount' && typeof m[k]==='number') s[k] += m[k]; });
+  });
+  return {
+    ...s,
+    g_tp_rate: s.g_target>0 ? s.g_tp_cur/s.g_target*100 : null,
+    g_tp_yoy: s.g_tp_lySame>0 ? (s.g_tp_cur-s.g_tp_lySame)/s.g_tp_lySame*100 : null,
+    g_sp_rate: s.g_target>0 ? s.g_sp_cur/s.g_target*100 : null,
+    g_sp_yoy: s.g_sp_lySame>0 ? (s.g_sp_cur-s.g_sp_lySame)/s.g_sp_lySame*100 : null,
+    s_tp_rate: s.s_target>0 ? s.s_tp_cur/s.s_target*100 : null,
+    s_sp_rate: s.s_target>0 ? s.s_sp_cur/s.s_target*100 : null,
+    s_sp_ratio: s.g_sp_cur>0 ? s.s_sp_cur/s.g_sp_cur*100 : null,
+    h_tp_highRatio: s.h_tp_pool>0 ? s.h_tp_high/s.h_tp_pool*100 : null,
+    h_sp_highRatio: s.h_sp_pool>0 ? s.h_sp_high/s.h_sp_pool*100 : null
+  };
+}
+function setMetricsOverviewManager(mgr){
+  state.metricsOverviewManager = mgr || null;
+  state.metricsOverviewBranch = null;
+  renderTab('metricsOverview');
+}
+function setMetricsOverviewBranch(id){
+  state.metricsOverviewBranch = id || null;
+  renderTab('metricsOverview');
+}
+function setMetricsOverviewTab(tab){
+  state.metricsOverviewTab = tab;
+  renderTab('metricsOverview');
+}
+let metricsOverviewRankChartInstance = null;
+function moInsightLines(scopeLabel, agg, isManagerScope){
+  const lines = [];
+  if(agg.g_target>0){
+    const statusWord = agg.g_tp_rate>=100 ? '목표 초과 달성' : agg.g_tp_rate>=90 ? '목표 근접' : agg.g_tp_rate>=70 ? '보통' : '부진';
+    lines.push(`<b>${scopeLabel}</b> GROSS 총판 달성률 <b>${moPct(agg.g_tp_rate)}</b>(목표 ${moFmt(agg.g_target)} 중 ${moFmt(agg.g_tp_cur)}) — <b>${statusWord}</b>. 전년 동기 대비 ${moYoy(agg.g_tp_yoy)}.`);
+  }
+  if(agg.g_sp_cur>0){
+    lines.push(`실판매(MSIS) 기준 총판 ${moFmt(agg.g_sp_cur)} · 전년비 ${moYoy(agg.g_sp_yoy)}.`);
+  }
+  if(agg.s_target>0 || agg.s_sp_cur>0){
+    lines.push(`구독 실판 ${moFmt(agg.s_sp_cur)}(달성률 ${moPct(agg.s_sp_rate)}) · 전체 실판 대비 구독 비중 <b>${moPct(agg.s_sp_ratio)}</b> · 실판 건수 ${Math.round(agg.s_sp_qty||0).toLocaleString('ko-KR')}건.`);
+  }
+  if(agg.h_sp_pool>0){
+    lines.push(`고수익(HIGH-END) 실판 비중 <b>${moPct(agg.h_sp_highRatio)}</b>(모수 ${Math.round(agg.h_sp_pool).toLocaleString('ko-KR')}대 중 ${Math.round(agg.h_sp_high).toLocaleString('ko-KR')}대) · 총판 기준 비중 ${moPct(agg.h_tp_highRatio)}.`);
+  }
+  return lines;
+}
+function renderMetricsOverview(){
+  if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
+    return `
+    <div class="page-title">지표 한 눈에 보기</div>
+    <div class="page-desc">관리자별·지점별 GROSS/구독/고수익 실적을 한 화면에서 확인합니다.</div>
+    <div class="card"><div class="muted">아직 업로드된 자료가 없습니다. [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다.${SESSION.role==='admin'?` <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
+  }
+  const managers = moManagerList();
+  const selManager = state.metricsOverviewManager && managers.includes(state.metricsOverviewManager) ? state.metricsOverviewManager : null;
+  const branchesInScope = moBranchesOf(selManager);
+  const selBranch = state.metricsOverviewBranch && branchesInScope.some(r=>r.branchId===state.metricsOverviewBranch) ? state.metricsOverviewBranch : null;
+  const tab = state.metricsOverviewTab || 'insight';
+
+  const rowsForAgg = selBranch ? branchesInScope.filter(r=>r.branchId===selBranch) : branchesInScope;
+  const agg = moAggregate(rowsForAgg);
+  const scopeLabel = selBranch ? (branchesInScope.find(r=>r.branchId===selBranch)||{}).branchName : (selManager ? `${selManager} 관리자` : '전체(경북팀)');
+
+  const managerPills = `<span class="branch-pill ${!selManager?'active':''}" onclick="setMetricsOverviewManager(null)">전체</span>` +
+    managers.map(m=>`<span class="branch-pill ${m===selManager?'active':''}" onclick="setMetricsOverviewManager('${escapeHtml(m)}')">${escapeHtml(m)}</span>`).join('');
+  const branchSelectHtml = `<select style="width:150px;font-size:12px;" onchange="setMetricsOverviewBranch(this.value)">` +
+    `<option value="">전체 지점</option>` +
+    branchesInScope.map(r=>`<option value="${r.branchId}" ${r.branchId===selBranch?'selected':''}>${escapeHtml(r.branchName)}</option>`).join('') +
+    `</select>`;
+
+  const tabDefs = [
+    ['insight','한눈에 보기'], ['gross','GROSS 판매'], ['sub','구독'], ['high','고수익']
+  ];
+  const tabPillsHtml = tabDefs.map(([key,label])=>`<span class="branch-pill ${tab===key?'active':''}" onclick="setMetricsOverviewTab('${key}')">${label}</span>`).join('');
+
+  // 관리자 랭킹(총판 달성률 기준) — 전체 스코프일 때만 표시
+  const rankData = managers.map(m=>({ manager:m, agg: moAggregate(moBranchesOf(m)) }))
+    .sort((a,b)=>(b.agg.g_tp_rate||0)-(a.agg.g_tp_rate||0));
+
+  let bodyHtml = '';
+  if(tab==='insight'){
+    const insightLines = moInsightLines(scopeLabel, agg, !!selManager);
+    const kpiCards = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+        <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
+          <div class="stat-sub">GROSS 목표</div>
+          <div style="font-size:19px;font-weight:800;">${moFmt(agg.g_target)}</div>
+        </div>
+        <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
+          <div class="stat-sub">총판 달성률</div>
+          <div style="font-size:19px;font-weight:800;color:var(--primary);">${moPct(agg.g_tp_rate)} ${pctBadge(agg.g_tp_rate||0)}</div>
+          <div class="progress-bar" style="margin-top:4px;"><div style="width:${Math.min(agg.g_tp_rate||0,100)}%"></div></div>
+        </div>
+        <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
+          <div class="stat-sub">총판 전년비</div>
+          <div style="font-size:19px;font-weight:800;">${moYoy(agg.g_tp_yoy)}</div>
+        </div>
+        <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
+          <div class="stat-sub">구독 비중(실판)</div>
+          <div style="font-size:19px;font-weight:800;">${moPct(agg.s_sp_ratio)}</div>
+        </div>
+        <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
+          <div class="stat-sub">고수익 비중(실판)</div>
+          <div style="font-size:19px;font-weight:800;">${moPct(agg.h_sp_highRatio)}</div>
+        </div>
+      </div>`;
+    const rankHtml = !selManager && !selBranch ? `
+      <div class="card" style="margin-top:16px;">
+        <h3>🏆 관리자별 GROSS 총판 달성률 순위</h3>
+        <div style="position:relative;height:${Math.max(160, rankData.length*38)}px;"><canvas id="moRankChart"></canvas></div>
+      </div>` : '';
+    bodyHtml = `
+      <div class="card">
+        <h3>📌 요약</h3>
+        <div style="line-height:1.9;font-size:13.5px;">${insightLines.map(l=>`<div>${l}</div>`).join('')}</div>
+        ${kpiCards}
+      </div>
+      ${rankHtml}`;
+    setTimeout(()=>{
+      const ctx = document.getElementById('moRankChart');
+      if(ctx){
+        if(metricsOverviewRankChartInstance) metricsOverviewRankChartInstance.destroy();
+        metricsOverviewRankChartInstance = new Chart(ctx, {
+          type:'bar',
+          data:{
+            labels: rankData.map(d=>d.manager),
+            datasets:[{ label:'총판 달성률(%)', data: rankData.map(d=>Math.round((d.agg.g_tp_rate||0)*10)/10), backgroundColor:'#A50034' }]
+          },
+          options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>`${c.parsed.x}%`}} },
+            scales:{ x:{ ticks:{ callback:(v)=>v+'%' } } } }
+        });
+      }
+    }, 0);
+  } else if(tab==='gross'){
+    const rows = (selBranch ? rowsForAgg : branchesInScope).slice().sort((a,b)=>(b.m.g_tp_rate!=null?0:0));
+    const trs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
+      const m = r.m;
+      return `<tr>
+        <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
+        <td>${moFmt(m.g_target)}</td>
+        <td>${moFmt(m.g_tp_cur)}</td><td>${moFmt(m.g_tp_lySame)}</td><td>${moYoy(m.g_tp_yoy)}</td><td>${moPct(m.g_tp_rate)} ${pctBadge(m.g_tp_rate||0)}</td>
+        <td>${moFmt(m.g_sp_cur)}</td><td>${moFmt(m.g_sp_lySame)}</td><td>${moYoy(m.g_sp_yoy)}</td><td>${moPct(m.g_sp_rate)} ${pctBadge(m.g_sp_rate||0)}</td>
+      </tr>`;
+    }).join('');
+    bodyHtml = `
+      <div class="card">
+        <h3>📊 GROSS 판매 현황 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
+        <div style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th rowspan="2">지점</th><th rowspan="2">관리자</th><th rowspan="2">목표</th>
+            <th colspan="4">총판</th><th colspan="4">실판(MSIS)</th>
+          </tr>
+          <tr><th>당월</th><th>전년동기</th><th>전년비</th><th>달성률</th><th>당월</th><th>전년동기</th><th>전년비</th><th>달성률</th></tr></thead>
+          <tbody>
+            ${trs || '<tr><td colspan="11" class="muted">데이터 없음</td></tr>'}
+            <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
+              <td colspan="2">합계</td><td>${moFmt(agg.g_target)}</td>
+              <td>${moFmt(agg.g_tp_cur)}</td><td>${moFmt(agg.g_tp_lySame)}</td><td>${moYoy(agg.g_tp_yoy)}</td><td>${moPct(agg.g_tp_rate)}</td>
+              <td>${moFmt(agg.g_sp_cur)}</td><td>${moFmt(agg.g_sp_lySame)}</td><td>${moYoy(agg.g_sp_yoy)}</td><td>${moPct(agg.g_sp_rate)}</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>`;
+  } else if(tab==='sub'){
+    const trs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
+      const m = r.m;
+      return `<tr>
+        <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
+        <td>${moFmt(m.s_target)}</td>
+        <td>${moFmt(m.s_tp_cur)}</td><td>${moPct(m.s_tp_rate)} ${pctBadge(m.s_tp_rate||0)}</td>
+        <td>${moFmt(m.s_sp_cur)}</td><td>${moPct(m.s_sp_rate)} ${pctBadge(m.s_sp_rate||0)}</td>
+        <td>${moPct(m.s_sp_ratio)}</td><td>${m.s_sp_qty!=null?Math.round(m.s_sp_qty).toLocaleString('ko-KR'):'-'}건</td>
+      </tr>`;
+    }).join('');
+    bodyHtml = `
+      <div class="card">
+        <h3>📱 구독 실적 현황 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
+        <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>지점</th><th>관리자</th><th>목표</th><th>총판 당월</th><th>총판 달성률</th><th>실판 당월</th><th>실판 달성률</th><th>실판 비중(전체 대비)</th><th>실판 건수</th></tr></thead>
+          <tbody>
+            ${trs || '<tr><td colspan="9" class="muted">데이터 없음</td></tr>'}
+            <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
+              <td colspan="2">합계</td><td>${moFmt(agg.s_target)}</td>
+              <td>${moFmt(agg.s_tp_cur)}</td><td>${moPct(agg.s_tp_rate)}</td>
+              <td>${moFmt(agg.s_sp_cur)}</td><td>${moPct(agg.s_sp_rate)}</td>
+              <td>${moPct(agg.s_sp_ratio)}</td><td>${Math.round(agg.s_sp_qty||0).toLocaleString('ko-KR')}건</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>`;
+  } else if(tab==='high'){
+    const trs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
+      const m = r.m;
+      return `<tr>
+        <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
+        <td>${m.h_tp_pool!=null?Math.round(m.h_tp_pool).toLocaleString('ko-KR'):'-'}대</td>
+        <td>${m.h_tp_high!=null?Math.round(m.h_tp_high).toLocaleString('ko-KR'):'-'}대</td>
+        <td>${moPct(m.h_tp_highRatio)}</td>
+        <td>${m.h_sp_pool!=null?Math.round(m.h_sp_pool).toLocaleString('ko-KR'):'-'}대</td>
+        <td>${m.h_sp_high!=null?Math.round(m.h_sp_high).toLocaleString('ko-KR'):'-'}대</td>
+        <td>${moPct(m.h_sp_highRatio)}</td>
+      </tr>`;
+    }).join('');
+    bodyHtml = `
+      <div class="card">
+        <h3>💎 고수익(HIGH-END) 판매 비중 <small>${escapeHtml(scopeLabel)}</small></h3>
+        <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th rowspan="2">지점</th><th rowspan="2">관리자</th><th colspan="3">총판</th><th colspan="3">실판(MSIS)</th></tr>
+          <tr><th>모수</th><th>HIGH</th><th>비중</th><th>모수</th><th>HIGH</th><th>비중</th></tr></thead>
+          <tbody>
+            ${trs || '<tr><td colspan="8" class="muted">데이터 없음</td></tr>'}
+            <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
+              <td colspan="2">합계</td>
+              <td>${Math.round(agg.h_tp_pool||0).toLocaleString('ko-KR')}대</td><td>${Math.round(agg.h_tp_high||0).toLocaleString('ko-KR')}대</td><td>${moPct(agg.h_tp_highRatio)}</td>
+              <td>${Math.round(agg.h_sp_pool||0).toLocaleString('ko-KR')}대</td><td>${Math.round(agg.h_sp_high||0).toLocaleString('ko-KR')}대</td><td>${moPct(agg.h_sp_highRatio)}</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>`;
+  }
+
+  return `
+    <div class="page-title">지표 한 눈에 보기</div>
+    <div class="page-desc">기준일자 <b>${DB.metricsOverview.asOfDate}</b> (D-1, 전일) · ${DB.metricsOverview.rows.length}개 지점 · 전체 직원 조회 가능</div>
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>${managerPills}</div>
+        <div>${branchSelectHtml}</div>
+      </div>
+      <div style="margin-top:10px;">${tabPillsHtml}</div>
+    </div>
+    ${bodyHtml}`;
+}
+
 // 지점의 "오늘 출근 현황" 테이블에 쓰이는 실제 근무일정 조회 — 업로드된 근무일정이 있으면 그것을,
 // 없는 직원/지점은 기존 방식(DB.attendance 시드 데이터)으로 자연스럽게 대체된다.
 function attendanceRecordsForBranch(branchId, dateStr){
