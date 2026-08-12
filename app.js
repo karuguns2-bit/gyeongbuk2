@@ -8290,14 +8290,11 @@ function saveEditBestPractice(id){
 /* =========================================================================
    9e1b. RENDER: 이슈제품 판매 성공 사례 (게시판) — 우수 활동 사례 공유와 동일한 양식
    ========================================================================= */
-// 성공 사례 등록 시 "활동 내용" 한 칸에 고정 양식을 프리필해 둔다 — 관리자가 판매모델/수량만
-// 채우고 그 아래에 자유롭게 사례를 서술하면, 이 값들을 analyzeIssueCaseText()가 파싱해서
-// 제품명/성공 유형/핵심 소구 포인트/고객 반응/활동 결과를 자동으로 추출한다(별도 입력 칸 없음).
-const ISSUE_CASE_CONTENT_TEMPLATE = '* 판매모델 : 예시)N95TWU ( 구독 )<br>* 수량 : 예시)1 대<br><br>* 판매 성공 사례 내용 작성 :<br>';
+// 성공 사례 등록 시 모델명/판매수량은 별도 입력 칸에서 직접 받고, "판매 우수 사례 작성란"의
+// 자유 서술만 규칙 기반으로 분석해 성공 유형/핵심 소구 포인트를 자동으로 뽑아 대시보드에 누적한다.
 const ISSUE_CASE_SUCCESS_TYPES = ['가격/프로모션 소구','성능/기능 시연','경쟁사 대비 강점 설명','사용후기/체험 공유','결합상품/사은품 제안','고객 니즈 맞춤 상담','기타'];
 const ISSUE_CASE_SENTIMENTS = ['매우 긍정','긍정','보통','부정'];
-// 리치에디터 HTML을 "줄바꿈이 살아있는" 순수 텍스트로 변환 — richStripTags는 모든 태그를 공백
-// 하나로 뭉개버려서 "판매모델 :" 같은 줄 단위 항목을 구분할 수 없기 때문에 별도로 만든다.
+// 리치에디터 HTML을 "줄바꿈이 살아있는" 순수 텍스트로 변환
 function issueCasePlainText(html){
   let s = String(html||'');
   s = s.replace(/<br\s*\/?>/gi, '\n');
@@ -8306,39 +8303,11 @@ function issueCasePlainText(html){
   s = s.replace(/&nbsp;/gi,' ').replace(/&amp;/gi,'&').replace(/&lt;/gi,'<').replace(/&gt;/gi,'>').replace(/&quot;/gi,'"').replace(/&#39;/gi,"'");
   return s;
 }
-// "예시)N95TWU ( 구독 )" 처럼 예시 문구를 지우지 않고 그대로 등록한 경우 걸러낸다.
-function issueCaseCleanExample(v){
-  if(!v) return null;
-  const t = v.trim();
-  if(!t || /^예시\s*\)/.test(t)) return null;
-  return t;
-}
-// 고정 양식(판매모델/수량/판매 성공 사례 내용 작성)을 파싱 — 양식을 지키지 않고 바로 글을 쓴
-// 경우에도 알아볼 수 없는 줄은 그대로 서술 영역으로 흡수해 분석이 계속 동작하게 한다.
-function issueCaseParseTemplate(html){
-  const lines = issueCasePlainText(html).split('\n').map(l=>l.trim());
-  let saleModel = null, saleQty = null;
-  const narrativeLines = [];
-  let inNarrative = false;
-  lines.forEach(line=>{
-    if(!inNarrative){
-      const mModel = line.match(/판매\s*모델\s*[:：]\s*(.+)/);
-      const mQty = line.match(/수량\s*[:：]\s*(.+)/);
-      const mStart = /판매\s*성공\s*사례\s*내용\s*작성\s*[:：]?/.test(line);
-      if(mModel){ saleModel = mModel[1]; return; }
-      if(mQty){ saleQty = mQty[1]; return; }
-      if(mStart){
-        inNarrative = true;
-        const rest = line.replace(/.*판매\s*성공\s*사례\s*내용\s*작성\s*[:：]?/, '').trim();
-        if(rest) narrativeLines.push(rest);
-        return;
-      }
-      if(line) narrativeLines.push(line);
-    } else if(line){
-      narrativeLines.push(line);
-    }
-  });
-  return { saleModel: issueCaseCleanExample(saleModel), saleQty: issueCaseCleanExample(saleQty), narrative: narrativeLines.join(' ') };
+// 활동 결과(수정 화면)에서 "1대 판매" 같은 앞부분을 뽑아 판매수량 입력칸을 최대한 복원해 둔다.
+function issueCaseGuessQtyFromResult(activityResult){
+  if(!activityResult) return '';
+  const m = String(activityResult).match(/^([^·]+?)\s*판매/);
+  return m ? m[1].trim() : '';
 }
 const ISSUE_CASE_PRODUCT_RULES = [
   [/올레드\s*tv|oled\s*tv/i, '올레드 TV'],
@@ -8368,27 +8337,25 @@ const ISSUE_CASE_SUCCESS_RULES = [
 const ISSUE_CASE_POSITIVE_WORDS = ['만족','좋아','좋다','감사','구매\\s*결정','긍정','감탄','신뢰','재구매','추천'];
 const ISSUE_CASE_NEGATIVE_WORDS = ['부담','아쉬','불만','고민','걱정','망설','취소','환불'];
 const ISSUE_CASE_SELLING_KEYWORDS = ['가격','할인','성능','디자인','용량','소음','에너지','효율','AS','사후관리','사은품','이벤트','편의성','내구성','세척력','건조력','냉각력'];
-// "n건/대/명 판매·확보" 등 수치가 들어간 문장을 그대로 활동 결과로 사용
+// "n건/대/명 판매·확보" 등 수치가 들어간 문장을 찾아 판매수량과 합쳐 활동 결과 문구를 만든다.
 function issueCaseExtractResult(saleQty, narrative){
   const parts = [];
   if(saleQty) parts.push(`${saleQty} 판매`);
   const sentences = String(narrative||'').split(/[\n.!?]+/).map(s=>s.trim()).filter(Boolean);
-  const extra = sentences.find(s=>/\d+\s*(건|대|명|개)/.test(s) && !parts.some(p=>s.includes(p)));
+  const extra = sentences.find(s=>/\d+\s*(건|대|명|개)/.test(s));
   if(extra && (!saleQty || !extra.includes(saleQty))) parts.push(extra);
   return parts.length>0 ? parts.join(' · ') : null;
 }
-// 사례 등록 시 자유 서술("판매 성공 사례 내용 작성" 아래 글) + 판매모델/수량을 규칙 기반으로 분석해
-// 제품명/성공 유형/핵심 소구 포인트/고객 반응/활동 결과를 자동으로 채운다. 실시간으로 문장을
-// 이해하는 진짜 AI가 아니라 키워드·정규식 기반의 간단한 규칙 분석이므로 완벽하지 않을 수 있다
-// (표현이 애매하면 "기타"나 미분류로 남을 수 있음) — 이는 이 사이트에 AI API/백엔드가 연결되어
-// 있지 않아 실시간 LLM 분석은 지원하지 않기 때문이며, 필요 시 별도 논의로 추가할 수 있다.
-function analyzeIssueCaseText(title, contentHtml){
-  const { saleModel, saleQty, narrative } = issueCaseParseTemplate(contentHtml);
-  const fullText = (narrative || issueCasePlainText(contentHtml)) + ' ' + (title||'');
+// "판매 우수 사례 작성란"의 자유 서술을 규칙 기반으로 분석해 성공 유형/핵심 소구 포인트/고객
+// 반응/활동 결과를 자동으로 채운다. 모델명은 별도 입력칸 값을 그대로 쓰고, 없으면 서술 속
+// 제품 키워드로 추정한다. 실시간으로 문장을 이해하는 진짜 AI가 아니라 키워드·정규식 기반의
+// 간단한 규칙 분석이므로 완벽하지 않을 수 있다 — 이 사이트에 AI API/백엔드가 연결되어 있지
+// 않아 실시간 LLM 분석은 지원하지 않기 때문이며, 필요 시 별도 논의로 추가할 수 있다.
+function analyzeIssueCaseText(title, contentHtml, saleModel, saleQty){
+  const narrative = issueCasePlainText(contentHtml);
+  const fullText = narrative + ' ' + (title||'');
 
-  // "N95TWU ( 구독 )" 처럼 뒤에 구매유형이 괄호로 붙어 있으면 떼어낸다 — 같은 모델이 구독/일시불로
-  // 갈려서 제품별 집계가 쪼개지는 것을 막기 위함(모델 코드만 있으면 그대로 사용).
-  let productName = saleModel ? saleModel.replace(/\s*\([^)]*\)\s*$/, '').trim() || saleModel : null;
+  let productName = (saleModel||'').trim() || null;
   if(!productName){
     for(const [re,label] of ISSUE_CASE_PRODUCT_RULES){ if(re.test(fullText)){ productName = label; break; } }
   }
@@ -8419,11 +8386,11 @@ function analyzeIssueCaseText(title, contentHtml){
   const foundKeywords = ISSUE_CASE_SELLING_KEYWORDS.filter(k=>fullText.includes(k));
   const sellingPoint = foundKeywords.length>0 ? foundKeywords.slice(0,6).join(', ') : null;
 
-  const activityResult = issueCaseExtractResult(saleQty, narrative || fullText);
+  const activityResult = issueCaseExtractResult((saleQty||'').trim()||null, narrative);
 
   return { productName, successType, sellingPoint, customerReaction, customerSentiment, activityResult };
 }
-// "가격 할인, 에너지 효율" 처럼 쉼표/가운뎃점/슬래시로 구분된 소구 포인트 문자열을 개별 태그로 분리
+
 function issueCaseSplitTags(text){
   return String(text||'').split(/[,·、\/]|\s{2,}|(?:\s+및\s+)/).map(s=>s.trim()).filter(Boolean);
 }
@@ -8501,13 +8468,13 @@ function renderIssueCaseDashboard(){
 
   let bodyHtml;
   if(!selProduct){
-    const successTally = {}, sentimentTally = {};
+    const successTally = {}, tagTally = {};
     products.forEach(p=>{
       Object.entries(p.successTypes).forEach(([t,c])=>{ successTally[t]=(successTally[t]||0)+c; });
-      Object.entries(p.sentiments).forEach(([s,c])=>{ sentimentTally[s]=(sentimentTally[s]||0)+c; });
+      Object.entries(p.tags).forEach(([t,c])=>{ tagTally[t]=(tagTally[t]||0)+c; });
     });
     const successEntries = Object.entries(successTally).sort((a,b)=>b[1]-a[1]);
-    const sentimentEntries = Object.entries(sentimentTally).sort((a,b)=>b[1]-a[1]);
+    const tagEntriesAll = Object.entries(tagTally).sort((a,b)=>b[1]-a[1]).slice(0,20);
     bodyHtml = `
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
         <div style="flex:1;min-width:260px;">
@@ -8520,9 +8487,9 @@ function renderIssueCaseDashboard(){
         </div>
       </div>
       <div style="margin-top:14px;">
-        <div class="stat-sub" style="margin-bottom:6px;">전체 고객 반응 분포</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          ${sentimentEntries.map(([s,c])=>`<span class="badge" style="background:#eef1f4;color:#333;">${s} ${c}건</span>`).join('') || '<span class="muted">데이터 없음</span>'}
+        <div class="stat-sub" style="margin-bottom:6px;">전체 핵심 키워드 <small>자주 언급된 순</small></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${tagEntriesAll.map(([t,c])=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}
         </div>
       </div>`;
     moRenderChart('icProductChart', icCountBarConfig(products.map(p=>p.product), products.map(p=>p.count)));
@@ -8531,8 +8498,6 @@ function renderIssueCaseDashboard(){
     const b = byProduct[selProduct];
     const successEntries = Object.entries(b.successTypes).sort((a,c)=>c[1]-a[1]);
     const tagEntries = Object.entries(b.tags).sort((a,c)=>c[1]-a[1]).slice(0,15);
-    const sentimentEntries = Object.entries(b.sentiments).sort((a,c)=>c[1]-a[1]);
-    const recentReactions = b.reactions.slice().sort((x,y)=>(y.date||'').localeCompare(x.date||'')).slice(0,6);
     bodyHtml = `
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
         <div style="flex:1;min-width:220px;">
@@ -8540,16 +8505,9 @@ function renderIssueCaseDashboard(){
           ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(120, successEntries.length*30)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
         </div>
         <div style="flex:1;min-width:220px;">
-          <div class="stat-sub" style="margin-bottom:6px;">핵심 소구 포인트 <small>자주 언급된 순</small></div>
+          <div class="stat-sub" style="margin-bottom:6px;">핵심 키워드 <small>자주 언급된 순</small></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">${tagEntries.map(([t,c])=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}</div>
         </div>
-      </div>
-      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
-        ${sentimentEntries.map(([s,c])=>`<span class="badge" style="background:#eef1f4;color:#333;">${s} ${c}건</span>`).join('') || '<span class="muted">고객 반응 데이터 없음</span>'}
-      </div>
-      <div style="margin-top:10px;">
-        <div class="stat-sub" style="margin-bottom:6px;">최근 고객 반응</div>
-        ${recentReactions.map(r=>`<div style="font-size:12.5px;padding:6px 0;border-bottom:1px solid #f1f2f4;">💬 ${escapeHtml(r.text)} <span class="muted">· ${r.branch||''} · ${r.date||''}</span></div>`).join('') || '<div class="muted">등록된 고객 반응이 없습니다.</div>'}
       </div>`;
     if(successEntries.length>0) moRenderChart('icSuccessTypeChart', icCountBarConfig(successEntries.map(e=>e[0]), successEntries.map(e=>e[1]), '#4a7fd6'));
   }
@@ -8603,10 +8561,20 @@ function renderIssueCase(){
           </div>
         </div>
         <div class="form-row">
+          <div class="field">
+            <label>모델명</label>
+            <input id="ice_${p.id}_model" style="width:150px" value="${escapeHtml(p.productName||'')}">
+          </div>
+          <div class="field">
+            <label>판매수량</label>
+            <input id="ice_${p.id}_qty" style="width:110px" placeholder="예: 1대" value="${escapeHtml(issueCaseGuessQtyFromResult(p.activityResult))}">
+          </div>
+        </div>
+        <div class="form-row">
           <div class="field" style="flex:1;min-width:320px;">
-            <label>활동 내용</label>
-            ${richEditorHtml('ice_'+p.id+'_content', richContentHtml(p.content||ISSUE_CASE_CONTENT_TEMPLATE), '상세하게 작성 부탁드립니다.', 160)}
-            <div class="small-note">※ 제품명·성공 유형·소구 포인트·고객 반응·활동 결과는 이 내용을 바탕으로 저장할 때 자동 재분석됩니다.</div>
+            <label>판매 우수 사례 작성란</label>
+            ${richEditorHtml('ice_'+p.id+'_content', richContentHtml(p.content||''), '성공적으로 판매하신 사례를 자유롭게 작성해 주세요.', 160)}
+            <div class="small-note">※ 성공 유형·핵심 소구 포인트는 이 내용을 바탕으로 저장할 때 자동 재분석됩니다.</div>
           </div>
         </div>
         ${editAttachmentsHtml ? `<div style="margin-bottom:8px;"><label>기존 첨부 파일 (× 클릭 시 즉시 삭제)</label><br>${editAttachmentsHtml}</div>` : ''}
@@ -8643,15 +8611,13 @@ function renderIssueCase(){
         ${expandedIc ? `
         <div style="line-height:1.7;margin:10px 0 0;font-size:13.5px;">${richContentHtml(p.content)}</div>
         ${p.activityResult ? `<div style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
-        ${(p.productName || p.successType || p.sellingPoint || p.customerReaction) ? `
+        ${(p.productName || p.successType || p.sellingPoint) ? `
         <div class="muted" style="font-size:10.5px;margin-top:10px;">🤖 아래 항목은 작성하신 내용을 바탕으로 자동 분석되었습니다</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
           ${p.productName ? `<span class="badge" style="background:#eef1f4;color:#333;">📦 ${escapeHtml(p.productName)}</span>` : ''}
           ${p.successType ? `<span class="badge" style="background:#eef1f4;color:#333;">${escapeHtml(p.successType)}</span>` : ''}
-          ${p.customerSentiment ? `<span class="badge" style="background:#eef1f4;color:#333;">고객반응 ${escapeHtml(p.customerSentiment)}</span>` : ''}
           ${issueCaseSplitTags(p.sellingPoint).map(t=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)}</span>`).join('')}
         </div>
-        ${p.customerReaction ? `<div class="muted" style="font-size:12.5px;margin-top:6px;">💬 ${escapeHtml(p.customerReaction)}</div>` : ''}
         ` : ''}
         ${attachmentsHtml ? `<div class="attach-gallery">${attachmentsHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
@@ -8691,10 +8657,20 @@ function renderIssueCase(){
         </div>
       </div>
       <div class="form-row">
+        <div class="field">
+          <label>모델명</label>
+          <input id="icModel" style="width:150px" placeholder="예: N95TWU">
+        </div>
+        <div class="field">
+          <label>판매수량</label>
+          <input id="icQty" style="width:110px" placeholder="예: 1대">
+        </div>
+      </div>
+      <div class="form-row">
         <div class="field" style="flex:1;min-width:320px;">
-          <label>활동 내용</label>
-          ${richEditorHtml('icContent', ISSUE_CASE_CONTENT_TEMPLATE, '상세하게 작성 부탁드립니다.', 160)}
-          <div class="small-note">※ 판매모델/수량을 채운 뒤, "판매 성공 사례 내용 작성 :" 아래에 이어서 자유롭게 작성해 주세요. 제품명·성공 유형·소구 포인트·고객 반응·활동 결과는 작성하신 내용을 바탕으로 자동 분석되어 상단 "이슈제품 성공사례 분석" 대시보드에 누적됩니다.</div>
+          <label>판매 우수 사례 작성란</label>
+          ${richEditorHtml('icContent', '', '성공적으로 판매하신 사례를 자유롭게 작성해 주세요.', 160)}
+          <div class="small-note">※ 성공 유형·핵심 소구 포인트는 작성하신 내용을 바탕으로 자동 분석되어 상단 "이슈제품 성공사례 분석" 대시보드에 누적됩니다.</div>
         </div>
       </div>
       <div class="form-row">
@@ -8739,10 +8715,12 @@ function submitIssueCase(){
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById('icActivityDate').value;
   const title = document.getElementById('icTitle').value.trim();
+  const saleModel = document.getElementById('icModel').value.trim();
+  const saleQty = document.getElementById('icQty').value.trim();
   const content = richEditorValue('icContent');
   const fileInput = document.getElementById('icFiles');
-  if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
-  const analysis = analyzeIssueCaseText(title, content);
+  if(!content){ alert('판매 우수 사례 작성란을 입력해 주세요.'); return; }
+  const analysis = analyzeIssueCaseText(title, content, saleModel, saleQty);
 
   const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
   function finalize(attachments){
@@ -8794,10 +8772,12 @@ function saveEditIssueCase(id){
   const managerName = managerOpt ? managerOpt.textContent : null;
   const activityDate = document.getElementById(`ice_${id}_date`).value;
   const title = document.getElementById(`ice_${id}_title`).value.trim();
+  const saleModel = document.getElementById(`ice_${id}_model`).value.trim();
+  const saleQty = document.getElementById(`ice_${id}_qty`).value.trim();
   const content = richEditorValue(`ice_${id}_content`);
   const fileInput = document.getElementById(`ice_${id}_files`);
-  if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
-  const analysis = analyzeIssueCaseText(title, content);
+  if(!content){ alert('판매 우수 사례 작성란을 입력해 주세요.'); return; }
+  const analysis = analyzeIssueCaseText(title, content, saleModel, saleQty);
 
   const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
   function finalize(newAttachments){
