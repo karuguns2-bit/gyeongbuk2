@@ -2893,7 +2893,12 @@ function noticeBodyHtml(n){
 function openNoticeDetail(id){
   const n = DB.notices.find(x=>x.id===id);
   if(!n) return;
-  if(SESSION.role==='staff') markNoticeRead(id, SESSION.empId);
+  if(SESSION.role==='staff'){
+    markNoticeRead(id, SESSION.empId);
+    // 방금 "자세히 보기"로 읽음 처리됐다면, 뒤에 깔린 홈 배너에 남아있던 "아직 조회하지
+    // 않은 공지입니다" 경고 문구도 페이지 새로고침 없이 바로 사라지도록 배너를 다시 그린다.
+    updateNoticeBannerDOM();
+  }
   const dt = new Date(n.createdAt);
   const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   const photosHtml = (n.attachments && n.attachments.length>0) ? `
