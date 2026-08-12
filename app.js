@@ -4055,11 +4055,15 @@ function renderGoals(){
   const allocSum = g.allocations.reduce((s,a)=>s+a.target,0);
   // 팀원별 목표 배분의 합계/잔여 기준은 GROSS 목표금액이 아니라 "MSIS실판매 등록 기준
   // 예상 목표치"(GROSS×1.25)로 계산한다 — 팀원 목표는 이 예상 목표치를 기준으로 나눠서
-  // 배분해야 하기 때문. 지점 달성율/진행율(branchAchievedPct)은 기존대로 GROSS 목표 기준 유지.
+  // 배분해야 하기 때문. 지점 달성율/진행율(branchAchievedPct)도 GROSS 목표가 아니라 이
+  // MSIS실판매 등록 기준 예상 목표치를 기준으로 맞춘다 — 화면상 이 수치가 "MSIS실판매 등록
+  // 기준 예상 목표치" 바로 아래에 표시되는 데다, 아래 "2. 팀원별 목표 배분"의 합계 달성률·
+  // 개별 팀원 달성률도 전부 이 예상 목표치 기준으로 계산되므로, GROSS 기준을 쓰면 같은 화면
+  // 안에서 "달성률"이라는 같은 이름의 수치가 서로 다른 기준으로 두 번 나와 혼란을 준다.
   const msisExpectedTarget = g.target * 1.25;
   const remaining = msisExpectedTarget - allocSum;
   const branchAchievedWon = branchAchieved(branchId, period);
-  const branchAchievedPct = pctOf(branchAchievedWon, g.target);
+  const branchAchievedPct = pctOf(branchAchievedWon, msisExpectedTarget);
 
   const allocRows = g.allocations.map(a=>{
     const achieved = empAchieved(branchId, a.empId, period);
