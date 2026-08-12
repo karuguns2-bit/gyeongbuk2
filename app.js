@@ -1681,6 +1681,18 @@ function renderHomeGoalsManagerBanner(){
       <div style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
+// 지점별 경쟁력(msis경쟁력 시트) 조회 — 월별 히스토리(DB.competitivenessHistory)에서 먼저 찾고,
+// 마이그레이션 이전 데이터만 있는 예전 사이트(단일 스냅샷 DB.competitiveness)는 이번 달 조회 시에
+// 한해 폴백으로 사용한다. [전체 지점 현황] 페이지 제거 시 이 헬퍼 함수 정의가 실수로 함께 삭제되어
+// 홈 대시보드의 "관리자별 합산 경쟁력" 배너가 렌더링 중 에러로 멈추던 문제를 복구한 것.
+function competitivenessDataForPeriod(period){
+  period = period || currentGoalsPeriod();
+  if(DB.competitivenessHistory && DB.competitivenessHistory[period]) return DB.competitivenessHistory[period];
+  if(period === currentGoalsPeriod() && DB.competitiveness && Object.keys(DB.competitiveness).length){
+    return { competitiveness: DB.competitiveness, summary: DB.competitivenessSummary||null, asOf: DB.competitivenessAsOf||null };
+  }
+  return null;
+}
 // 관리자별 합산 경쟁력(msis경쟁력 시트 기준): 홈 대시보드에서 GROSS 목표 배너와 같은 스타일로
 // 관리자가 담당하는 지점들을 합산한 LG/SS/MS/GAP을 보여준다.
 function competManagerSummary(period){
@@ -3302,6 +3314,17 @@ function setScheduleEntry(branchId, empId, dateStr, status, start, end){
   DB.schedule[branchId][empId] = DB.schedule[branchId][empId] || {};
   DB.schedule[branchId][empId][dateStr] = {status, start: start||'-', end: end||'-'};
   saveDB();
+}
+// 근무 일정 표의 상태/시작시간/종료시간 드롭다운·입력창 onchange 핸들러 — 필드 하나만 바뀌어도
+// 나머지 두 값은 기존 값을 그대로 유지한 채 저장한다(이 함수가 없어서 근무일정 표 수정이
+// 전혀 동작하지 않던 버그를 수정).
+function updateScheduleField(branchId, empId, dateStr, field, value){
+  const entry = getScheduleEntry(branchId, empId, dateStr);
+  const status = field==='status' ? value : entry.status;
+  const start = field==='start' ? value : entry.start;
+  const end = field==='end' ? value : entry.end;
+  setScheduleEntry(branchId, empId, dateStr, status, start, end);
+  renderTab('schedule');
 }
 function canEditSchedule(branchId){
   // 실제 데이터에는 'manager' 역할이 없고, "지점 소속 전 직원 = 매니저로 간주"하기로 확인됨(목표관리 권한 정책과 동일 기준).
@@ -4955,6 +4978,9 @@ function handleMetricsOverviewFile(evt){
 /* =========================================================================
    지표 한 눈에 보기 (METRICS OVERVIEW) — 관리자별/지점별 GROSS·구독·고수익 대시보드
    ========================================================================= */
+/* =========================================================================
+   지표 한 눈에 보기 (METRICS OVERVIEW) — 관리자별/지점별 GROSS·구독·고수익 대시보드
+   ========================================================================= */
 function moFmt(n, digits){
   const v = Number(n);
   if(n==null || isNaN(v)) return '-';
@@ -4981,7 +5007,16 @@ function moGap(v, digits){
 }
 function moBadgeRank(rank, total){
   if(rank==null || !total) return '';
-  return `<span class="badge" style="background:#eef1f4;color:#333;font-weight:700;">${rank}위 / ${total}</span>`;
+  return `<span class="badge" style="background:#eef1f4;color:#333;font-weight:700;">${rank}위/${total}</span>`;
+}
+// list(각 항목에 .key 포함) 중 valueFn 기준 내림차순 정렬했을 때 key의 순위(1위부터)를 구한다.
+function moRankOf(list, valueFn, key){
+  const sorted = list.slice().sort((a,b)=>{
+    const av = valueFn(a), bv = valueFn(b);
+    return (bv==null?-Infinity:bv) - (av==null?-Infinity:av);
+  });
+  const idx = sorted.findIndex(x=>x.key===key);
+  return idx>=0 ? idx+1 : null;
 }
 // 지점 목록(원본 파일 매칭 결과) 중 특정 관리자 소속만 필터링
 function moBranchesOf(manager){
@@ -5031,51 +5066,28 @@ function setMetricsOverviewTab(tab){
   state.metricsOverviewTab = tab;
   renderTab('metricsOverview');
 }
-let metricsOverviewRankChartInstance = null;
-let metricsOverviewBranchRankChartInstance = null;
-
-// 신장률(%) 값을 -range~+range 축 위의 0~100% 위치로 변환(막대/점 그래프용)
-function moAxisPos(v, range){
-  const clamped = Math.max(-range, Math.min(range, v||0));
-  return ((clamped + range) / (range*2)) * 100;
+// 캔버스 id별로 Chart.js 인스턴스를 관리 — 재렌더링될 때마다 이전 차트를 안전하게 destroy 후 재생성
+let moChartInstances = {};
+function moRenderChart(canvasId, config){
+  setTimeout(()=>{
+    const ctx = document.getElementById(canvasId);
+    if(!ctx) return;
+    if(moChartInstances[canvasId]) moChartInstances[canvasId].destroy();
+    moChartInstances[canvasId] = new Chart(ctx, config);
+  }, 0);
 }
-// 비교 막대(수평 트랙 + 마커) — 대상별 신장률을 한 축 위에서 비교
-function moCompareBar(label, sub, value, range, highlight){
-  const has = value!=null && !isNaN(Number(value));
-  const pos = has ? moAxisPos(value, range) : 50;
-  const color = !has ? '#bbb' : (value>=0 ? '#1a7f37' : '#c62828');
-  return `
-    <div style="margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;">
-        <span style="font-weight:${highlight?800:600};">${label}${sub?` <span class="muted" style="font-weight:400;">${sub}</span>`:''}</span>
-        <span style="font-weight:800;color:${color};">${has ? (value>=0?'+':'')+value.toFixed(1)+'%' : '-'}</span>
-      </div>
-      <div style="position:relative;height:${highlight?10:7}px;background:#eef0f2;border-radius:5px;margin-top:5px;">
-        <div style="position:absolute;left:50%;top:-3px;width:1px;height:${(highlight?10:7)+6}px;background:#ccc;"></div>
-        <div style="position:absolute;left:${pos}%;top:${highlight?-4:-3}px;width:${highlight?18:12}px;height:${highlight?18:12}px;margin-left:-${highlight?9:6}px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);"></div>
-      </div>
-    </div>`;
-}
-// 랭킹 dot-strip — 여러 대상을 한 축 위에 점으로 표시하고 선택 대상을 강조
-function moRankStrip(items, selectedKey, range){
-  if(items.length===0) return '';
-  const dots = items.map((it,i)=>{
-    const pos = moAxisPos(it.value, range);
-    const isSel = it.key===selectedKey;
-    const color = isSel ? '#A50034' : (it.value>=0 ? '#8a97a8' : '#c9a0a0');
-    const top = (i%2===0) ? 0 : 22;
-    return `<div style="position:absolute;left:${pos}%;top:${top}px;transform:translateX(-50%);text-align:center;">
-      <div style="font-size:11px;font-weight:${isSel?800:600};color:${isSel?'#A50034':'#556'};white-space:nowrap;">${escapeHtml(it.label)}</div>
-      <div style="width:${isSel?14:9}px;height:${isSel?14:9}px;border-radius:50%;background:${color};margin:2px auto 0;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.25);"></div>
-    </div>`;
-  }).join('');
-  return `
-    <div style="position:relative;height:70px;margin-top:8px;">
-      <div style="position:absolute;left:0;right:0;top:34px;height:2px;background:#eef0f2;"></div>
-      <div style="position:absolute;left:50%;top:30px;width:1px;height:10px;background:#ccc;"></div>
-      ${dots}
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-sub);margin-top:2px;"><span>신장률 낮음</span><span>신장률 높음</span></div>`;
+// 신장률(%) 값들을 가로 막대 차트로 — Chart.js가 자동으로 보기 좋은 눈금(0, ±20%, ±40%...)을
+// 잡아주므로, 극단적인 값 하나 때문에 축 전체가 왜곡되어 읽기 어려워지는 문제가 줄어든다.
+function moYoyBarConfig(labels, values, highlightIdx, unit){
+  unit = unit || '%';
+  return {
+    type:'bar',
+    data:{ labels, datasets:[{ data: values.map(v=>v==null?null:Math.round(v*10)/10),
+      backgroundColor: values.map((v,i)=> i===highlightIdx ? '#A50034' : (v>=0 ? '#a9d3b3' : '#e8b4b4')) }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=> (c.parsed.x>=0?'+':'')+c.parsed.x+unit}} },
+      scales:{ x:{ grid:{color:'#eee'}, ticks:{ callback:(v)=> (v>=0?'+':'')+v+unit } } } }
+  };
 }
 function moHeadline(agg){
   const yoy = agg.g_tp_yoy;
@@ -5104,6 +5116,31 @@ function moChipsHtml(chips){
     chips.map(c=>`<span class="badge" style="background:#f3f4f6;color:#333;font-weight:600;">${c}</span>`).join('') +
     `</div>`;
 }
+// 지점 하나를 "한눈에" 보여주는 미니 카드 — 클릭하면 그 지점의 상세 한눈에 보기로 드릴다운
+function moBranchCardHtml(r, showManager){
+  const m = r.m;
+  const rate = m.g_tp_rate;
+  const rateColor = rate==null ? '#999' : rate>=100 ? 'var(--good)' : rate>=80 ? 'var(--warn)' : 'var(--bad)';
+  return `
+    <div class="card" style="padding:10px 12px;min-width:180px;flex:1;cursor:pointer;border-left:3px solid ${rateColor};transition:box-shadow .15s;" onclick="setMetricsOverviewBranch('${r.branchId}')">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+        <div style="font-weight:700;font-size:13.5px;">${escapeHtml(r.branchName)}</div>
+        ${showManager?`<div class="muted" style="font-size:11px;white-space:nowrap;">${escapeHtml(r.manager||'-')}</div>`:''}
+      </div>
+      <div style="font-size:18px;font-weight:800;color:${rateColor};margin-top:3px;">${moPct(rate)}</div>
+      <div class="progress-bar" style="margin-top:3px;height:6px;"><div style="width:${Math.min(rate||0,100)}%;background:${rateColor};"></div></div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:7px;color:var(--text-sub);">
+        <span>전년비 ${moYoy(m.g_tp_yoy)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:var(--text-sub);">
+        <span>구독 ${moPct(m.s_sp_ratio)}</span><span>고수익 ${moPct(m.h_sp_highRatio)}</span>
+      </div>
+    </div>`;
+}
+function moBranchGridHtml(rows, showManager){
+  const sorted = rows.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">${sorted.map(r=>moBranchCardHtml(r, showManager)).join('')}</div>`;
+}
 function renderMetricsOverview(){
   if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
     return `
@@ -5125,14 +5162,30 @@ function renderMetricsOverview(){
   const selBranchRow = selBranch ? branchesInScope.find(r=>r.branchId===selBranch) : null;
   const scopeLabel = selBranchRow ? selBranchRow.branchName : (selManager ? `${selManager} 관리자` : '경북팀 전체');
 
-  // 랭킹: 관리자별(항상) / 지점별(관리자 선택 시 해당 소속 지점만, 없으면 전체 14개 지점)
-  const managerRankList = managers.map(m=>({ key:m, label:m, agg: moAggregate(moBranchesOf(m)) }))
-    .sort((a,b)=>(b.agg.g_tp_rate||0)-(a.agg.g_tp_rate||0));
+  // 순위 계산용 원본 리스트: 관리자 5명 / (선택된 관리자 소속이면 그 소속 지점, 아니면 전체 14개 지점)
+  const managerListRaw = managers.map(m=>({ key:m, label:m, agg: moAggregate(moBranchesOf(m)) }));
   const branchRankScopeRows = selManager ? branchesInScope : allRows;
-  const branchRankList = branchRankScopeRows.map(r=>({ key:r.branchId, label:r.branchName, m:r.m }))
-    .sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
-  const managerRank = selManager ? managerRankList.findIndex(x=>x.key===selManager)+1 : null;
-  const branchRank = selBranch ? branchRankList.findIndex(x=>x.key===selBranch)+1 : null;
+  const branchListRaw = branchRankScopeRows.map(r=>({ key:r.branchId, label:r.branchName, m:r.m }));
+
+  // 관리자별 GROSS 총판 달성률 순위(항상 계산 — 관리자 랭킹 차트에 사용)
+  const managerRankList = managerListRaw.slice().sort((a,b)=>(b.agg.g_tp_rate||0)-(a.agg.g_tp_rate||0));
+  const branchRankList = branchListRaw.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
+
+  // 선택된 대상(관리자 또는 지점)의 4개 핵심 지표별 개별 순위 — 지표마다 순위가 다를 수 있으므로 각각 독립 계산
+  let rankTotal=null, rankSub=null, rankHigh=null, rankRate=null, rankTotalOf=null;
+  if(selManager && !selBranch){
+    rankTotalOf = managers.length;
+    rankTotal = moRankOf(managerListRaw, x=>x.agg.g_tp_cur, selManager);
+    rankSub = moRankOf(managerListRaw, x=>x.agg.s_sp_cur, selManager);
+    rankHigh = moRankOf(managerListRaw, x=>x.agg.h_sp_highRatio, selManager);
+    rankRate = moRankOf(managerListRaw, x=>x.agg.g_tp_rate, selManager);
+  } else if(selBranch){
+    rankTotalOf = branchRankScopeRows.length;
+    rankTotal = moRankOf(branchListRaw, x=>x.m.g_tp_cur, selBranch);
+    rankSub = moRankOf(branchListRaw, x=>x.m.s_sp_cur, selBranch);
+    rankHigh = moRankOf(branchListRaw, x=>x.m.h_sp_highRatio, selBranch);
+    rankRate = moRankOf(branchListRaw, x=>x.m.g_tp_rate, selBranch);
+  }
 
   const managerPills = `<span class="branch-pill ${!selManager?'active':''}" onclick="setMetricsOverviewManager(null)">전체</span>` +
     managers.map(m=>`<span class="branch-pill ${m===selManager?'active':''}" onclick="setMetricsOverviewManager('${escapeHtml(m)}')">${escapeHtml(m)}</span>`).join('');
@@ -5148,56 +5201,82 @@ function renderMetricsOverview(){
 
   let bodyHtml = '';
   if(tab==='insight'){
-    // 비교축 범위: 실제 신장률 값들 중 최대 절대값 기준으로 여유(20%p)를 두고 동적으로 결정
-    const allYoy = [teamAgg.g_tp_yoy, managerAgg&&managerAgg.g_tp_yoy, agg.g_tp_yoy, ...managerRankList.map(x=>x.agg.g_tp_yoy)].filter(v=>v!=null);
-    const range = Math.max(20, ...allYoy.map(v=>Math.abs(v))) * 1.15;
-
     const chips = [];
-    if(selManager) chips.push(`관리자 순위 ${managerRank}위 / ${managers.length}`);
-    if(selBranch) chips.push(`지점 순위 ${branchRank}위 / ${branchRankScopeRows.length}`);
+    if(rankTotalOf){
+      chips.push(`총판 ${moBadgeRank(rankTotal, rankTotalOf)}`);
+      chips.push(`구독실판 ${moBadgeRank(rankSub, rankTotalOf)}`);
+      chips.push(`고수익비중 ${moBadgeRank(rankHigh, rankTotalOf)}`);
+      chips.push(`목표달성률 ${moBadgeRank(rankRate, rankTotalOf)}`);
+    }
     if(teamAgg.g_tp_yoy!=null && agg.g_tp_yoy!=null) chips.push(`경북팀 평균 대비 신장률 ${moGap(agg.g_tp_yoy - teamAgg.g_tp_yoy)}`);
     if(teamAgg.s_sp_ratio!=null && agg.s_sp_ratio!=null) chips.push(`구독 비중 경북팀 평균 대비 ${moGap(agg.s_sp_ratio - teamAgg.s_sp_ratio)}`);
-    if(teamAgg.h_sp_highRatio!=null && agg.h_sp_highRatio!=null) chips.push(`고수익 비중 경북팀 평균 대비 ${moGap(agg.h_sp_highRatio - teamAgg.h_sp_highRatio)}`);
-
-    let compareRowsHtml = '';
-    if(selBranch){
-      compareRowsHtml = moCompareBar('경북팀 전체 평균', '14개 지점 대상', teamAgg.g_tp_yoy, range, false) +
-        (managerAgg ? moCompareBar(`${selManager} 관리자 평균`, `${managerAgg.branchCount}개 지점 대상`, managerAgg.g_tp_yoy, range, false) : '') +
-        moCompareBar(scopeLabel, '선택 지점', agg.g_tp_yoy, range, true);
-    } else if(selManager){
-      compareRowsHtml = moCompareBar('경북팀 전체 평균', '5명 관리자 대상', teamAgg.g_tp_yoy, range, false) +
-        moCompareBar(scopeLabel, '선택 관리자', agg.g_tp_yoy, range, true);
-    }
-
-    const rankStripItems = selManager
-      ? branchRankList.map(x=>({key:x.key, label:x.label, value:x.m.g_tp_rate!=null?x.m.g_tp_yoy:x.m.g_tp_yoy}))
-      : managerRankList.map(x=>({key:x.key, label:x.label, value:x.agg.g_tp_yoy}));
-    const rankStripSelectedKey = selBranch || selManager || null;
-    const rankStripTitle = selManager ? `${selManager} 소속 지점 신장률 비교` : '관리자별 총판 신장률 비교';
 
     const kpiCards = `
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
         <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
-          <div class="stat-sub">총판 ${selManager && !selBranch ? moBadgeRank(managerRank, managers.length) : (selBranch ? moBadgeRank(branchRank, branchRankScopeRows.length) : '')}</div>
+          <div class="stat-sub">총판 ${moBadgeRank(rankTotal, rankTotalOf)}</div>
           <div style="font-size:19px;font-weight:800;">${moFmt(agg.g_tp_cur)}</div>
-          <div class="stat-sub" style="margin-top:2px;">전년비 ${moYoy(agg.g_tp_yoy)} · 달성률 ${moPct(agg.g_tp_rate)}</div>
+          <div class="stat-sub" style="margin-top:2px;">전년비 ${moYoy(agg.g_tp_yoy)}</div>
         </div>
         <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
-          <div class="stat-sub">구독 실판</div>
+          <div class="stat-sub">구독 실판 ${moBadgeRank(rankSub, rankTotalOf)}</div>
           <div style="font-size:19px;font-weight:800;">${moFmt(agg.s_sp_cur)}</div>
           <div class="stat-sub" style="margin-top:2px;">${Math.round(agg.s_sp_qty||0).toLocaleString('ko-KR')}건 · 비중 ${moPct(agg.s_sp_ratio)}</div>
         </div>
         <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
-          <div class="stat-sub">고수익 비중(실판)</div>
+          <div class="stat-sub">고수익 비중(실판) ${moBadgeRank(rankHigh, rankTotalOf)}</div>
           <div style="font-size:19px;font-weight:800;">${moPct(agg.h_sp_highRatio)}</div>
           <div class="stat-sub" style="margin-top:2px;">경북팀 평균 대비 ${moGap(agg.h_sp_highRatio - teamAgg.h_sp_highRatio)}</div>
         </div>
         <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
-          <div class="stat-sub">목표 달성률</div>
+          <div class="stat-sub">목표 달성률 ${moBadgeRank(rankRate, rankTotalOf)}</div>
           <div style="font-size:19px;font-weight:800;color:var(--primary);">${moPct(agg.g_tp_rate)} ${pctBadge(agg.g_tp_rate||0)}</div>
           <div class="progress-bar" style="margin-top:4px;"><div style="width:${Math.min(agg.g_tp_rate||0,100)}%"></div></div>
         </div>
       </div>`;
+
+    // 신장률 비교 — 선택 대상 vs 평균(들)을 값 그대로 막대로 보여준다(Chart.js가 알아서 보기 좋은 눈금을 잡아줌)
+    let compareHtml = '';
+    if(selBranch){
+      const labels = ['경북팀 전체 평균', ...(managerAgg?[`${selManager} 관리자 평균`]:[]), scopeLabel];
+      const values = [teamAgg.g_tp_yoy, ...(managerAgg?[managerAgg.g_tp_yoy]:[]), agg.g_tp_yoy];
+      compareHtml = `<div class="card" style="margin-top:16px;">
+        <h3>📐 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
+        <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
+      </div>`;
+      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1));
+    } else if(selManager){
+      const labels = ['경북팀 전체 평균', scopeLabel];
+      const values = [teamAgg.g_tp_yoy, agg.g_tp_yoy];
+      compareHtml = `<div class="card" style="margin-top:16px;">
+        <h3>📐 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
+        <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
+      </div>`;
+      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1));
+    }
+
+    // 지점별 한눈에 보기 그리드 — 지점을 하나씩 눌러보지 않아도 전체 상태를 카드로 동시에 파악
+    const branchGridHtml = !selBranch ? `<div class="card" style="margin-top:16px;">
+        <h3>🏬 지점별 한눈에 보기 <small>${selManager?escapeHtml(selManager)+' 소속 '+branchesInScope.length+'개 지점':'전체 '+branchesInScope.length+'개 지점'} · 카드를 클릭하면 해당 지점 상세로 이동</small></h3>
+        ${moBranchGridHtml(branchesInScope, !selManager)}
+      </div>` : '';
+
+    // 순위 차트: 관리자 선택/지점 선택에 따라 "관리자별" 또는 "소속 지점별" 신장률·달성률 순위를 각각 막대 차트로
+    const yoyRankScope = selManager ? branchListRaw : managerListRaw;
+    const yoyRankSortedByYoy = yoyRankScope.slice().sort((a,b)=>{
+      const av = selManager? a.m.g_tp_yoy : a.agg.g_tp_yoy, bv = selManager? b.m.g_tp_yoy : b.agg.g_tp_yoy;
+      return (bv==null?-Infinity:bv)-(av==null?-Infinity:av);
+    });
+    const yoyRankLabels = yoyRankSortedByYoy.map(x=>x.label);
+    const yoyRankValues = yoyRankSortedByYoy.map(x=> selManager ? x.m.g_tp_yoy : x.agg.g_tp_yoy);
+    const yoyHighlightIdx = yoyRankSortedByYoy.findIndex(x=>x.key===(selBranch||selManager));
+    const yoyRankTitle = selManager ? `${selManager} 소속 지점 총판 신장률 순위` : '관리자별 총판 신장률 순위';
+
+    const rateRankScope = selManager ? branchRankList : managerRankList;
+    const rateRankLabels = rateRankScope.map(x=>x.label);
+    const rateRankValues = rateRankScope.map(x=> selManager ? x.m.g_tp_rate : x.agg.g_tp_rate);
+    const rateHighlightIdx = rateRankScope.findIndex(x=>x.key===(selBranch||selManager));
+    const rateRankTitle = selManager ? `${selManager} 소속 지점 총판 달성률 순위` : '관리자별 총판 달성률 순위';
 
     bodyHtml = `
       <div class="card" style="border-left:4px solid var(--primary);">
@@ -5207,46 +5286,32 @@ function renderMetricsOverview(){
         ${moChipsHtml(chips)}
         ${kpiCards}
       </div>
-      ${compareRowsHtml ? `<div class="card" style="margin-top:16px;"><h3>📐 신장률 비교</h3>${compareRowsHtml}</div>` : ''}
+      ${compareHtml}
+      ${branchGridHtml}
       <div class="card" style="margin-top:16px;">
-        <h3>🏆 ${rankStripTitle}</h3>
-        ${moRankStrip(rankStripItems, rankStripSelectedKey, range)}
+        <h3>📈 ${yoyRankTitle} <small>전년 동기 대비, 단위 %</small></h3>
+        <div style="position:relative;height:${Math.max(160, yoyRankLabels.length*36)}px;"><canvas id="moYoyRankChart"></canvas></div>
       </div>
       <div class="card" style="margin-top:16px;">
-        <h3>📊 관리자별 GROSS 총판 달성률 순위</h3>
-        <div style="position:relative;height:${Math.max(160, managerRankList.length*38)}px;"><canvas id="moRankChart"></canvas></div>
+        <h3>🎯 ${rateRankTitle} <small>단위 %</small></h3>
+        <div style="position:relative;height:${Math.max(160, rateRankLabels.length*36)}px;"><canvas id="moRateRankChart"></canvas></div>
       </div>`;
-    setTimeout(()=>{
-      const ctx = document.getElementById('moRankChart');
-      if(ctx){
-        if(metricsOverviewRankChartInstance) metricsOverviewRankChartInstance.destroy();
-        metricsOverviewRankChartInstance = new Chart(ctx, {
-          type:'bar',
-          data:{
-            labels: managerRankList.map(d=>d.label),
-            datasets:[{ label:'총판 달성률(%)', data: managerRankList.map(d=>Math.round((d.agg.g_tp_rate||0)*10)/10),
-              backgroundColor: managerRankList.map(d=>d.key===selManager?'#A50034':'#d7b6c2') }]
-          },
-          options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-            plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>`${c.parsed.x}%`}} },
-            scales:{ x:{ ticks:{ callback:(v)=>v+'%' } } } }
-        });
-      }
-    }, 0);
+    moRenderChart('moYoyRankChart', moYoyBarConfig(yoyRankLabels, yoyRankValues, yoyHighlightIdx));
+    moRenderChart('moRateRankChart', moYoyBarConfig(rateRankLabels, rateRankValues, rateHighlightIdx));
   } else if(tab==='gross'){
     const scopeRows = selBranch ? rowsForAgg : branchesInScope;
-    const rankMap = {}; branchRankList.forEach((x,i)=>{ rankMap[x.key]=i+1; });
+    const gTpCurRankMap = {}; branchListRaw.slice().sort((a,b)=>(b.m.g_tp_cur||0)-(a.m.g_tp_cur||0)).forEach((x,i)=>{ gTpCurRankMap[x.key]=i+1; });
+    const gTpRateRankMap = {}; branchRankList.forEach((x,i)=>{ gTpRateRankMap[x.key]=i+1; });
     const trs = scopeRows.map(r=>{
       const m = r.m;
-      const rk = selManager ? rankMap[r.branchId] : null;
       return `<tr>
-        <td>${escapeHtml(r.branchName)} ${rk?moBadgeRank(rk, scopeRows.length):''}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
+        <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
         <td>${moFmt(m.g_target)}</td>
-        <td>${moFmt(m.g_tp_cur)}</td><td>${moFmt(m.g_tp_lySame)}</td><td>${moYoy(m.g_tp_yoy)}</td><td>${moPct(m.g_tp_rate)} ${pctBadge(m.g_tp_rate||0)}</td>
+        <td>${moFmt(m.g_tp_cur)} ${moBadgeRank(gTpCurRankMap[r.branchId], branchListRaw.length)}</td><td>${moFmt(m.g_tp_lySame)}</td><td>${moYoy(m.g_tp_yoy)}</td><td>${moPct(m.g_tp_rate)} ${moBadgeRank(gTpRateRankMap[r.branchId], branchListRaw.length)}</td>
         <td>${moFmt(m.g_sp_cur)}</td><td>${moFmt(m.g_sp_lySame)}</td><td>${moYoy(m.g_sp_yoy)}</td><td>${moPct(m.g_sp_rate)} ${pctBadge(m.g_sp_rate||0)}</td>
       </tr>`;
     }).join('');
-    const chartRows = (selBranch ? branchRankList : branchRankList).slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
+    const chartRows = branchListRaw.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
     bodyHtml = `
       <div class="card">
         <h3>📊 GROSS 판매 현황 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
@@ -5272,28 +5337,16 @@ function renderMetricsOverview(){
         <h3>지점별 총판 달성률 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 14개 지점'}</small></h3>
         <div style="position:relative;height:${Math.max(160, chartRows.length*32)}px;"><canvas id="moGrossBranchChart"></canvas></div>
       </div>`;
-    setTimeout(()=>{
-      const ctx = document.getElementById('moGrossBranchChart');
-      if(ctx){
-        if(metricsOverviewBranchRankChartInstance) metricsOverviewBranchRankChartInstance.destroy();
-        metricsOverviewBranchRankChartInstance = new Chart(ctx, {
-          type:'bar',
-          data:{ labels: chartRows.map(d=>d.label), datasets:[{ label:'총판 달성률(%)', data: chartRows.map(d=>Math.round((d.m.g_tp_rate||0)*10)/10),
-            backgroundColor: chartRows.map(d=>d.key===selBranch?'#A50034':'#d7b6c2') }] },
-          options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-            plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>`${c.parsed.x}%`}} },
-            scales:{ x:{ ticks:{ callback:(v)=>v+'%' } } } }
-        });
-      }
-    }, 0);
+    moRenderChart('moGrossBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.m.g_tp_rate), chartRows.findIndex(d=>d.key===selBranch), '%'));
   } else if(tab==='sub'){
+    const sSpCurRankMap = {}; branchListRaw.slice().sort((a,b)=>(b.m.s_sp_cur||0)-(a.m.s_sp_cur||0)).forEach((x,i)=>{ sSpCurRankMap[x.key]=i+1; });
     const trs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
       const m = r.m;
       return `<tr>
         <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
         <td>${moFmt(m.s_target)}</td>
         <td>${moFmt(m.s_tp_cur)}</td><td>${moPct(m.s_tp_rate)} ${pctBadge(m.s_tp_rate||0)}</td>
-        <td>${moFmt(m.s_sp_cur)}</td><td>${moPct(m.s_sp_rate)} ${pctBadge(m.s_sp_rate||0)}</td>
+        <td>${moFmt(m.s_sp_cur)} ${moBadgeRank(sSpCurRankMap[r.branchId], branchListRaw.length)}</td><td>${moPct(m.s_sp_rate)} ${pctBadge(m.s_sp_rate||0)}</td>
         <td>${moPct(m.s_sp_ratio)}</td><td>${m.s_sp_qty!=null?Math.round(m.s_sp_qty).toLocaleString('ko-KR'):'-'}건</td>
       </tr>`;
     }).join('');
@@ -5320,21 +5373,9 @@ function renderMetricsOverview(){
         <h3>지점별 구독 실판 달성률 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 14개 지점'}</small></h3>
         <div style="position:relative;height:${Math.max(160, chartRows.length*32)}px;"><canvas id="moSubBranchChart"></canvas></div>
       </div>`;
-    setTimeout(()=>{
-      const ctx = document.getElementById('moSubBranchChart');
-      if(ctx){
-        if(metricsOverviewBranchRankChartInstance) metricsOverviewBranchRankChartInstance.destroy();
-        metricsOverviewBranchRankChartInstance = new Chart(ctx, {
-          type:'bar',
-          data:{ labels: chartRows.map(d=>d.label), datasets:[{ label:'구독 실판 달성률(%)', data: chartRows.map(d=>Math.round((d.v||0)*10)/10),
-            backgroundColor: chartRows.map(d=>d.key===selBranch?'#A50034':'#c9d6ec') }] },
-          options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-            plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>`${c.parsed.x}%`}} },
-            scales:{ x:{ ticks:{ callback:(v)=>v+'%' } } } }
-        });
-      }
-    }, 0);
+    moRenderChart('moSubBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%'));
   } else if(tab==='high'){
+    const hRatioRankMap = {}; branchListRaw.slice().sort((a,b)=>(b.m.h_sp_highRatio||0)-(a.m.h_sp_highRatio||0)).forEach((x,i)=>{ hRatioRankMap[x.key]=i+1; });
     const trs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
       const m = r.m;
       return `<tr>
@@ -5344,7 +5385,7 @@ function renderMetricsOverview(){
         <td>${moPct(m.h_tp_highRatio)}</td>
         <td>${m.h_sp_pool!=null?Math.round(m.h_sp_pool).toLocaleString('ko-KR'):'-'}대</td>
         <td>${m.h_sp_high!=null?Math.round(m.h_sp_high).toLocaleString('ko-KR'):'-'}대</td>
-        <td>${moPct(m.h_sp_highRatio)}</td>
+        <td>${moPct(m.h_sp_highRatio)} ${moBadgeRank(hRatioRankMap[r.branchId], branchListRaw.length)}</td>
       </tr>`;
     }).join('');
     const chartRows = branchRankScopeRows.map(r=>({key:r.branchId,label:r.branchName,v:r.m.h_sp_highRatio})).sort((a,b)=>(b.v||0)-(a.v||0));
@@ -5370,20 +5411,7 @@ function renderMetricsOverview(){
         <h3>지점별 고수익 실판 비중 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 14개 지점'}</small></h3>
         <div style="position:relative;height:${Math.max(160, chartRows.length*32)}px;"><canvas id="moHighBranchChart"></canvas></div>
       </div>`;
-    setTimeout(()=>{
-      const ctx = document.getElementById('moHighBranchChart');
-      if(ctx){
-        if(metricsOverviewBranchRankChartInstance) metricsOverviewBranchRankChartInstance.destroy();
-        metricsOverviewBranchRankChartInstance = new Chart(ctx, {
-          type:'bar',
-          data:{ labels: chartRows.map(d=>d.label), datasets:[{ label:'고수익 실판 비중(%)', data: chartRows.map(d=>Math.round((d.v||0)*10)/10),
-            backgroundColor: chartRows.map(d=>d.key===selBranch?'#A50034':'#f2d9c9') }] },
-          options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
-            plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>`${c.parsed.x}%`}} },
-            scales:{ x:{ ticks:{ callback:(v)=>v+'%' } } } }
-        });
-      }
-    }, 0);
+    moRenderChart('moHighBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%'));
   }
 
   return `
