@@ -8290,6 +8290,27 @@ function saveEditBestPractice(id){
 /* =========================================================================
    9e1b. RENDER: 이슈제품 판매 성공 사례 (게시판) — 우수 활동 사례 공유와 동일한 양식
    ========================================================================= */
+// 성공 사례 등록 시 함께 입력받는 구조화 데이터(제품명/성공 유형/핵심 소구 포인트/고객 반응) —
+// 자유 서술형 "활동 내용"과 별도로 이 필드들을 모아두면 페이지 상단 누적 분석 대시보드에서
+// 제품별로 어떤 소구 방식이 잘 통했는지 집계·조회할 수 있다.
+const ISSUE_CASE_SUCCESS_TYPES = ['가격/프로모션 소구','성능/기능 시연','경쟁사 대비 강점 설명','사용후기/체험 공유','결합상품/사은품 제안','고객 니즈 맞춤 상담','기타'];
+const ISSUE_CASE_SENTIMENTS = ['매우 긍정','긍정','보통','부정'];
+function issueCaseSuccessTypeOptionsHtml(selected){
+  return `<option value="">선택 안 함</option>` + ISSUE_CASE_SUCCESS_TYPES.map(t=>`<option value="${t}" ${t===selected?'selected':''}>${t}</option>`).join('');
+}
+function issueCaseSentimentOptionsHtml(selected){
+  return `<option value="">선택 안 함</option>` + ISSUE_CASE_SENTIMENTS.map(t=>`<option value="${t}" ${t===selected?'selected':''}>${t}</option>`).join('');
+}
+// 지금까지 등록된 사례에서 실제 쓰인 제품명을 모아 datalist로 제공 — 매번 새로 타이핑하지 않고
+// 기존 표기를 재사용하게 유도해서("TV" vs "티비" 같은 표기 분산을 줄여) 집계가 더 정확해지도록 한다.
+function issueCaseProductOptionsHtml(){
+  const names = [...new Set((DB.issueCases||[]).map(p=>p.productName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+  return names.map(n=>`<option value="${escapeHtml(n)}"></option>`).join('');
+}
+// "가격 할인, 에너지 효율" 처럼 쉼표/가운뎃점/슬래시로 구분해 입력한 소구 포인트를 개별 태그로 분리
+function issueCaseSplitTags(text){
+  return String(text||'').split(/[,·、\/]|\s{2,}|(?:\s+및\s+)/).map(s=>s.trim()).filter(Boolean);
+}
 // 이슈제품 판매 성공 사례는 우수 활동 사례 공유와 달리 관리자만 작성/수정/삭제할 수 있다 (요청에 따라 제한).
 function canEditIssueCase(p){
   return !!(p && SESSION.role==='admin');
@@ -8313,6 +8334,116 @@ function toggleIssueCaseLike(id){
   saveDB();
   renderTab('issueCase');
 }
+// 제품별로 성공 유형/핵심 소구 포인트/고객 반응을 누적 집계 — 등록된 사례가 쌓일수록 이 집계표가
+// 계속 갱신되어, 어떤 제품에 어떤 소구 방식이 잘 통했는지 한눈에 파악할 수 있다.
+function issueCaseAggregate(){
+  const byProduct = {};
+  (DB.issueCases||[]).forEach(p=>{
+    if(!(p.productName || p.successType || p.sellingPoint || p.customerReaction)) return;
+    const key = p.productName || '(제품 미입력)';
+    if(!byProduct[key]) byProduct[key] = { product:key, count:0, successTypes:{}, tags:{}, sentiments:{}, reactions:[] };
+    const b = byProduct[key];
+    b.count++;
+    if(p.successType) b.successTypes[p.successType] = (b.successTypes[p.successType]||0)+1;
+    issueCaseSplitTags(p.sellingPoint).forEach(t=>{ b.tags[t] = (b.tags[t]||0)+1; });
+    if(p.customerSentiment) b.sentiments[p.customerSentiment] = (b.sentiments[p.customerSentiment]||0)+1;
+    if(p.customerReaction) b.reactions.push({ text:p.customerReaction, date:p.activityDate, branch:bpBranchDisplayName(p.branchId) });
+  });
+  return byProduct;
+}
+function setIcDashProduct(name){
+  state.icDashProduct = name || null;
+  renderTab('issueCase');
+}
+function icCountBarConfig(labels, values, color){
+  return {
+    type:'bar',
+    data:{ labels, datasets:[{ data: values, backgroundColor: color||'#A50034' }] },
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>c.parsed.x+'건'}} },
+      scales:{ x:{ ticks:{ precision:0 } } } }
+  };
+}
+// 페이지 최상단에 계속 노출되는 누적 분석 대시보드 — 사례를 등록할 때 입력한 제품명/성공 유형/
+// 핵심 소구 포인트/고객 반응을 제품별로 모아 보여준다. 자유 서술형 "활동 내용"은 집계 대상이
+// 아니며, 이 별도 구조화 필드들만 집계 대상이다(자유 텍스트를 실시간으로 AI가 분석하는 기능은
+// 이 사이트에 연결된 백엔드/AI API가 없어 지원하지 않음 — 등록 시점에 구조화된 값을 입력받아
+// 누적하는 방식으로 동일한 목적을 달성한다).
+function renderIssueCaseDashboard(){
+  const cases = DB.issueCases || [];
+  const byProduct = issueCaseAggregate();
+  const products = Object.values(byProduct).sort((a,b)=>b.count-a.count);
+  if(products.length===0){
+    return `<div class="card" style="margin-bottom:16px;">
+      <h3>📊 이슈제품 성공사례 분석</h3>
+      <div class="muted">사례 등록 시 제품명·성공 유형·핵심 소구 포인트·고객 반응을 함께 입력하면 이곳에 제품별로 자동 누적 집계됩니다.</div>
+    </div>`;
+  }
+  const selProduct = state.icDashProduct && byProduct[state.icDashProduct] ? state.icDashProduct : null;
+  const productPills = `<span class="branch-pill ${!selProduct?'active':''}" onclick="setIcDashProduct(null)">전체</span>` +
+    products.map(p=>`<span class="branch-pill ${p.product===selProduct?'active':''}" onclick="setIcDashProduct('${escapeHtml(p.product)}')">${escapeHtml(p.product)} (${p.count})</span>`).join('');
+
+  let bodyHtml;
+  if(!selProduct){
+    const successTally = {}, sentimentTally = {};
+    products.forEach(p=>{
+      Object.entries(p.successTypes).forEach(([t,c])=>{ successTally[t]=(successTally[t]||0)+c; });
+      Object.entries(p.sentiments).forEach(([s,c])=>{ sentimentTally[s]=(sentimentTally[s]||0)+c; });
+    });
+    const successEntries = Object.entries(successTally).sort((a,b)=>b[1]-a[1]);
+    const sentimentEntries = Object.entries(sentimentTally).sort((a,b)=>b[1]-a[1]);
+    bodyHtml = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
+        <div style="flex:1;min-width:260px;">
+          <div class="stat-sub" style="margin-bottom:6px;">제품별 등록 건수</div>
+          <div style="position:relative;height:${Math.max(140, products.length*30)}px;"><canvas id="icProductChart"></canvas></div>
+        </div>
+        <div style="flex:1;min-width:260px;">
+          <div class="stat-sub" style="margin-bottom:6px;">전체 성공 유형 분포</div>
+          ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(140, successEntries.length*30)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <div class="stat-sub" style="margin-bottom:6px;">전체 고객 반응 분포</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${sentimentEntries.map(([s,c])=>`<span class="badge" style="background:#eef1f4;color:#333;">${s} ${c}건</span>`).join('') || '<span class="muted">데이터 없음</span>'}
+        </div>
+      </div>`;
+    moRenderChart('icProductChart', icCountBarConfig(products.map(p=>p.product), products.map(p=>p.count)));
+    if(successEntries.length>0) moRenderChart('icSuccessTypeChart', icCountBarConfig(successEntries.map(e=>e[0]), successEntries.map(e=>e[1]), '#4a7fd6'));
+  } else {
+    const b = byProduct[selProduct];
+    const successEntries = Object.entries(b.successTypes).sort((a,c)=>c[1]-a[1]);
+    const tagEntries = Object.entries(b.tags).sort((a,c)=>c[1]-a[1]).slice(0,15);
+    const sentimentEntries = Object.entries(b.sentiments).sort((a,c)=>c[1]-a[1]);
+    const recentReactions = b.reactions.slice().sort((x,y)=>(y.date||'').localeCompare(x.date||'')).slice(0,6);
+    bodyHtml = `
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
+        <div style="flex:1;min-width:220px;">
+          <div class="stat-sub" style="margin-bottom:6px;">성공 유형 <small>${escapeHtml(selProduct)} · 총 ${b.count}건</small></div>
+          ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(120, successEntries.length*30)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
+        </div>
+        <div style="flex:1;min-width:220px;">
+          <div class="stat-sub" style="margin-bottom:6px;">핵심 소구 포인트 <small>자주 언급된 순</small></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${tagEntries.map(([t,c])=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+        ${sentimentEntries.map(([s,c])=>`<span class="badge" style="background:#eef1f4;color:#333;">${s} ${c}건</span>`).join('') || '<span class="muted">고객 반응 데이터 없음</span>'}
+      </div>
+      <div style="margin-top:10px;">
+        <div class="stat-sub" style="margin-bottom:6px;">최근 고객 반응</div>
+        ${recentReactions.map(r=>`<div style="font-size:12.5px;padding:6px 0;border-bottom:1px solid #f1f2f4;">💬 ${escapeHtml(r.text)} <span class="muted">· ${r.branch||''} · ${r.date||''}</span></div>`).join('') || '<div class="muted">등록된 고객 반응이 없습니다.</div>'}
+      </div>`;
+    if(successEntries.length>0) moRenderChart('icSuccessTypeChart', icCountBarConfig(successEntries.map(e=>e[0]), successEntries.map(e=>e[1]), '#4a7fd6'));
+  }
+  return `<div class="card" style="margin-bottom:16px;">
+    <h3>📊 이슈제품 성공사례 분석 <small>등록된 사례 ${cases.length}건 · 제품 ${products.length}종 누적</small></h3>
+    <div style="margin-top:10px;">${productPills}</div>
+    ${bodyHtml}
+  </div>`;
+}
+
 function renderIssueCase(){
   const isAdmin = SESSION.role==='admin';
   const myBranch = SESSION.branchId || DB.branches[0].id;
@@ -8367,6 +8498,31 @@ function renderIssueCase(){
             <textarea id="ice_${p.id}_result" rows="2" style="width:100%;" placeholder="n건 판매/n명 가망고객 확보 등 결과치 작성">${escapeHtml(p.activityResult||'')}</textarea>
           </div>
         </div>
+        <div class="form-row" style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:12px 14px;margin-top:4px;">
+          <div class="field" style="min-width:160px;">
+            <label>제품명</label>
+            <input id="ice_${p.id}_product" list="ice_${p.id}_productList" style="width:100%" value="${escapeHtml(p.productName||'')}">
+            <datalist id="ice_${p.id}_productList">${issueCaseProductOptionsHtml()}</datalist>
+          </div>
+          <div class="field" style="min-width:200px;">
+            <label>성공 유형</label>
+            <select id="ice_${p.id}_successType" style="width:100%">${issueCaseSuccessTypeOptionsHtml(p.successType)}</select>
+          </div>
+          <div class="field" style="flex:1;min-width:220px;">
+            <label>핵심 소구 포인트</label>
+            <input id="ice_${p.id}_sellingPoint" style="width:100%" value="${escapeHtml(p.sellingPoint||'')}" placeholder="쉼표(,)로 구분해 여러 개 입력 가능">
+          </div>
+        </div>
+        <div class="form-row" style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:12px 14px;">
+          <div class="field" style="min-width:160px;">
+            <label>고객 반응</label>
+            <select id="ice_${p.id}_sentiment" style="width:100%">${issueCaseSentimentOptionsHtml(p.customerSentiment)}</select>
+          </div>
+          <div class="field" style="flex:1;min-width:260px;">
+            <label>고객 반응 상세</label>
+            <input id="ice_${p.id}_reaction" style="width:100%" value="${escapeHtml(p.customerReaction||'')}">
+          </div>
+        </div>
         ${editAttachmentsHtml ? `<div style="margin-bottom:8px;"><label>기존 첨부 파일 (× 클릭 시 즉시 삭제)</label><br>${editAttachmentsHtml}</div>` : ''}
         <div class="form-row">
           <div class="field">
@@ -8401,6 +8557,15 @@ function renderIssueCase(){
         ${expandedIc ? `
         <div style="line-height:1.7;margin:10px 0 0;font-size:13.5px;">${richContentHtml(p.content)}</div>
         ${p.activityResult ? `<div style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
+        ${(p.productName || p.successType || p.sellingPoint || p.customerReaction) ? `
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+          ${p.productName ? `<span class="badge" style="background:#eef1f4;color:#333;">📦 ${escapeHtml(p.productName)}</span>` : ''}
+          ${p.successType ? `<span class="badge" style="background:#eef1f4;color:#333;">${escapeHtml(p.successType)}</span>` : ''}
+          ${p.customerSentiment ? `<span class="badge" style="background:#eef1f4;color:#333;">고객반응 ${escapeHtml(p.customerSentiment)}</span>` : ''}
+          ${issueCaseSplitTags(p.sellingPoint).map(t=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)}</span>`).join('')}
+        </div>
+        ${p.customerReaction ? `<div class="muted" style="font-size:12.5px;margin-top:6px;">💬 ${escapeHtml(p.customerReaction)}</div>` : ''}
+        ` : ''}
         ${attachmentsHtml ? `<div class="attach-gallery">${attachmentsHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
           <button class="btn btn-sm ${iLikedIc?'like-btn-active':''}" onclick="event.stopPropagation();toggleIssueCaseLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedByIc.length>0?` ${likedByIc.length}`:''}</button>
@@ -8452,6 +8617,32 @@ function renderIssueCase(){
           <div class="small-note">※ n건 판매/n명 가망고객 확보 등 결과치 작성</div>
         </div>
       </div>
+      <div class="form-row" style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:12px 14px;margin-top:4px;">
+        <div class="field" style="min-width:160px;">
+          <label>제품명</label>
+          <input id="icProduct" list="icProductList" style="width:100%" placeholder="예: 트롬 세탁기">
+          <datalist id="icProductList">${issueCaseProductOptionsHtml()}</datalist>
+        </div>
+        <div class="field" style="min-width:200px;">
+          <label>성공 유형</label>
+          <select id="icSuccessType" style="width:100%">${issueCaseSuccessTypeOptionsHtml()}</select>
+        </div>
+        <div class="field" style="flex:1;min-width:220px;">
+          <label>핵심 소구 포인트</label>
+          <input id="icSellingPoint" style="width:100%" placeholder="쉼표(,)로 구분해 여러 개 입력 가능. 예: 가격 할인, 에너지 효율">
+        </div>
+      </div>
+      <div class="form-row" style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:12px 14px;">
+        <div class="field" style="min-width:160px;">
+          <label>고객 반응</label>
+          <select id="icSentiment" style="width:100%">${issueCaseSentimentOptionsHtml()}</select>
+        </div>
+        <div class="field" style="flex:1;min-width:260px;">
+          <label>고객 반응 상세</label>
+          <input id="icReaction" style="width:100%" placeholder="예: 가격 부담을 덜었다며 즉시 구매 결정">
+        </div>
+      </div>
+      <div class="small-note" style="margin-top:-8px;margin-bottom:8px;">※ 제품명/성공 유형/소구 포인트/고객 반응은 상단 "이슈제품 성공사례 분석" 대시보드에 자동으로 누적 집계됩니다.</div>
       <div class="form-row">
         <div class="field">
           <label>첨부파일 (사진/PPT/엑셀 등 여러 개 선택 가능)</label>
@@ -8467,6 +8658,8 @@ function renderIssueCase(){
       <div style="font-weight:800;font-size:16px;">💡 이슈제품 판매 노하우/성공사례 등을 공유해주세요</div>
     </div>
     <div class="page-desc">이슈제품을 성공적으로 판매한 사례를 자유롭게 공유해 주세요.${isAdmin ? '' : ' (등록/수정/삭제는 관리자만 가능합니다)'}</div>
+
+    ${renderIssueCaseDashboard()}
 
     ${newEntryFormHtml}
 
@@ -8494,6 +8687,11 @@ function submitIssueCase(){
   const title = document.getElementById('icTitle').value.trim();
   const content = richEditorValue('icContent');
   const activityResult = document.getElementById('icResult').value.trim();
+  const productName = document.getElementById('icProduct').value.trim();
+  const successType = document.getElementById('icSuccessType').value || null;
+  const sellingPoint = document.getElementById('icSellingPoint').value.trim();
+  const customerSentiment = document.getElementById('icSentiment').value || null;
+  const customerReaction = document.getElementById('icReaction').value.trim();
   const fileInput = document.getElementById('icFiles');
   if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
 
@@ -8502,6 +8700,8 @@ function submitIssueCase(){
     DB.issueCases.push({
       id: 'ic_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       branchId, managerEmpId, managerName, activityDate, title: title||null, content, activityResult, attachments,
+      productName: productName||null, successType, sellingPoint: sellingPoint||null,
+      customerSentiment, customerReaction: customerReaction||null,
       authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString()
     });
     touchTabContent('issueCase');
@@ -8546,6 +8746,11 @@ function saveEditIssueCase(id){
   const title = document.getElementById(`ice_${id}_title`).value.trim();
   const content = richEditorValue(`ice_${id}_content`);
   const activityResult = document.getElementById(`ice_${id}_result`).value.trim();
+  const productName = document.getElementById(`ice_${id}_product`).value.trim();
+  const successType = document.getElementById(`ice_${id}_successType`).value || null;
+  const sellingPoint = document.getElementById(`ice_${id}_sellingPoint`).value.trim();
+  const customerSentiment = document.getElementById(`ice_${id}_sentiment`).value || null;
+  const customerReaction = document.getElementById(`ice_${id}_reaction`).value.trim();
   const fileInput = document.getElementById(`ice_${id}_files`);
   if(!content){ alert('활동 내용을 입력해 주세요.'); return; }
 
@@ -8553,6 +8758,8 @@ function saveEditIssueCase(id){
   function finalize(newAttachments){
     p.branchId = branchId; p.managerEmpId = managerEmpId; p.managerName = managerName;
     p.activityDate = activityDate; p.title = title||null; p.content = content; p.activityResult = activityResult;
+    p.productName = productName||null; p.successType = successType; p.sellingPoint = sellingPoint||null;
+    p.customerSentiment = customerSentiment; p.customerReaction = customerReaction||null;
     if(newAttachments && newAttachments.length>0){
       p.attachments = (p.attachments||[]).concat(newAttachments);
     }
