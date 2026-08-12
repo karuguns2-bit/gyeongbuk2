@@ -872,6 +872,7 @@ function migrateDB(){
   });
   if(!DB.notices) DB.notices = [];
   DB.notices.forEach(n=>{ if(!n.attachments) n.attachments = []; });
+  if(!DB.noticeReads) DB.noticeReads = {};
   if(!DB.infoReports) DB.infoReports = [];
   DB.infoReports.forEach(r=>{ if(!r.attachments) r.attachments = []; });
   if(!DB.execPhotos) DB.execPhotos = [];
@@ -1577,6 +1578,24 @@ function aiFeedbackForEmployee(branchId, empId, name, period){
       }
     }
   }
+  // 주간 속도(모멘텀): 주차별 목표관리 누적 실적(DB.goalsWeeklyActuals)이 2개 주차 이상 쌓여 있으면
+  // 최근 두 주차 달성률을 비교해 가속/둔화 여부를 알려준다. 일별 실적 이력은 스냅샷 방식이라
+  // 보존되지 않으므로(latestSalesRowsPerMonth 참고), 이 주차별 누적 데이터가 유일하게 신뢰 가능한
+  // 추세 판단 근거다.
+  const momentumLine = weeklyMomentumLine(target, goalsWeeklyActualsFor(branchId, empId, period));
+  if(momentumLine) lines.push(momentumLine);
+  // 구독 목표/실적 교차 참고 (GROSS 목표와 별도로 배분된 구독 목표가 있는 경우에만 표시)
+  const empAlloc = g && g.allocations && g.allocations.find(a=>a.empId===empId);
+  if(empAlloc && (empAlloc.subAmtTarget||0) > 0){
+    const subActual = empSubscriptionActual(branchId, empId, period);
+    const subPct = pctOf(subActual.amt, empAlloc.subAmtTarget);
+    lines.push(`구독 목표 대비 실적: <b>${subPct.toFixed(1)}%</b> (목표 ${roundKK1(empAlloc.subAmtTarget)}KK / 실적 ${roundKK1(subActual.amt)}KK).`);
+  }
+  // 이슈제품 판매 우수 사례 등록 현황 교차 참고
+  const empCases = (DB.issueCases||[]).filter(p=>p.managerEmpId===empId && String(p.activityDate||'').slice(0,7)===period);
+  if(empCases.length>0){
+    lines.push(`이번 달 이슈제품 판매 우수 사례 <b>${empCases.length}건</b> 등록 — 성공 노하우 공유를 계속 이어가 주세요.`);
+  }
   return lines;
 }
 
@@ -1635,6 +1654,36 @@ function aiFeedbackForBranch(branchId, period){
   if(att){
     const absent = att.records.filter(r=>r.status==='휴가').length;
     if(absent>0) lines.push(`오늘 휴가자 ${absent}명 — 근무 인원 감소로 목표 페이스 관리에 유의하세요.`);
+  }
+  // 주간 속도(모멘텀): 지점 소속 전 직원의 주차별 누적 실적을 합산해 최근 두 주차 달성률을 비교한다.
+  const momentumLine = weeklyMomentumLine(target, branchWeeklyActualsCum(branchId, period));
+  if(momentumLine) lines.push(momentumLine);
+  // 구독 목표/실적 교차 참고 (지점 전체 배분 목표 기준)
+  if((g.subAmtTarget||0) > 0){
+    const subAchievedTotal = (g.allocations||[]).reduce((s,a)=>s+empSubscriptionActual(branchId,a.empId,period).amt,0);
+    const subPct = pctOf(subAchievedTotal, g.subAmtTarget);
+    lines.push(`구독 목표 대비 지점 실적: <b>${subPct.toFixed(1)}%</b> (목표 ${roundKK1(g.subAmtTarget)}KK / 실적 ${roundKK1(subAchievedTotal)}KK).`);
+  }
+  // 시장 경쟁력(MSIS 경쟁력) 교차 참고 - 목표관리 파일 업로드 시 함께 반영되는 지점별 LG/경쟁사 매출 비교
+  const compData = competitivenessDataForPeriod(period);
+  const compBranch = compData && compData.competitiveness && compData.competitiveness[branchId];
+  if(compBranch && compBranch.msPct!=null){
+    const gapWon = compBranch.gapWon||0;
+    if(gapWon < 0){
+      lines.push(`시장 경쟁력: MS <b>${compBranch.msPct}%</b> — 경쟁사 대비 ${fmtWon(Math.abs(gapWon))} 열위입니다. 경쟁 열위 카테고리 집중 소구가 필요합니다.`);
+    } else {
+      lines.push(`시장 경쟁력: MS <b>${compBranch.msPct}%</b> — 경쟁사 대비 ${fmtWon(gapWon)} 우위를 유지하고 있습니다.`);
+    }
+  }
+  // 이슈제품 판매 우수 사례 등록 현황 교차 참고
+  const branchCases = (DB.issueCases||[]).filter(p=>p.branchId===branchId && String(p.activityDate||'').slice(0,7)===period);
+  if(branchCases.length>0){
+    const typeCounts = {};
+    branchCases.forEach(p=>{ if(p.successType) typeCounts[p.successType] = (typeCounts[p.successType]||0)+1; });
+    const topType = Object.entries(typeCounts).sort((a,b)=>b[1]-a[1])[0];
+    lines.push(`이번 달 이슈제품 판매 우수 사례 <b>${branchCases.length}건</b> 등록${topType?` — 주요 성공유형: ${topType[0]}`:''}.`);
+  } else {
+    lines.push(`이번 달 등록된 이슈제품 판매 우수 사례가 없습니다 — 우수 사례를 공유하면 팀 전체 학습에 도움이 됩니다.`);
   }
   return lines;
 }
@@ -2759,6 +2808,28 @@ function noticeContentIsLong(content){
   if(text.split('\n').length > 2) return true;
   return false;
 }
+// 공지사항 매니저별 읽음 여부 추적. DB.noticeReads[noticeId][empId] = 읽은 시각(ISO 문자열).
+// 관리자 계정은 "매니저"가 아니므로 집계에서 제외한다(SESSION.role==='staff'인 경우만 기록/조회).
+function markNoticeRead(noticeId, empId){
+  if(!empId) return;
+  if(!DB.noticeReads) DB.noticeReads = {};
+  if(!DB.noticeReads[noticeId]) DB.noticeReads[noticeId] = {};
+  if(DB.noticeReads[noticeId][empId]) return; // 이미 읽음 처리됨 - 중복 저장 방지
+  DB.noticeReads[noticeId][empId] = new Date().toISOString();
+  saveDB();
+}
+function isNoticeReadBy(noticeId, empId){
+  return !!(DB.noticeReads && DB.noticeReads[noticeId] && DB.noticeReads[noticeId][empId]);
+}
+// 공지 하나에 대해 전체 매니저(직원) 대비 읽음/미확인 명단을 계산한다 — 공지사항 게시판에서
+// 관리자에게 "누가 아직 안 읽었는지" 보여주기 위해 쓰인다.
+function noticeReadSummary(noticeId){
+  const managers = DB.users.filter(u=>u.role==='staff');
+  const readMap = (DB.noticeReads && DB.noticeReads[noticeId]) || {};
+  const readList = managers.filter(u=>readMap[u.empId]);
+  const unreadList = managers.filter(u=>!readMap[u.empId]);
+  return { total: managers.length, readCount: readList.length, readList, unreadList };
+}
 function noticeBodyHtml(n){
   const dt = new Date(n.createdAt);
   const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
@@ -2766,9 +2837,18 @@ function noticeBodyHtml(n){
     <div class="nb-photos" style="margin:8px 0;">
       ${n.attachments.map(f=>noticeAttachmentHtml(f, 56, null)).join('')}
     </div>` : '';
-  const moreBtn = noticeContentIsLong(n.content) ? `<button type="button" class="nb-more-btn" onclick="openNoticeDetail('${n.id}')">자세히 보기 ›</button>` : '';
+  const longContent = noticeContentIsLong(n.content);
+  const moreBtn = longContent ? `<button type="button" class="nb-more-btn" onclick="openNoticeDetail('${n.id}')">자세히 보기 ›</button>` : '';
+  // 매니저(staff) 계정 기준 읽음 처리: 내용이 짧아 카드에 전체가 바로 보이는 공지는 노출된 시점에
+  // 바로 읽음 처리하고, 길어서 "자세히 보기"를 열어야 하는 공지는 실제로 모달을 열 때(openNoticeDetail)
+  // 읽음 처리한다. 경고 문구는 "이번에 처음 노출되기 전"의 읽음 여부를 기준으로 보여준다.
+  const isStaffViewer = SESSION.role==='staff';
+  const wasUnread = isStaffViewer && !isNoticeReadBy(n.id, SESSION.empId);
+  if(isStaffViewer && !longContent) markNoticeRead(n.id, SESSION.empId);
+  const unreadWarningHtml = wasUnread ? `<div class="nb-unread-warning">⚠ 아직 조회하지 않은 공지입니다. 꼭 공지를 확인하세요!</div>` : '';
   return `
     <div class="nb-title">${escapeHtml(n.title)}</div>
+    ${unreadWarningHtml}
     <div class="nb-content">${richContentHtml(n.content)}</div>
     ${moreBtn}
     ${photosHtml}
@@ -2780,6 +2860,7 @@ function noticeBodyHtml(n){
 function openNoticeDetail(id){
   const n = DB.notices.find(x=>x.id===id);
   if(!n) return;
+  if(SESSION.role==='staff') markNoticeRead(id, SESSION.empId);
   const dt = new Date(n.createdAt);
   const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
   const photosHtml = (n.attachments && n.attachments.length>0) ? `
@@ -2971,11 +3052,20 @@ function renderNoticesBoard(){
     const photosHtml = (n.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 108, isAdmin ? `removeNoticeAttachment('${n.id}', ${idx})` : null)).join('');
     const hasAttachment = (n.attachments||[]).length>0;
     const expanded = isPostExpanded(n.id);
+    // 관리자 화면에서만 "매니저별 읽음 현황"을 보여준다 — 매니저(staff) 계정에게는 노출하지 않는다.
+    const readSummary = isAdmin ? noticeReadSummary(n.id) : null;
+    const readBadgeHtml = readSummary ? `<span class="badge ${readSummary.total>0 && readSummary.readCount===readSummary.total ? 'good' : 'warn'}" title="매니저 읽음 현황" style="white-space:nowrap;">👁 읽음 ${readSummary.readCount}/${readSummary.total}</span>` : '';
+    const readBreakdownHtml = readSummary ? `
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5e7eb;font-size:12px;">
+          <div style="margin-bottom:6px;"><b>읽음 (${readSummary.readCount}/${readSummary.total})</b> ${readSummary.readList.map(u=>`<span class="badge good" style="margin:2px 4px 0 0;">${escapeHtml(u.name)}</span>`).join('') || '<span class="muted">없음</span>'}</div>
+          <div><b>미확인</b> ${readSummary.unreadList.map(u=>`<span class="badge bad" style="margin:2px 4px 0 0;">${escapeHtml(u.name)}</span>`).join('') || '<span class="muted">없음</span>'}</div>
+        </div>` : '';
     return `
       <div class="card" style="margin-bottom:12px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${n.id}','notices')">
           <div class="nb-title">${escapeHtml(n.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            ${readBadgeHtml}
             ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
             <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
           </div>
@@ -2983,6 +3073,7 @@ function renderNoticesBoard(){
         ${expanded ? `
         <div class="nb-content" style="margin:10px 0 0;">${richContentHtml(n.content)}</div>
         ${photosHtml ? `<div class="attach-gallery">${photosHtml}</div>` : ''}
+        ${readBreakdownHtml}
         <div class="flex-between" style="align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;">
           <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
           ${isAdmin ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditNoticeBoard('${n.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteNoticeBoard('${n.id}')">삭제</button></div>` : ''}
@@ -3814,6 +3905,34 @@ const GOALS_WEEK_RATIOS = [0.55, 0.25, 0.10, 0.10];
 function goalsWeeklyActualsFor(branchId, empId, period){
   period = period || currentGoalsPeriod();
   return (DB.goalsWeeklyActuals && DB.goalsWeeklyActuals[period] && DB.goalsWeeklyActuals[period][branchId] && DB.goalsWeeklyActuals[period][branchId][empId]) || {};
+}
+// 지점 전체의 주차별 누적 실적 = 그 지점 소속 전 직원의 주차별 누적 실적을 합산한 값.
+// applyGoalsFileUpload는 파일 한 번 업로드마다 그 시점의 주차(weekIdx) 하나에 전 직원의
+// 누적 실적을 함께 기록하므로, 같은 주차 버킷끼리 더하면 그 시점 기준 지점 누적 실적이 된다.
+function branchWeeklyActualsCum(branchId, period){
+  period = period || currentGoalsPeriod();
+  const byEmp = DB.goalsWeeklyActuals && DB.goalsWeeklyActuals[period] && DB.goalsWeeklyActuals[period][branchId];
+  if(!byEmp) return {};
+  const sums = {};
+  Object.values(byEmp).forEach(weekMap=>{
+    Object.entries(weekMap||{}).forEach(([w,val])=>{ sums[w] = (sums[w]||0) + (Number(val)||0); });
+  });
+  return sums;
+}
+// 주차별 달성률 흐름에서 "최근 두 주차"를 비교해 속도가 빨라지고 있는지/느려지고 있는지
+// 짧은 코멘트 한 줄을 만든다. 알려진(known) 주차가 2개 미만이면 비교할 게 없으므로 null.
+function weeklyMomentumLine(totalTarget, weeklyActualCum){
+  const nowWeekIdx = currentGoalsWeekIndex();
+  const breakdown = computeWeeklyGoalBreakdown(totalTarget, weeklyActualCum, nowWeekIdx);
+  const known = breakdown.filter(w=>w.known && w.pct!=null);
+  if(known.length < 2) return null;
+  const cur = known[known.length-1];
+  const prev = known[known.length-2];
+  const diff = Math.round((cur.pct - prev.pct)*10)/10;
+  if(Math.abs(diff) < 3){
+    return `주간 속도: ${cur.week}주차 달성률 ${cur.pct}%로 ${prev.week}주차(${prev.pct}%)와 비슷한 페이스입니다.`;
+  }
+  return `주간 속도: ${cur.week}주차 달성률 ${cur.pct}%로 ${prev.week}주차(${prev.pct}%) 대비 ${diff>=0?'+':''}${diff}%p ${diff>=0?'가속':'둔화'}되고 있습니다.${diff<0?' 페이스 회복이 필요합니다.':''}`;
 }
 function computeWeeklyGoalBreakdown(totalTarget, weeklyActualCum, nowWeekIdx){
   nowWeekIdx = nowWeekIdx || currentGoalsWeekIndex();
@@ -7846,6 +7965,13 @@ const MISTAKE_CATEGORY_ADVICE = {
   '사후관리 미흡': 'AS/사후관리 일정은 시스템에 등록해 알림을 받고, 계약 후 1주일 이내 안부 연락을 습관화하세요.',
   '기타': '유사 사례가 반복되지 않도록 팀 내 공유 및 재발 방지 체크리스트를 만들어 보세요.'
 };
+// 오답노트 실수 유형 -> 이슈제품 판매 우수 사례 성공유형 매핑. 확실히 대응되는 유형만 넣는다
+// (약정/서류 오류, 사후관리 미흡은 성공사례 카테고리와 성격이 달라 억지로 매칭하지 않음).
+const MISTAKE_TO_SUCCESS_TYPE = {
+  '상품 설명 오류': '성능/기능 시연',
+  '가격/조건 안내 오류': '가격/프로모션 소구',
+  '고객 응대 오류': '고객 니즈 맞춤 상담'
+};
 function aiFeedbackForMistakeNote(entry){
   const lines = [];
   const c = entry.content || '';
@@ -7862,6 +7988,17 @@ function aiFeedbackForMistakeNote(entry){
   if(sameCatCount>=2){
     lines.push(`⚠ 같은 유형(${entry.category})의 오답노트가 이미 ${sameCatCount}건 등록되어 있습니다. 반복되는 패턴이니 지점 교육이 필요해 보입니다.`);
   }
+  // 이슈제품 판매 우수 사례 게시판과 교차 참고 - 실수 유형과 맞닿아 있는 성공유형의 실제 사례가
+  // 있으면 링크 대신(별도 라우팅 없이) 어떤 사례를 찾아보면 좋을지 짚어준다.
+  const successType = MISTAKE_TO_SUCCESS_TYPE[entry.category];
+  if(successType){
+    const matches = (DB.issueCases||[]).filter(p=>p.successType===successType);
+    if(matches.length>0){
+      const sameBranch = matches.filter(p=>p.branchId===entry.branchId);
+      const pick = sameBranch[0] || matches[0];
+      lines.push(`💡 참고: 이슈제품 판매 우수 사례 게시판에 <b>${successType}</b> 방식으로 성공한 사례${pick.productName?`(${pick.productName})`:''}가 ${matches.length}건 있습니다. 함께 살펴보세요.`);
+    }
+  }
   return lines;
 }
 function mistakeNoteStats(notes){
@@ -7875,6 +8012,11 @@ function mistakeNoteStats(notes){
   const topBranch = Object.entries(byBranch).sort((a,b)=>b[1]-a[1])[0];
   const thisMonth = todayStr().slice(0,7);
   const thisMonthCount = notes.filter(n=>(n.date||'').startsWith(thisMonth)).length;
+  // 전월 대비 등록 추이 - 오답노트가 늘고 있는지 줄고 있는지 한눈에 보이도록 한다.
+  const lastMonthDate = new Date();
+  lastMonthDate.setMonth(lastMonthDate.getMonth()-1);
+  const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth()+1).padStart(2,'0')}`;
+  const lastMonthCount = notes.filter(n=>(n.date||'').startsWith(lastMonth)).length;
   const insightLines = [];
   if(total===0){
     insightLines.push('등록된 오답노트가 없습니다.');
@@ -7882,8 +8024,15 @@ function mistakeNoteStats(notes){
     if(topCategory) insightLines.push(`가장 많은 실수 유형: <b>${topCategory[0]}</b> (${topCategory[1]}건, 전체의 ${(topCategory[1]/total*100).toFixed(0)}%) — 해당 유형에 대한 팀 교육을 우선 검토하세요.`);
     if(topBranch) insightLines.push(`가장 많은 지점: <b>${branchName(topBranch[0])}</b> (${topBranch[1]}건) — 개별 코칭이 필요할 수 있습니다.`);
     insightLines.push(`이번 달(${thisMonth}) 등록 건수: <b>${thisMonthCount}건</b> / 누적 <b>${total}건</b>.`);
+    if(lastMonthCount>0){
+      const diff = thisMonthCount - lastMonthCount;
+      const diffPct = Math.round(diff/lastMonthCount*1000)/10;
+      insightLines.push(`전월(${lastMonth}) ${lastMonthCount}건 대비 ${diff>=0?'+':''}${diff}건(${diffPct>=0?'+':''}${diffPct}%) ${diff>=0?'증가':'감소'}했습니다.${diff>0?' 재발 방지 교육 효과를 점검해보세요.':''}`);
+    } else if(thisMonthCount>0){
+      insightLines.push(`전월(${lastMonth})에는 등록된 오답노트가 없었습니다.`);
+    }
   }
-  return {total, byCategory, byBranch, topCategory, topBranch, thisMonthCount, insightLines};
+  return {total, byCategory, byBranch, topCategory, topBranch, thisMonthCount, lastMonthCount, insightLines};
 }
 function renderMistakeNote(){
   const isAdmin = SESSION.role==='admin';
