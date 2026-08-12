@@ -4997,6 +4997,13 @@ function moYoy(n){
   const sign = v>=0 ? '▲' : '▼';
   return `<span style="color:${v>=0?'#c62828':'#1a56db'};font-weight:700;">${sign}${Math.abs(v).toFixed(1)}%</span>`;
 }
+// 당월 실적을 "전년 마감"(전년도 해당 월 최종 마감 금액) 기준으로 비교한 신장률 — 전년동기(진행중인
+// 같은 날짜까지의 누적) 비교와는 분모가 달라 값이 상당히 다르게 나올 수 있으므로 반드시 구분해서 표기한다.
+function moCloseYoy(cur, lyClose){
+  const c = Number(cur), lc = Number(lyClose);
+  if(lyClose==null || isNaN(lc) || lc<=0 || cur==null || isNaN(c)) return null;
+  return (c - lc) / lc * 100;
+}
 // %p 격차(gap) 표시 — 초록/빨강으로 위아래를 구분
 function moGap(v, digits){
   const n = Number(v);
@@ -5044,8 +5051,10 @@ function moAggregate(rows){
     ...s,
     g_tp_rate: s.g_target>0 ? s.g_tp_cur/s.g_target*100 : null,
     g_tp_yoy: s.g_tp_lySame>0 ? (s.g_tp_cur-s.g_tp_lySame)/s.g_tp_lySame*100 : null,
+    g_tp_closeYoy: s.g_tp_lyClose>0 ? (s.g_tp_cur-s.g_tp_lyClose)/s.g_tp_lyClose*100 : null,
     g_sp_rate: s.g_target>0 ? s.g_sp_cur/s.g_target*100 : null,
     g_sp_yoy: s.g_sp_lySame>0 ? (s.g_sp_cur-s.g_sp_lySame)/s.g_sp_lySame*100 : null,
+    g_sp_closeYoy: s.g_sp_lyClose>0 ? (s.g_sp_cur-s.g_sp_lyClose)/s.g_sp_lyClose*100 : null,
     s_tp_rate: s.s_target>0 ? s.s_tp_cur/s.s_target*100 : null,
     s_sp_rate: s.s_target>0 ? s.s_sp_cur/s.s_target*100 : null,
     s_sp_ratio: s.g_sp_cur>0 ? s.s_sp_cur/s.g_sp_cur*100 : null,
@@ -5130,7 +5139,7 @@ function moBranchCardHtml(r, showManager){
       <div style="font-size:18px;font-weight:800;color:${rateColor};margin-top:3px;">${moPct(rate)}</div>
       <div class="progress-bar" style="margin-top:3px;height:6px;"><div style="width:${Math.min(rate||0,100)}%;background:${rateColor};"></div></div>
       <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:7px;color:var(--text-sub);">
-        <span>전년비 ${moYoy(m.g_tp_yoy)}</span>
+        <span>전년동기비 ${moYoy(m.g_tp_yoy)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:var(--text-sub);">
         <span>구독 ${moPct(m.s_sp_ratio)}</span><span>고수익 ${moPct(m.h_sp_highRatio)}</span>
@@ -5208,7 +5217,7 @@ function renderMetricsOverview(){
       chips.push(`고수익비중 ${moBadgeRank(rankHigh, rankTotalOf)}`);
       chips.push(`목표달성률 ${moBadgeRank(rankRate, rankTotalOf)}`);
     }
-    if(teamAgg.g_tp_yoy!=null && agg.g_tp_yoy!=null) chips.push(`경북팀 평균 대비 신장률 ${moGap(agg.g_tp_yoy - teamAgg.g_tp_yoy)}`);
+    if(teamAgg.g_tp_yoy!=null && agg.g_tp_yoy!=null) chips.push(`경북팀 평균 대비 전년동기비 ${moGap(agg.g_tp_yoy - teamAgg.g_tp_yoy)}`);
     if(teamAgg.s_sp_ratio!=null && agg.s_sp_ratio!=null) chips.push(`구독 비중 경북팀 평균 대비 ${moGap(agg.s_sp_ratio - teamAgg.s_sp_ratio)}`);
 
     const kpiCards = `
@@ -5216,7 +5225,7 @@ function renderMetricsOverview(){
         <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
           <div class="stat-sub">총판 ${moBadgeRank(rankTotal, rankTotalOf)}</div>
           <div style="font-size:19px;font-weight:800;">${moFmt(agg.g_tp_cur)}</div>
-          <div class="stat-sub" style="margin-top:2px;">전년비 ${moYoy(agg.g_tp_yoy)}</div>
+          <div class="stat-sub" style="margin-top:2px;">전년동기비 ${moYoy(agg.g_tp_yoy)} · 전년마감비 ${moYoy(agg.g_tp_closeYoy)}</div>
         </div>
         <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
           <div class="stat-sub">구독 실판 ${moBadgeRank(rankSub, rankTotalOf)}</div>
@@ -5307,8 +5316,8 @@ function renderMetricsOverview(){
       return `<tr>
         <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
         <td>${moFmt(m.g_target)}</td>
-        <td>${moFmt(m.g_tp_cur)} ${moBadgeRank(gTpCurRankMap[r.branchId], branchListRaw.length)}</td><td>${moFmt(m.g_tp_lySame)}</td><td>${moYoy(m.g_tp_yoy)}</td><td>${moPct(m.g_tp_rate)} ${moBadgeRank(gTpRateRankMap[r.branchId], branchListRaw.length)}</td>
-        <td>${moFmt(m.g_sp_cur)}</td><td>${moFmt(m.g_sp_lySame)}</td><td>${moYoy(m.g_sp_yoy)}</td><td>${moPct(m.g_sp_rate)} ${pctBadge(m.g_sp_rate||0)}</td>
+        <td>${moFmt(m.g_tp_cur)} ${moBadgeRank(gTpCurRankMap[r.branchId], branchListRaw.length)}</td><td class="muted">${moFmt(m.g_tp_lyClose)}</td><td>${moYoy(moCloseYoy(m.g_tp_cur, m.g_tp_lyClose))}</td><td>${moFmt(m.g_tp_lySame)}</td><td>${moYoy(m.g_tp_yoy)}</td><td>${moPct(m.g_tp_rate)} ${moBadgeRank(gTpRateRankMap[r.branchId], branchListRaw.length)}</td>
+        <td>${moFmt(m.g_sp_cur)}</td><td class="muted">${moFmt(m.g_sp_lyClose)}</td><td>${moYoy(moCloseYoy(m.g_sp_cur, m.g_sp_lyClose))}</td><td>${moFmt(m.g_sp_lySame)}</td><td>${moYoy(m.g_sp_yoy)}</td><td>${moPct(m.g_sp_rate)} ${pctBadge(m.g_sp_rate||0)}</td>
       </tr>`;
     }).join('');
     const chartRows = branchListRaw.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
@@ -5319,15 +5328,15 @@ function renderMetricsOverview(){
         <table>
           <thead><tr>
             <th rowspan="2">지점</th><th rowspan="2">관리자</th><th rowspan="2">목표</th>
-            <th colspan="4">총판</th><th colspan="4">실판(MSIS)</th>
+            <th colspan="6">총판</th><th colspan="6">실판(MSIS)</th>
           </tr>
-          <tr><th>당월</th><th>전년동기</th><th>전년비</th><th>달성률</th><th>당월</th><th>전년동기</th><th>전년비</th><th>달성률</th></tr></thead>
+          <tr><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th></tr></thead>
           <tbody>
-            ${trs || '<tr><td colspan="11" class="muted">데이터 없음</td></tr>'}
+            ${trs || '<tr><td colspan="15" class="muted">데이터 없음</td></tr>'}
             <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
               <td colspan="2">합계</td><td>${moFmt(agg.g_target)}</td>
-              <td>${moFmt(agg.g_tp_cur)}</td><td>${moFmt(agg.g_tp_lySame)}</td><td>${moYoy(agg.g_tp_yoy)}</td><td>${moPct(agg.g_tp_rate)}</td>
-              <td>${moFmt(agg.g_sp_cur)}</td><td>${moFmt(agg.g_sp_lySame)}</td><td>${moYoy(agg.g_sp_yoy)}</td><td>${moPct(agg.g_sp_rate)}</td>
+              <td>${moFmt(agg.g_tp_cur)}</td><td>${moFmt(agg.g_tp_lyClose)}</td><td>${moYoy(agg.g_tp_closeYoy)}</td><td>${moFmt(agg.g_tp_lySame)}</td><td>${moYoy(agg.g_tp_yoy)}</td><td>${moPct(agg.g_tp_rate)}</td>
+              <td>${moFmt(agg.g_sp_cur)}</td><td>${moFmt(agg.g_sp_lyClose)}</td><td>${moYoy(agg.g_sp_closeYoy)}</td><td>${moFmt(agg.g_sp_lySame)}</td><td>${moYoy(agg.g_sp_yoy)}</td><td>${moPct(agg.g_sp_rate)}</td>
             </tr>
           </tbody>
         </table>
