@@ -4968,6 +4968,27 @@ function shifteeMatchBranch(branchNameRaw){
     || DB.branches.find(b=>norm(b.name).includes(target) || target.includes(norm(b.name)))
     || null;
 }
+// 사번(empId) 매칭이 안 되면 이름으로 한 번 더 시도한다. Shiftee 자체 사번 체계가 회사
+// 로그인 사번과 다른 경우가 실제로 많아서(둘이 서로 다른 시스템이라 번호가 안 맞을 수 있음),
+// 이름이 정확히 일치하는 계정이 "하나"만 있으면 그 계정으로 매칭한다. 동명이인이 있으면
+// 본지점 이름으로 한 번 더 좁혀서 확정하고, 그래도 안 좁혀지면(오매칭 위험이 크므로)
+// 안전하게 "매칭 안 됨"으로 남겨 관리자가 직접 확인하게 한다.
+function shifteeFindUser(empId, empName, homeBranchName){
+  const byId = DB.users.find(u=>shifteeNormalizeEmpId(u.empId)===empId);
+  if(byId) return { user: byId, matchedBy: 'empId' };
+  if(!empName) return { user: null, ambiguous: false };
+  const nameMatches = DB.users.filter(u=>u.name && u.name.trim()===empName);
+  if(nameMatches.length === 1) return { user: nameMatches[0], matchedBy: 'name' };
+  if(nameMatches.length > 1){
+    const branch = shifteeMatchBranch(homeBranchName);
+    if(branch){
+      const narrowed = nameMatches.find(u=>u.branchId===branch.id);
+      if(narrowed) return { user: narrowed, matchedBy: 'name+branch' };
+    }
+    return { user: null, ambiguous: true }; // 동명이인이라 어느 계정인지 확정 불가
+  }
+  return { user: null, ambiguous: false };
+}
 function parseShifteeScheduleRows(rows, year, month){
   const result = { byEmpDate:{}, matchedEmp:0, createdEmp:0, createdNames:[], unmatchedEmp:0, unmatchedNames:[], dayCount:0, minDay:null, maxDay:null };
   if(!rows || rows.length===0) return result;
@@ -4996,12 +5017,14 @@ function parseShifteeScheduleRows(rows, year, month){
       const startRow = row;
       const endRow = (rows[i+1] && shifteeRowLabel(rows[i+1][4]) === '근무일정 종료시간') ? rows[i+1] : null;
       const branchRow = (rows[i+2] && shifteeRowLabel(rows[i+2][4]) === '지점') ? rows[i+2] : null;
-      let user = DB.users.find(u=>shifteeNormalizeEmpId(u.empId)===empId);
-      // 사번이 아직 계정으로 등록되어 있지 않은 실제 신규 직원이면(=이 시스템에 처음 반영되는
+      const found = shifteeFindUser(empId, empName, homeBranchName);
+      let user = found.user;
+      // 사번으로도, 이름으로도 계정을 찾지 못한 실제 신규 직원이면(=이 시스템에 처음 반영되는
       // 경우), 기존 목표/실적 파일 업로드와 동일하게 "본지점" 열로 지점을 매칭해 사원 계정을
       // 자동 생성한다 — 이렇게 하지 않으면 계정이 없다는 이유만으로 근무일정이 통째로
-      // 건너뛰어져서 "매칭이 안 된다"처럼 보이게 된다.
-      if(!user && empId && empName){
+      // 건너뛰어져서 "매칭이 안 된다"처럼 보이게 된다. (단, 동명이인이라 확정을 못한 경우는
+      // 잘못된 사람 계정을 만들 위험이 있으므로 자동생성하지 않고 미매칭으로 남긴다.)
+      if(!user && !found.ambiguous && empId && empName){
         const matchedBranch = shifteeMatchBranch(homeBranchName);
         if(matchedBranch){
           user = { empId, pw:'1234', name: empName, role:'staff', branchId: matchedBranch.id };
@@ -5027,9 +5050,11 @@ function parseShifteeScheduleRows(rows, year, month){
           result.byEmpDate[user.empId][dateStr] = entry;
         });
       } else if(empId){
-        // 계정도 없고, 지점명도 매칭이 안 되면(오타·미등록 지점 등) 그때만 건너뛴다.
+        // 계정도 없고, 지점명도 매칭이 안 되거나(오타·미등록 지점 등) 동명이인이라 확정 못한
+        // 경우만 건너뛴다.
         result.unmatchedEmp++;
-        result.unmatchedNames.push(`${empName}(${empId})${homeBranchName?' · '+homeBranchName:''}`);
+        const reason = found.ambiguous ? '동명이인 확인필요' : (homeBranchName||'');
+        result.unmatchedNames.push(`${empName}(${empId})${reason?' · '+reason:''}`);
       }
       i += (endRow && branchRow) ? 3 : 1;
     } else {
