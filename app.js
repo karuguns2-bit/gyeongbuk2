@@ -2733,6 +2733,12 @@ function togglePostExpand(id, tab){
   state.expandedPosts[id] = !state.expandedPosts[id];
   renderTab(tab);
 }
+// 공지사항 게시판 목록에서 행을 펼치는 것은 "이 공지를 확인했다"는 명확한 의사표현이므로,
+// 홈 배너와 별개로 게시판에서 펼칠 때도 매니저(staff) 기준 읽음 처리를 함께 해준다.
+function toggleNoticeExpand(id){
+  if(SESSION.role==='staff') markNoticeRead(id, SESSION.empId);
+  togglePostExpand(id, 'notices');
+}
 function isPostExpanded(id){
   return !!(state.expandedPosts && state.expandedPosts[id]);
 }
@@ -2830,6 +2836,33 @@ function noticeReadSummary(noticeId){
   const unreadList = managers.filter(u=>!readMap[u.empId]);
   return { total: managers.length, readCount: readList.length, readList, unreadList };
 }
+// 리치에디터 색상 팔레트에서 검정/짙은 회색 계열을 골라 쓴 옛 공지들은, 홈 배너의 어두운
+// 마젠타 그라데이션 배경 위에서 해당 부분만 거의 안 보이게 된다(인라인 style="color:..."은
+// CSS 클래스보다 우선순위가 높아서 배너 기본 흰색 글자색으로 못 덮어씀). 배너 미리보기에
+// 한해서만, 무채색(회색조)이면서 어두운 인라인 글자색은 제거해 기본 흰색으로 보이게 하고,
+// 빨강 등 채도 있는 강조색은 배경에서도 충분히 읽히므로 그대로 둔다. 게시판 목록/상세 모달은
+// 흰 배경이라 원래 색 그대로가 맞으므로 이 처리를 적용하지 않는다(노티스 배너 전용).
+function bannerSafeContentHtml(html){
+  const str = String(html||'');
+  return str.replace(/color\s*:\s*(#[0-9a-fA-F]{3,6}|rgb\([^)]+\))\s*;?/gi, (full, colorVal)=>{
+    let r,g,b;
+    if(colorVal[0]==='#'){
+      let hex = colorVal.slice(1);
+      if(hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+      if(hex.length!==6) return full;
+      r = parseInt(hex.slice(0,2),16); g = parseInt(hex.slice(2,4),16); b = parseInt(hex.slice(4,6),16);
+    } else {
+      const m = colorVal.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+      if(!m) return full;
+      r = +m[1]; g = +m[2]; b = +m[3];
+    }
+    const maxc = Math.max(r,g,b), minc = Math.min(r,g,b);
+    const isGrayscale = (maxc - minc) <= 18; // 채도가 거의 없는 무채색(검정~회색)인지
+    const luminance = 0.299*r + 0.587*g + 0.114*b;
+    if(isGrayscale && luminance < 150) return ''; // 무채색이면서 어두우면 제거 -> 배너 기본 흰색으로 표시
+    return full;
+  });
+}
 function noticeBodyHtml(n){
   const dt = new Date(n.createdAt);
   const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
@@ -2849,7 +2882,7 @@ function noticeBodyHtml(n){
   return `
     <div class="nb-title">${escapeHtml(n.title)}</div>
     ${unreadWarningHtml}
-    <div class="nb-content">${richContentHtml(n.content)}</div>
+    <div class="nb-content">${bannerSafeContentHtml(richContentHtml(n.content))}</div>
     ${moreBtn}
     ${photosHtml}
     <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
@@ -3060,16 +3093,22 @@ function renderNoticesBoard(){
           <div style="margin-bottom:6px;"><b>읽음 (${readSummary.readCount}/${readSummary.total})</b> ${readSummary.readList.map(u=>`<span class="badge good" style="margin:2px 4px 0 0;">${escapeHtml(u.name)}</span>`).join('') || '<span class="muted">없음</span>'}</div>
           <div><b>미확인</b> ${readSummary.unreadList.map(u=>`<span class="badge bad" style="margin:2px 4px 0 0;">${escapeHtml(u.name)}</span>`).join('') || '<span class="muted">없음</span>'}</div>
         </div>` : '';
+    // 매니저(staff) 화면에서는 반대로 "본인이 이 공지를 읽었는지"를 행 우측에 표시한다.
+    const isStaffViewer = SESSION.role==='staff';
+    const myUnread = isStaffViewer && !isNoticeReadBy(n.id, SESSION.empId);
+    const myUnreadBadgeHtml = myUnread ? `<span class="badge bad" title="아직 확인하지 않았습니다" style="white-space:nowrap;">⚠ 미확인</span>` : '';
     return `
       <div class="card" style="margin-bottom:12px;">
-        <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${n.id}','notices')">
+        <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="toggleNoticeExpand('${n.id}')">
           <div class="nb-title">${escapeHtml(n.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${readBadgeHtml}
+            ${myUnreadBadgeHtml}
             ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
             <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
           </div>
         </div>
+        ${myUnread ? `<div class="small-note" style="color:var(--bad);font-weight:700;margin-top:4px;">⚠ 아직 조회하지 않은 공지입니다. 꼭 공지를 확인하세요!</div>` : ''}
         ${expanded ? `
         <div class="nb-content" style="margin:10px 0 0;">${richContentHtml(n.content)}</div>
         ${photosHtml ? `<div class="attach-gallery">${photosHtml}</div>` : ''}
@@ -8545,7 +8584,7 @@ function issueCaseSplitTags(text){
 }
 // 이슈제품 판매 성공 사례는 우수 활동 사례 공유와 달리 관리자만 작성/수정/삭제할 수 있다 (요청에 따라 제한).
 function canEditIssueCase(p){
-  return !!(p && SESSION.role==='admin');
+  return !!(p && (SESSION.role==='admin' || p.authorEmpId===SESSION.empId));
 }
 function removeIssueCaseAttachment(id, idx){
   const p = DB.issueCases.find(x=>x.id===id);
@@ -8780,9 +8819,9 @@ function renderIssueCase(){
       </div>`;
   }).join('') || `<div class="muted">${allSorted.length===0 ? '등록된 이슈제품 판매 성공 사례가 없습니다.' : '검색 결과가 없습니다.'}</div>`;
 
-  // 우수 활동 사례 공유와 달리 이 게시판은 관리자만 작성할 수 있으므로, 일반 직원 화면에는
-  // "새 사례 등록" 카드 자체를 아예 숨긴다 (공지사항 게시판과 동일한 방식).
-  const newEntryFormHtml = isAdmin ? `
+  // 우수 활동 사례 공유 게시판과 동일하게, 로그인한 누구나(관리자/매니저 모두) 새 사례를
+  // 작성할 수 있다 — 본인이 작성한 글은 나중에 본인이 수정/삭제할 수 있다(canEditIssueCase 참고).
+  const newEntryFormHtml = `
     <div class="card" style="margin-bottom:16px;">
       <h3>새 사례 등록</h3>
       <div class="form-row">
@@ -8829,14 +8868,14 @@ function renderIssueCase(){
         </div>
         <button class="btn btn-primary" onclick="submitIssueCase()">등록</button>
       </div>
-    </div>` : '';
+    </div>`;
 
   return `
     <div class="page-title">이슈제품 판매 성공 사례</div>
     <div class="notice-banner" style="margin-bottom:16px;">
       <div style="font-weight:800;font-size:16px;">💡 이슈제품 판매 노하우/성공사례 등을 공유해주세요</div>
     </div>
-    <div class="page-desc">이슈제품을 성공적으로 판매한 사례를 자유롭게 공유해 주세요.${isAdmin ? '' : ' (등록/수정/삭제는 관리자만 가능합니다)'}</div>
+    <div class="page-desc">이슈제품을 성공적으로 판매한 사례를 자유롭게 공유해 주세요. (본인이 작성한 글은 직접 수정/삭제할 수 있습니다)</div>
 
     ${renderIssueCaseDashboard()}
 
@@ -8856,7 +8895,6 @@ function updateIcEditManagerOptions(id){
   document.getElementById('ice_'+id+'_manager').innerHTML = bpManagerOptionsHtml(branchId, null);
 }
 function submitIssueCase(){
-  if(SESSION.role!=='admin') return;
   const branchId = document.getElementById('icBranch').value;
   const managerSelect = document.getElementById('icManager');
   const managerEmpId = managerSelect.value || null;
@@ -8894,7 +8932,7 @@ function submitIssueCase(){
 function deleteIssueCase(id){
   const p = DB.issueCases.find(x=>x.id===id);
   if(!p) return;
-  if(SESSION.role!=='admin') return;
+  if(!canEditIssueCase(p)) return;
   if(!confirm('삭제하시겠습니까?')) return;
   DB.issueCases = DB.issueCases.filter(x=>x.id!==id);
   (p.attachments||[]).forEach(f=>deleteFromStorage(f.dataUrl));
