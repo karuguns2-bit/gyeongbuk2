@@ -5412,7 +5412,7 @@ function renderMetricsOverview(){
   if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
     return `
     <div class="page-title">지표 한 눈에 보기</div>
-    <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자 DATA기준)</div>
+    <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자DATA 기준)</div>
     <div class="page-desc">관리자별·지점별 GROSS/구독/고수익 실적을 한 화면에서 확인합니다.</div>
     <div class="card"><div class="muted">아직 업로드된 자료가 없습니다. [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다.${SESSION.role==='admin'?` <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
   }
@@ -5692,7 +5692,7 @@ function renderMetricsOverview(){
 
   return `
     <div class="page-title">지표 한 눈에 보기</div>
-    <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자 DATA기준)</div>
+    <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자DATA 기준)</div>
     <div class="page-desc">기준일자 <b>${DB.metricsOverview.asOfDate}</b> (D-1, 전일) · ${DB.metricsOverview.rows.length}개 지점 · 전체 직원 조회 가능</div>
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
