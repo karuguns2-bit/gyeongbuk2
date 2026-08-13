@@ -4090,7 +4090,7 @@ function renderGoals(){
     const cells = wk.map(w=>{
       const style = w.isCurrent ? 'background:#fff7e0;' : '';
       const body = w.known
-        ? `실적 ${fmtKK(w.actual)}<br><b>${w.pct}%</b> ${pctBadge(w.pct)}`
+        ? (w.pct!=null ? `실적 ${fmtKK(w.actual)}<br><b>${w.pct}%</b> ${pctBadge(w.pct)}` : `실적 ${fmtKK(w.actual)}<br><span class="muted">목표 미설정</span>`)
         : `<span class="muted">미집계</span>`;
       return `<td style="${style}font-size:12px;line-height:1.6;">목표 ${fmtKK(w.target)}<br>${body}</td>`;
     }).join('');
@@ -4193,7 +4193,7 @@ function renderGoals(){
             <td>합계</td>
             ${weeklyTotal.map(w=>{
               const bg = w.isCurrent ? 'background:#fff7e0;' : 'background:#f7f8fa;';
-              const body = w.known ? `실적 ${fmtKK(w.actual)}<br>${w.pct}% ${pctBadge(w.pct)}` : `<span class="muted" style="font-weight:400;">미집계</span>`;
+              const body = w.known ? (w.pct!=null ? `실적 ${fmtKK(w.actual)}<br>${w.pct}% ${pctBadge(w.pct)}` : `실적 ${fmtKK(w.actual)}<br><span class="muted" style="font-weight:400;">목표 미설정</span>`) : `<span class="muted" style="font-weight:400;">미집계</span>`;
               return `<td style="${bg}font-size:12px;line-height:1.6;">목표 ${fmtKK(w.target)}<br>${body}</td>`;
             }).join('')}
           </tr>
@@ -5368,7 +5368,7 @@ function moBranchCardHtml(r, showManager){
   const rate = m.g_tp_rate;
   const rateColor = rate==null ? '#999' : rate>=100 ? 'var(--good)' : rate>=80 ? 'var(--warn)' : 'var(--bad)';
   return `
-    <div class="card" style="padding:10px 12px;min-width:180px;flex:1;cursor:pointer;border-left:3px solid ${rateColor};transition:box-shadow .15s;" onclick="setMetricsOverviewBranch('${r.branchId}')">
+    <div class="card" style="padding:10px 12px;min-width:270px;flex:1;cursor:pointer;border-left:3px solid ${rateColor};transition:box-shadow .15s;" onclick="setMetricsOverviewBranch('${r.branchId}')">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
         <div style="font-weight:700;font-size:13.5px;">${escapeHtml(r.branchName)}</div>
         ${showManager?`<div class="muted" style="font-size:11px;white-space:nowrap;">${escapeHtml(r.manager||'-')}</div>`:''}
@@ -6000,7 +6000,7 @@ function renderSales(){
     <div class="form-row" style="margin-bottom:8px;">
       <div class="field">
         <label>담당자(매니저) 선택</label>
-        <select style="width:220px" onchange="setSalesEmp(this.value)">
+        <select style="width:100%" onchange="setSalesEmp(this.value)">
           <option value="ALL" ${state.salesEmp==='ALL'?'selected':''}>전체 (담당자 합산)</option>
           ${empOptions.map(u=>`<option value="${u.empId}" ${state.salesEmp===u.empId?'selected':''}>${u.name} · ${branchName(u.branchId)}</option>`).join('')}
         </select>
@@ -6183,7 +6183,7 @@ function renderSales(){
           ${periodSelectorHtml}
           ${empSelectorHtml}
         </div>
-        ${branchSelectorHtml ? `<div>${branchSelectorHtml}</div>` : ''}
+        ${branchSelectorHtml ? `<div class="card" style="padding:10px;">${branchSelectorHtml}</div>` : ''}
       </div>
 
       <div style="flex:1;min-width:380px;">
