@@ -4034,10 +4034,12 @@ function renderGoals(){
 
   // 실적/제품 분석 페이지와 동일하게 선택 항목(월/지점)을 좌측에 세로로 배치한다 — 지점 목록은
   // 관리자만 전환할 수 있으므로 관리자가 아니면 아예 렌더링하지 않는다(기존 동작 유지).
+  // 레이아웃 리뉴얼(좌측 사이드바) 이전 방식으로 복귀: 지점/월 선택은 좁은 사이드바가 아니라
+  // 페이지 맨 위에 전체 폭 카드/가로 pill로 배치한다.
   let branchSelectorHtml = '';
   if(isAdmin){
-    branchSelectorHtml = `<div class="card" style="padding:10px;">` +
-      DB.branches.map(b=>`<div class="sales-branch-item ${b.id===branchId?'active':''}" onclick="setViewBranch('${b.id}')">${b.name}</div>`).join('') +
+    branchSelectorHtml = `<div style="margin-bottom:14px;">` +
+      DB.branches.map(b=>`<span class="branch-pill ${b.id===branchId?'active':''}" onclick="setViewBranch('${b.id}')">${b.name}</span>`).join('') +
       `</div>`;
   }
 
@@ -4048,8 +4050,8 @@ function renderGoals(){
     addMonthsToPeriod(currentGoalsPeriod(), 1)
   ])).sort();
   const periodSelectorHtml = `
-    <div class="card" style="margin-bottom:16px;padding:14px;">
-      <h3 style="font-size:14px;">🗓️ 월별 목표관리</h3>
+    <div class="card" style="margin-bottom:16px;">
+      <h3>🗓️ 월별 목표관리</h3>
       <div class="small-note" style="margin-bottom:10px;">원하는 달을 선택하면 그 달의 목표를 별도 양식으로 입력·조회할 수 있습니다. 지점 목표, 팀원별 배분, 구독 목표가 달마다 독립적으로 저장됩니다.</div>
       <div>${periodOptions.map(p=>`<span class="branch-pill ${p===period?'active':''}" onclick="setGoalsPeriod('${p}')">${goalsPeriodLabel(p)}${p===currentGoalsPeriod()?' (이번달)':''}</span>`).join('')}</div>
     </div>`;
@@ -4134,16 +4136,10 @@ function renderGoals(){
   const subActualAmtSum = g.allocations.reduce((s,a)=>s+empSubscriptionActual(branchId,a.empId,period).amt,0);
   const subActualAmtPctTotal = pctOf(subActualAmtSum, subAllocSumAmt);
 
-  return `
-    <div class="page-title">목표 관리(MSIS기준)</div>
-    <div class="page-desc">${branch.name} · ${goalsPeriodLabel(period)}${isCurrentPeriod?'':' <span class="badge warn">이번달 아님</span>'}</div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="width:220px;flex-shrink:0;">
-        ${periodSelectorHtml}
-        ${branchSelectorHtml}
-      </div>
-
-      <div style="flex:1;min-width:640px;">
+  // 관리자는 좌측에 월/지점 선택 사이드바 + 우측에 본문(2단 구성)으로 배치하지만, 지점 매니저는
+  // 지점 선택이 없어 사이드바에 월 선택 카드 하나만 덩그러니 남으므로 — 사이드바 없이 월 선택 카드를
+  // 페이지 맨 위에 기존 방식대로(전체 폭) 배치하고 그 아래로 같은 본문을 이어붙인다.
+  const goalsMainContentHtml = `
         <div class="card ai-box" style="margin-bottom:16px;">
           <div class="ai-title">📌 데이터 조회시 참고사항</div>
           <div style="font-size:12.5px;line-height:1.75;">
@@ -4252,9 +4248,14 @@ function renderGoals(){
           </table>
           </div>
           <div class="small-note">※ 현재 ${nowWeekIdx}주차로 계산됩니다(노란색 강조). 맨 위 "합계" 행은 지점 전체(팀원 배분 목표 합산) 기준입니다. 지난 주차 실적이 목표에 못 미치면 그 미달성분이 이후 남은 주차들에 원래 비중 그대로 다시 나뉘어 더해집니다. "미집계"는 아직 그 주차의 실적 파일이 올라오지 않았다는 뜻입니다.</div>
-        </div>
-      </div>
-    </div>
+        </div>`;
+
+  return `
+    <div class="page-title">목표 관리(MSIS기준)</div>
+    <div class="page-desc">${branch.name} · ${goalsPeriodLabel(period)}${isCurrentPeriod?'':' <span class="badge warn">이번달 아님</span>'}</div>
+    ${branchSelectorHtml}
+    ${periodSelectorHtml}
+    ${goalsMainContentHtml}
   `;
 }
 // 구독 실적은 "목표/실적 파일 업로드"에 포함된 "구독 수기 실적 관리" 시트를 기준으로 반영된다
@@ -5466,6 +5467,14 @@ function renderMetricsOverview(){
   ];
   const tabPillsHtml = tabDefs.map(([key,label])=>`<span class="branch-pill ${tab===key?'active':''}" onclick="setMetricsOverviewTab('${key}')">${label}</span>`).join('');
 
+  // 지점별 한눈에 보기 그리드 — 상단 필터 카드 안에 함께 배치해 관리자/탭 전환과 지점 선택을
+  // 한 자리에서 할 수 있게 한다. 지점을 하나씩 눌러보지 않아도 전체 상태를 카드로 동시에 파악.
+  const branchGridHtml = !selBranch ? `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eef0f2;">
+      <div class="muted" style="font-size:12px;font-weight:700;margin-bottom:8px;">🏬 지점별 한눈에 보기 <span style="font-weight:400;">· ${selManager?escapeHtml(selManager)+' 소속 '+branchesInScope.length+'개 지점':'전체 '+branchesInScope.length+'개 지점'} · 카드를 클릭하면 해당 지점 상세로 이동</span></div>
+      ${moBranchGridHtml(branchesInScope, !selManager)}
+    </div>` : '';
+
   let bodyHtml = '';
   if(tab==='insight'){
     const chips = [];
@@ -5522,13 +5531,8 @@ function renderMetricsOverview(){
       moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1));
     }
 
-    // 지점별 한눈에 보기 그리드 — 지점을 하나씩 눌러보지 않아도 전체 상태를 카드로 동시에 파악
-    const branchGridHtml = !selBranch ? `<div class="card">
-        <h3>🏬 지점별 한눈에 보기 <small>${selManager?escapeHtml(selManager)+' 소속 '+branchesInScope.length+'개 지점':'전체 '+branchesInScope.length+'개 지점'} · 카드를 클릭하면 해당 지점 상세로 이동</small></h3>
-        ${moBranchGridHtml(branchesInScope, !selManager)}
-      </div>` : '';
-
     // 순위 차트: 관리자 선택/지점 선택에 따라 "관리자별" 또는 "소속 지점별" 신장률·달성률 순위를 각각 막대 차트로
+    // ※ 지점별 한눈에 보기 그리드는 상단 필터 카드로 옮겼으므로, 여기서는 두 순위 차트를 나란히(2열) 배치한다.
     const yoyRankScope = selManager ? branchListRaw : managerListRaw;
     const yoyRankSortedByYoy = yoyRankScope.slice().sort((a,b)=>{
       const av = selManager? a.m.g_tp_yoy : a.agg.g_tp_yoy, bv = selManager? b.m.g_tp_yoy : b.agg.g_tp_yoy;
@@ -5555,14 +5559,13 @@ function renderMetricsOverview(){
       </div>
       ${compareHtml}
       <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;">
-        <div style="flex:3;min-width:360px;">
-          ${branchGridHtml}
-        </div>
-        <div style="flex:2;min-width:320px;display:flex;flex-direction:column;gap:16px;">
+        <div style="flex:1;min-width:340px;">
           <div class="card">
             <h3>📈 ${yoyRankTitle} <small>전년 동기 대비, 단위 %</small></h3>
             <div style="position:relative;height:${Math.max(160, yoyRankLabels.length*36)}px;"><canvas id="moYoyRankChart"></canvas></div>
           </div>
+        </div>
+        <div style="flex:1;min-width:340px;">
           <div class="card">
             <h3>🎯 ${rateRankTitle} <small>단위 %</small></h3>
             <div style="position:relative;height:${Math.max(160, rateRankLabels.length*36)}px;"><canvas id="moRateRankChart"></canvas></div>
@@ -5697,6 +5700,7 @@ function renderMetricsOverview(){
         <div>${branchSelectHtml}</div>
       </div>
       <div style="margin-top:10px;">${tabPillsHtml}</div>
+      ${branchGridHtml}
     </div>
     ${bodyHtml}`;
 }
@@ -6005,11 +6009,14 @@ function renderSales(){
   const canUpload = SESSION.role==='admin'; // 업로드는 관리자 전용
   const scopeBranch = SESSION.role==='admin' ? state.viewBranchId : SESSION.branchId;
 
+  // 레이아웃 리뉴얼(좌측 사이드바) 이전 방식으로 복귀: 지점 선택은 좁은 사이드바가 아니라
+  // 페이지 맨 위에 가로 pill로 배치한다.
   let branchSelectorHtml = '';
   if(SESSION.role==='admin'){
-    branchSelectorHtml =
-      `<div class="sales-branch-item ${scopeBranch==='ALL'?'active':''}" onclick="state.viewBranchId='ALL'; state.salesEmp='ALL'; renderTab('sales')">전체</div>` +
-      DB.branches.map(b=>`<div class="sales-branch-item ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); state.salesEmp='ALL'; renderTab('sales')">${b.name}</div>`).join('');
+    branchSelectorHtml = `<div style="margin-bottom:14px;">` +
+      `<span class="branch-pill ${scopeBranch==='ALL'?'active':''}" onclick="state.viewBranchId='ALL'; state.salesEmp='ALL'; renderTab('sales')">전체</span>` +
+      DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); state.salesEmp='ALL'; renderTab('sales')">${b.name}</span>`).join('') +
+      `</div>`;
   }
 
   // 담당자(매니저) 선택 드롭다운: 현재 선택된 지점 소속 사원만 노출 (전체 지점이면 전원)
@@ -6194,18 +6201,10 @@ function renderSales(){
       </div>`;
   }
 
-  return `
-    <div class="page-title">실적 / 제품 분석</div>
-    <div class="page-desc">${scopeBranch==='ALL' ? '전체 지점' : branchName(scopeBranch)} · ${salesPeriod ? salesPeriod+' 월 데이터' : '전체 기간 누적 데이터'} · 금액은 모두 KK(백만원) 단위 · "실판매 목표대비 실적조회" 시트 기반(관리자가 [시스템 관리]에서 목표/실적 파일을 새로 올리면 갱신됩니다)</div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="width:210px;flex-shrink:0;">
-        <div class="card" style="margin-bottom:16px;padding:14px;">
-          ${periodSelectorHtml}
-          ${empSelectorHtml}
-        </div>
-        ${branchSelectorHtml ? `<div class="card" style="padding:10px;">${branchSelectorHtml}</div>` : ''}
-      </div>
-
+  // 관리자는 좌측에 기간/담당자 선택 사이드바 + 지점 목록으로 배치하지만, 지점 매니저는 지점
+  // 목록이 없어 사이드바에 선택 카드 하나만 덩그러니 남으므로 — 사이드바 없이 선택 카드를 페이지
+  // 맨 위에 기존 방식대로(전체 폭) 배치하고 그 아래로 같은 본문(차트/표)을 이어붙인다.
+  const salesMainContentHtml = `
       <div style="flex:1;min-width:380px;">
         <div class="card" style="margin-bottom:16px;">
           <h3>제품별 판매 Top 10 (금액 기준) <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
@@ -6225,7 +6224,21 @@ function renderSales(){
             ? `<div style="position:relative;height:220px;"><canvas id="empShareChart"></canvas></div>`
             : `<div style="height:220px;display:flex;align-items:center;justify-content:center;"><div class="muted" style="font-size:13px;text-align:center;">${state.salesEmp!=='ALL' ? '담당자를 &quot;전체&quot;로 선택하면<br>매니저별 판매 비중이 표시됩니다.' : '표시할 판매 데이터가 없습니다.'}</div></div>`}
         </div>
-      </div>
+      </div>`;
+
+  const salesFilterCardHtml = `
+        <div class="card" style="margin-bottom:16px;padding:14px;">
+          ${periodSelectorHtml}
+          ${empSelectorHtml}
+        </div>`;
+
+  return `
+    <div class="page-title">실적 / 제품 분석</div>
+    <div class="page-desc">${scopeBranch==='ALL' ? '전체 지점' : branchName(scopeBranch)} · ${salesPeriod ? salesPeriod+' 월 데이터' : '전체 기간 누적 데이터'} · 금액은 모두 KK(백만원) 단위 · "실판매 목표대비 실적조회" 시트 기반(관리자가 [시스템 관리]에서 목표/실적 파일을 새로 올리면 갱신됩니다)</div>
+    ${branchSelectorHtml}
+    ${salesFilterCardHtml}
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+      ${salesMainContentHtml}
     </div>
   `;
 }
