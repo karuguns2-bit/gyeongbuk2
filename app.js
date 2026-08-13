@@ -1717,12 +1717,12 @@ function renderHomeGoalsManagerBanner(){
   const summary = goalsManagerSummary(period);
   if(summary.length===0) return '';
   const cards = summary.map(m=>`
-    <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
+    <div class="card stat-tile ${m.pct>=100?'stat-tile-green':m.pct>=80?'stat-tile-amber':'stat-tile-pink'}" style="min-width:150px;flex:1;">
       <div style="font-weight:700;font-size:13px;">${m.manager}</div>
-      <div class="stat-sub">${m.branchCount}개 지점</div>
-      <div style="font-size:19px;font-weight:800;color:var(--primary);margin-top:2px;">${m.pct.toFixed(1)}% ${pctBadge(m.pct)}</div>
-      <div class="progress-bar" style="margin-top:4px;"><div style="width:${Math.min(m.pct,100)}%"></div></div>
-      <div class="stat-sub" style="margin-top:4px;">${fmtKK(m.achieved)} / ${fmtKK(m.target)}</div>
+      <div class="stat-tile-sub">${m.branchCount}개 지점</div>
+      <div class="stat-tile-num" style="font-size:19px;margin-top:2px;">${m.pct.toFixed(1)}% ${pctBadge(m.pct)}</div>
+      <div class="progress-bar" style="margin-top:4px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(m.pct,100)}%"></div></div>
+      <div class="stat-tile-sub" style="margin-top:4px;">${fmtKK(m.achieved)} / ${fmtKK(m.target)}</div>
     </div>`).join('');
   return `
     <div class="card" style="margin-bottom:16px;">
@@ -1792,11 +1792,11 @@ function renderHomeManagerCompetitivenessBanner(){
   const summary = competManagerSummary(period);
   if(summary.length===0) return '';
   const cards = summary.map(m=>`
-    <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
+    <div class="card stat-tile stat-tile-blue" style="min-width:150px;flex:1;">
       <div style="font-weight:700;font-size:13px;">${m.manager}</div>
-      <div class="stat-sub">${m.branchCount}개 지점</div>
-      <div style="font-size:19px;font-weight:800;color:var(--primary);margin-top:2px;">MS ${m.msPct}%</div>
-      <div class="stat-sub" style="margin-top:4px;">LG ${fmtKK(m.lgWon)} · SS ${fmtKK(m.ssWon)} · GAP ${gapCell(m.gapWon)}</div>
+      <div class="stat-tile-sub">${m.branchCount}개 지점</div>
+      <div class="stat-tile-num" style="font-size:19px;margin-top:2px;">MS ${m.msPct}%</div>
+      <div class="stat-tile-sub" style="margin-top:4px;">LG ${fmtKK(m.lgWon)} · SS ${fmtKK(m.ssWon)} · GAP ${gapCell(m.gapWon)}</div>
     </div>`).join('');
   return `
     <div class="card" style="margin-bottom:16px;">
@@ -4204,11 +4204,20 @@ function renderGoals(){
 
               <h3 style="margin-top:0;">팀원별 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
               <div class="small-note" style="margin-bottom:10px;">※ MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 기준으로 팀원별 목표를 나눠서 설정해 주세요.</div>
-              <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
-                <div><span class="muted">합계 배분 목표</span> <b>${fmtKK(allocSum)}</b></div>
-                <div><span class="muted">합계 누적 실적</span> <b>${fmtKK(allocAchievedSum)}</b></div>
-                <div><span class="muted">합계 달성률</span> <b>${allocAchievedPct.toFixed(1)}%</b> ${pctBadge(allocAchievedPct)}</div>
-                <div style="flex:1;min-width:100px;"><div class="progress-bar"><div style="width:${Math.min(allocAchievedPct,100)}%"></div></div></div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-bottom:10px;">
+                <div class="stat-tile stat-tile-blue" style="flex:1;min-width:130px;padding:10px 14px;">
+                  <div class="stat-tile-label" style="margin-bottom:2px;">합계 배분 목표</div>
+                  <div class="stat-tile-num" style="font-size:17px;">${fmtKK(allocSum)}</div>
+                </div>
+                <div class="stat-tile stat-tile-pink" style="flex:1;min-width:130px;padding:10px 14px;">
+                  <div class="stat-tile-label" style="margin-bottom:2px;">합계 누적 실적</div>
+                  <div class="stat-tile-num" style="font-size:17px;">${fmtKK(allocAchievedSum)}</div>
+                </div>
+                <div class="stat-tile ${allocAchievedPct>=100?'stat-tile-green':allocAchievedPct>=80?'stat-tile-amber':'stat-tile-pink'}" style="flex:2;min-width:220px;padding:10px 14px;">
+                  <div class="stat-tile-label" style="margin-bottom:2px;">합계 달성률</div>
+                  <div class="stat-tile-num" style="font-size:17px;">${allocAchievedPct.toFixed(1)}% ${pctBadge(allocAchievedPct)}</div>
+                  <div class="progress-bar" style="margin-top:6px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(allocAchievedPct,100)}%"></div></div>
+                </div>
               </div>
               <div class="table-scroll">
               <table>
@@ -4240,11 +4249,23 @@ function renderGoals(){
               <div class="divider"></div>
 
               <h3 style="margin-top:0;">팀원별 구독 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
-              <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
-                <div><span class="muted">합계 건수 목표</span> <b>${subAllocSumQty}건</b></div>
-                <div><span class="muted">합계 금액 목표</span> <b>${subAllocSumAmt}KK</b></div>
-                <div><span class="muted">합계 실적</span> <b>${subActualQtySum}건 / ${roundKK1(subActualAmtSum)}KK</b></div>
-                <div><span class="muted">합계 금액 달성률</span> <b>${subAllocSumAmt>0 ? subActualAmtPctTotal.toFixed(1) : '0.0'}%</b> ${pctBadge(subActualAmtPctTotal)}</div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-bottom:10px;">
+                <div class="stat-tile stat-tile-blue" style="flex:1;min-width:120px;padding:10px 14px;">
+                  <div class="stat-tile-label" style="margin-bottom:2px;">합계 건수 목표</div>
+                  <div class="stat-tile-num" style="font-size:17px;">${subAllocSumQty}건</div>
+                </div>
+                <div class="stat-tile stat-tile-blue" style="flex:1;min-width:120px;padding:10px 14px;">
+                  <div class="stat-tile-label" style="margin-bottom:2px;">합계 금액 목표</div>
+                  <div class="stat-tile-num" style="font-size:17px;">${subAllocSumAmt}KK</div>
+                </div>
+                <div class="stat-tile stat-tile-pink" style="flex:1;min-width:150px;padding:10px 14px;">
+                  <div class="stat-tile-label" style="margin-bottom:2px;">합계 실적</div>
+                  <div class="stat-tile-num" style="font-size:17px;">${subActualQtySum}건 / ${roundKK1(subActualAmtSum)}KK</div>
+                </div>
+                <div class="stat-tile ${subActualAmtPctTotal>=100?'stat-tile-green':subActualAmtPctTotal>=80?'stat-tile-amber':'stat-tile-pink'}" style="flex:1;min-width:150px;padding:10px 14px;">
+                  <div class="stat-tile-label" style="margin-bottom:2px;">합계 금액 달성률</div>
+                  <div class="stat-tile-num" style="font-size:17px;">${subAllocSumAmt>0 ? subActualAmtPctTotal.toFixed(1) : '0.0'}% ${pctBadge(subActualAmtPctTotal)}</div>
+                </div>
               </div>
               <div class="table-scroll">
               <table>
@@ -5540,25 +5561,25 @@ function renderMetricsOverview(){
 
     const kpiCards = `
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
-        <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
-          <div class="stat-sub">총판 ${moBadgeRank(rankTotal, rankTotalOf)}</div>
-          <div style="font-size:19px;font-weight:800;">${moFmt(agg.g_tp_cur)}</div>
-          <div class="stat-sub" style="margin-top:2px;">전년동기비 ${moYoy(agg.g_tp_yoy)} · 전년마감비 ${moYoy(agg.g_tp_closeYoy)}</div>
+        <div class="card stat-tile stat-tile-blue" style="min-width:150px;flex:1;">
+          <div class="stat-tile-sub">총판 ${moBadgeRank(rankTotal, rankTotalOf)}</div>
+          <div class="stat-tile-num" style="font-size:19px;">${moFmt(agg.g_tp_cur)}</div>
+          <div class="stat-tile-sub" style="margin-top:2px;">전년동기비 ${moYoy(agg.g_tp_yoy)} · 전년마감비 ${moYoy(agg.g_tp_closeYoy)}</div>
         </div>
-        <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
-          <div class="stat-sub">구독 실판 ${moBadgeRank(rankSub, rankTotalOf)}</div>
-          <div style="font-size:19px;font-weight:800;">${moFmt(agg.s_sp_cur)}</div>
-          <div class="stat-sub" style="margin-top:2px;">${Math.round(agg.s_sp_qty||0).toLocaleString('ko-KR')}건 · 비중 ${moPct(agg.s_sp_ratio)}</div>
+        <div class="card stat-tile stat-tile-pink" style="min-width:150px;flex:1;">
+          <div class="stat-tile-sub">구독 실판 ${moBadgeRank(rankSub, rankTotalOf)}</div>
+          <div class="stat-tile-num" style="font-size:19px;">${moFmt(agg.s_sp_cur)}</div>
+          <div class="stat-tile-sub" style="margin-top:2px;">${Math.round(agg.s_sp_qty||0).toLocaleString('ko-KR')}건 · 비중 ${moPct(agg.s_sp_ratio)}</div>
         </div>
-        <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
-          <div class="stat-sub">고수익 비중(실판) ${moBadgeRank(rankHigh, rankTotalOf)}</div>
-          <div style="font-size:19px;font-weight:800;">${moPct(agg.h_sp_highRatio)}</div>
-          <div class="stat-sub" style="margin-top:2px;">경북팀 평균 대비 ${moGap(agg.h_sp_highRatio - teamAgg.h_sp_highRatio)}</div>
+        <div class="card stat-tile stat-tile-amber" style="min-width:150px;flex:1;">
+          <div class="stat-tile-sub">고수익 비중(실판) ${moBadgeRank(rankHigh, rankTotalOf)}</div>
+          <div class="stat-tile-num" style="font-size:19px;">${moPct(agg.h_sp_highRatio)}</div>
+          <div class="stat-tile-sub" style="margin-top:2px;">경북팀 평균 대비 ${moGap(agg.h_sp_highRatio - teamAgg.h_sp_highRatio)}</div>
         </div>
-        <div class="card" style="padding:10px 14px;min-width:150px;flex:1;">
-          <div class="stat-sub">목표 달성률 ${moBadgeRank(rankRate, rankTotalOf)}</div>
-          <div style="font-size:19px;font-weight:800;color:var(--primary);">${moPct(agg.g_tp_rate)} ${pctBadge(agg.g_tp_rate||0)}</div>
-          <div class="progress-bar" style="margin-top:4px;"><div style="width:${Math.min(agg.g_tp_rate||0,100)}%"></div></div>
+        <div class="card stat-tile ${(agg.g_tp_rate||0)>=100?'stat-tile-green':(agg.g_tp_rate||0)>=80?'stat-tile-amber':'stat-tile-pink'}" style="min-width:150px;flex:1;">
+          <div class="stat-tile-sub">목표 달성률 ${moBadgeRank(rankRate, rankTotalOf)}</div>
+          <div class="stat-tile-num" style="font-size:19px;">${moPct(agg.g_tp_rate)} ${pctBadge(agg.g_tp_rate||0)}</div>
+          <div class="progress-bar" style="margin-top:4px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(agg.g_tp_rate||0,100)}%"></div></div>
         </div>
       </div>`;
 
