@@ -4185,20 +4185,23 @@ function renderGoals(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>주차별 목표 달성 현황 <small>(1주 55% / 2주 25% / 3주 10% / 4주 10% 자동 배분 · 미달성분은 다음 주차에 비중대로 재배분)</small></h3>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
-        ${weeklyTotal.map(w=>{
-          const style = w.isCurrent ? 'font-weight:800;color:var(--primary);' : 'font-weight:700;';
-          const body = w.known ? `실적 ${fmtKK(w.actual)} · <b>${w.pct}%</b>` : `<span class="muted">미집계</span>`;
-          return `<div style="${style}">${goalsWeekLabel(period,w.week)} 합계<br><span style="font-weight:400;font-size:12px;">목표 ${fmtKK(w.target)}<br>${body}</span></div>`;
-        }).join('')}
-      </div>
       <div style="overflow-x:auto;">
       <table>
         <thead><tr><th>이름</th><th>${goalsWeekLabel(period,1)}</th><th>${goalsWeekLabel(period,2)}</th><th>${goalsWeekLabel(period,3)}</th><th>${goalsWeekLabel(period,4)}</th></tr></thead>
-        <tbody>${weeklyRows}</tbody>
+        <tbody>
+          <tr style="font-weight:800;border-bottom:2px solid var(--border);">
+            <td>합계</td>
+            ${weeklyTotal.map(w=>{
+              const bg = w.isCurrent ? 'background:#fff7e0;' : 'background:#f7f8fa;';
+              const body = w.known ? `실적 ${fmtKK(w.actual)}<br>${w.pct}% ${pctBadge(w.pct)}` : `<span class="muted" style="font-weight:400;">미집계</span>`;
+              return `<td style="${bg}font-size:12px;line-height:1.6;">목표 ${fmtKK(w.target)}<br>${body}</td>`;
+            }).join('')}
+          </tr>
+          ${weeklyRows}
+        </tbody>
       </table>
       </div>
-      <div class="small-note">※ 현재 ${nowWeekIdx}주차로 계산됩니다(노란색 강조). 지난 주차 실적이 목표에 못 미치면 그 미달성분이 이후 남은 주차들에 원래 비중 그대로 다시 나뉘어 더해집니다. "미집계"는 아직 그 주차의 실적 파일이 올라오지 않았다는 뜻입니다.</div>
+      <div class="small-note">※ 현재 ${nowWeekIdx}주차로 계산됩니다(노란색 강조). 맨 위 "합계" 행은 지점 전체(팀원 배분 목표 합산) 기준입니다. 지난 주차 실적이 목표에 못 미치면 그 미달성분이 이후 남은 주차들에 원래 비중 그대로 다시 나뉘어 더해집니다. "미집계"는 아직 그 주차의 실적 파일이 올라오지 않았다는 뜻입니다.</div>
     </div>
 
     <div class="card">
@@ -5283,6 +5286,40 @@ function moRenderChart(canvasId, config){
     moChartInstances[canvasId] = new Chart(ctx, config);
   }, 0);
 }
+// 사이트 전체 막대 차트 공통: 막대 끝(가로 막대는 값 부호에 따라 오른쪽/왼쪽 끝, 세로 막대는
+// 위/아래 끝)에 값을 직접 그려주는 범용 Chart.js 플러그인. 별도 CDN(chartjs-plugin-datalabels)
+// 없이 afterDatasetsDraw 훅만으로 구현한다. formatter로 표시 문자열을 차트마다 다르게 지정한다
+// (예: "1,234명", "+12.3%", "56건" 등). null 값은 그리지 않는다(신장률처럼 데이터 없는 구간이 있을 수 있음).
+function barValueLabelsPlugin(formatter){
+  return {
+    id: 'barValueLabelsPlugin',
+    afterDatasetsDraw(chart){
+      const {ctx} = chart;
+      const horizontal = chart.options.indexAxis === 'y';
+      chart.data.datasets.forEach((dataset, dsIndex)=>{
+        const meta = chart.getDatasetMeta(dsIndex);
+        meta.data.forEach((bar, i)=>{
+          const value = dataset.data[i];
+          if(value==null) return;
+          const text = formatter ? formatter(value) : String(value);
+          ctx.save();
+          ctx.fillStyle = '#333';
+          ctx.font = 'bold 11px sans-serif';
+          if(horizontal){
+            ctx.textBaseline = 'middle';
+            ctx.textAlign = value>=0 ? 'left' : 'right';
+            ctx.fillText(text, bar.x + (value>=0?4:-4), bar.y);
+          } else {
+            ctx.textAlign = 'center';
+            ctx.textBaseline = value>=0 ? 'bottom' : 'top';
+            ctx.fillText(text, bar.x, bar.y + (value>=0?-4:4));
+          }
+          ctx.restore();
+        });
+      });
+    }
+  };
+}
 // 신장률(%) 값들을 가로 막대 차트로 — Chart.js가 자동으로 보기 좋은 눈금(0, ±20%, ±40%...)을
 // 잡아주므로, 극단적인 값 하나 때문에 축 전체가 왜곡되어 읽기 어려워지는 문제가 줄어든다.
 function moYoyBarConfig(labels, values, highlightIdx, unit){
@@ -5291,7 +5328,9 @@ function moYoyBarConfig(labels, values, highlightIdx, unit){
     type:'bar',
     data:{ labels, datasets:[{ data: values.map(v=>v==null?null:Math.round(v*10)/10),
       backgroundColor: values.map((v,i)=> i===highlightIdx ? '#A50034' : (v>=0 ? '#a9d3b3' : '#e8b4b4')) }] },
+    plugins: [barValueLabelsPlugin(v=>(v>=0?'+':'')+v+unit)],
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ left:8, right:8 } },
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=> (c.parsed.x>=0?'+':'')+c.parsed.x+unit}} },
       scales:{ x:{ grid:{color:'#eee'}, ticks:{ callback:(v)=> (v>=0?'+':'')+v+unit } } } }
   };
@@ -5464,7 +5503,7 @@ function renderMetricsOverview(){
     }
 
     // 지점별 한눈에 보기 그리드 — 지점을 하나씩 눌러보지 않아도 전체 상태를 카드로 동시에 파악
-    const branchGridHtml = !selBranch ? `<div class="card" style="margin-top:16px;">
+    const branchGridHtml = !selBranch ? `<div class="card">
         <h3>🏬 지점별 한눈에 보기 <small>${selManager?escapeHtml(selManager)+' 소속 '+branchesInScope.length+'개 지점':'전체 '+branchesInScope.length+'개 지점'} · 카드를 클릭하면 해당 지점 상세로 이동</small></h3>
         ${moBranchGridHtml(branchesInScope, !selManager)}
       </div>` : '';
@@ -5495,14 +5534,20 @@ function renderMetricsOverview(){
         ${kpiCards}
       </div>
       ${compareHtml}
-      ${branchGridHtml}
-      <div class="card" style="margin-top:16px;">
-        <h3>📈 ${yoyRankTitle} <small>전년 동기 대비, 단위 %</small></h3>
-        <div style="position:relative;height:${Math.max(160, yoyRankLabels.length*36)}px;"><canvas id="moYoyRankChart"></canvas></div>
-      </div>
-      <div class="card" style="margin-top:16px;">
-        <h3>🎯 ${rateRankTitle} <small>단위 %</small></h3>
-        <div style="position:relative;height:${Math.max(160, rateRankLabels.length*36)}px;"><canvas id="moRateRankChart"></canvas></div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;">
+        <div style="flex:3;min-width:360px;">
+          ${branchGridHtml}
+        </div>
+        <div style="flex:2;min-width:320px;display:flex;flex-direction:column;gap:16px;">
+          <div class="card">
+            <h3>📈 ${yoyRankTitle} <small>전년 동기 대비, 단위 %</small></h3>
+            <div style="position:relative;height:${Math.max(160, yoyRankLabels.length*36)}px;"><canvas id="moYoyRankChart"></canvas></div>
+          </div>
+          <div class="card">
+            <h3>🎯 ${rateRankTitle} <small>단위 %</small></h3>
+            <div style="position:relative;height:${Math.max(160, rateRankLabels.length*36)}px;"><canvas id="moRateRankChart"></canvas></div>
+          </div>
+        </div>
       </div>`;
     moRenderChart('moYoyRankChart', moYoyBarConfig(yoyRankLabels, yoyRankValues, yoyHighlightIdx));
     moRenderChart('moRateRankChart', moYoyBarConfig(rateRankLabels, rateRankValues, rateHighlightIdx));
@@ -5942,10 +5987,9 @@ function renderSales(){
 
   let branchSelectorHtml = '';
   if(SESSION.role==='admin'){
-    branchSelectorHtml = `<div style="margin-bottom:8px;">` +
-      DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); state.salesEmp='ALL'; renderTab('sales')">${b.name}</span>`).join('') +
-      `<span class="branch-pill ${scopeBranch==='ALL'?'active':''}" onclick="state.viewBranchId='ALL'; state.salesEmp='ALL'; renderTab('sales')">전체</span>` +
-      `</div>`;
+    branchSelectorHtml =
+      `<div class="sales-branch-item ${scopeBranch==='ALL'?'active':''}" onclick="state.viewBranchId='ALL'; state.salesEmp='ALL'; renderTab('sales')">전체</div>` +
+      DB.branches.map(b=>`<div class="sales-branch-item ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); state.salesEmp='ALL'; renderTab('sales')">${b.name}</div>`).join('');
   }
 
   // 담당자(매니저) 선택 드롭다운: 현재 선택된 지점 소속 사원만 노출 (전체 지점이면 전원)
@@ -6055,7 +6099,8 @@ function renderSales(){
           labels: topProducts.map(p=>p[0]),
           datasets:[{ label:'판매금액', data: topProducts.map(p=>p[1].amount), backgroundColor:'#A50034' }]
         },
-        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>fmtKK(ctx.parsed.x)}}} }
+        plugins: [barValueLabelsPlugin(v=>fmtKK(v))],
+        options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:36}}, plugins:{legend:{display:false}, tooltip:{callbacks:{label:(ctx)=>fmtKK(ctx.parsed.x)}}} }
       });
     }
     const empCtx = document.getElementById('empShareChart');
@@ -6132,27 +6177,33 @@ function renderSales(){
   return `
     <div class="page-title">실적 / 제품 분석</div>
     <div class="page-desc">${scopeBranch==='ALL' ? '전체 지점' : branchName(scopeBranch)} · ${salesPeriod ? salesPeriod+' 월 데이터' : '전체 기간 누적 데이터'} · 금액은 모두 KK(백만원) 단위 · "실판매 목표대비 실적조회" 시트 기반(관리자가 [시스템 관리]에서 목표/실적 파일을 새로 올리면 갱신됩니다)</div>
-    ${branchSelectorHtml}
-    ${periodSelectorHtml}
-    ${empSelectorHtml}
-
-    <div class="grid grid-2" style="margin-bottom:12px;">
-      <div class="card">
-        <h3>제품별 판매 Top 10 (금액 기준) <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
-        <div style="position:relative;height:200px;"><canvas id="productChart"></canvas></div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="width:210px;flex-shrink:0;">
+        <div class="card" style="margin-bottom:16px;padding:14px;">
+          ${periodSelectorHtml}
+          ${empSelectorHtml}
+        </div>
+        ${branchSelectorHtml ? `<div>${branchSelectorHtml}</div>` : ''}
       </div>
-      ${rightCardHtml}
-    </div>
 
-    <div class="grid grid-2">
-      ${showEmpShareChart ? `
-      <div class="card">
-        <h3>매니저별 판매 비중</h3>
-        <div style="position:relative;height:190px;"><canvas id="empShareChart"></canvas></div>
-      </div>` : ''}
-      <div class="card">
-        <h3>제품군 비중 <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
-        <div style="position:relative;height:190px;"><canvas id="categoryShareChart"></canvas></div>
+      <div style="flex:1;min-width:380px;">
+        <div class="card" style="margin-bottom:16px;">
+          <h3>제품별 판매 Top 10 (금액 기준) <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
+          <div style="position:relative;height:200px;"><canvas id="productChart"></canvas></div>
+        </div>
+        ${rightCardHtml}
+      </div>
+
+      <div style="width:280px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;">
+        <div class="card">
+          <h3>제품군 비중 <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
+          <div style="position:relative;height:220px;"><canvas id="categoryShareChart"></canvas></div>
+        </div>
+        ${showEmpShareChart ? `
+        <div class="card">
+          <h3>매니저별 판매 비중</h3>
+          <div style="position:relative;height:220px;"><canvas id="empShareChart"></canvas></div>
+        </div>` : ''}
       </div>
     </div>
   `;
@@ -6407,64 +6458,68 @@ function renderInventory(){
     <div class="page-title">재고 조회</div>
     <div class="page-desc">전 지점 공유 · 관리자와 지점 매니저 모두 전 지점 재고를 동일하게 조회 가능 · 행사(행)/진열(진) 재고만 표시 · 통합 보드.xlsx &quot;재고장&quot; 시트 기준(관리자가 새 파일을 업로드해도 아래 구분/구분(상태)/제품 상태/진열일자는 직접 수정 전까지 값이 유지됩니다).</div>
 
-    <div class="card" style="margin-bottom:16px;">
-      <div class="form-row inv-filter-row" style="margin-bottom:0;">
-        <div class="field">
-          <label>매장</label>
-          <select style="width:210px" onchange="setInvFilter('store', this.value)">
-            <option value="ALL" ${f.store==='ALL'?'selected':''}>전체 매장</option>
-            ${stores.map(s=>`<option value="${s}" ${f.store===s?'selected':''}>${s}</option>`).join('')}
-          </select>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="width:280px;flex-shrink:0;">
+        <div class="card" style="margin-bottom:16px;">
+          <div class="field" style="margin-bottom:12px;">
+            <label>매장</label>
+            <select style="width:100%" onchange="setInvFilter('store', this.value)">
+              <option value="ALL" ${f.store==='ALL'?'selected':''}>전체 매장</option>
+              ${stores.map(s=>`<option value="${s}" ${f.store===s?'selected':''}>${s}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:12px;">
+            <label>유형</label>
+            <select style="width:100%" onchange="setInvFilter('tag', this.value)">
+              <option value="ALL" ${f.tag==='ALL'||!f.tag?'selected':''}>전체(행사+진열)</option>
+              <option value="행사" ${f.tag==='행사'?'selected':''}>행사</option>
+              <option value="진열" ${f.tag==='진열'?'selected':''}>진열</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:12px;">
+            <label>검색 (제품명/모델명/코드)</label>
+            <input style="width:100%" value="${f.q||''}" placeholder="예: 스타일러, MW23GD, 2087685" onkeyup="if(event.key==='Enter') setInvFilter('q', this.value)" onchange="setInvFilter('q', this.value)">
+          </div>
+          <div class="field" style="margin-bottom:4px;">
+            <label>소진집중</label>
+            <span class="branch-pill ${f.clearanceOnly?'active':''}" style="cursor:pointer;white-space:nowrap;" onclick="toggleInvClearanceFilter()">🔥 소진집중만 보기${clearanceTotalCount>0 ? ` (${clearanceTotalCount})` : ''}</span>
+          </div>
+          <div style="margin-top:12px;">
+            <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">구분 (다중 선택)</label>
+            <div>${invFilterPills('cat1', cat1s)}</div>
+          </div>
+          <div style="margin-top:10px;">
+            <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">구분(상태) (다중 선택)</label>
+            <div>${invFilterPills('status', INV_STATUS_OPTIONS)}</div>
+          </div>
+          <div style="margin-top:10px;">
+            <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">제품 상태 (다중 선택)</label>
+            <div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>
+          </div>
         </div>
-        <div class="field">
-          <label>유형</label>
-          <select style="width:170px" onchange="setInvFilter('tag', this.value)">
-            <option value="ALL" ${f.tag==='ALL'||!f.tag?'selected':''}>전체(행사+진열)</option>
-            <option value="행사" ${f.tag==='행사'?'selected':''}>행사</option>
-            <option value="진열" ${f.tag==='진열'?'selected':''}>진열</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>검색 (제품명/모델명/코드)</label>
-          <input style="width:260px" value="${f.q||''}" placeholder="예: 스타일러, MW23GD, 2087685" onkeyup="if(event.key==='Enter') setInvFilter('q', this.value)" onchange="setInvFilter('q', this.value)">
-        </div>
-        <div class="field">
-          <label>소진집중</label>
-          <span class="branch-pill ${f.clearanceOnly?'active':''}" style="cursor:pointer;white-space:nowrap;" onclick="toggleInvClearanceFilter()">🔥 소진집중만 보기${clearanceTotalCount>0 ? ` (${clearanceTotalCount})` : ''}</span>
-        </div>
+        <div class="small-note">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}${clearanceStats ? ` · 소진 카운팅 기준일(시작일) <b>${clearanceStats.date}</b> · 소진완료 <b>${clearanceStats.depleted}대</b> / ${clearanceStats.total}건 (소진율 <b>${clearanceStats.pct}%</b>)` : ''}</div>
       </div>
-      <div style="margin-top:12px;">
-        <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">구분 (다중 선택)</label>
-        <div>${invFilterPills('cat1', cat1s)}</div>
-      </div>
-      <div style="margin-top:10px;">
-        <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">구분(상태) (다중 선택)</label>
-        <div>${invFilterPills('status', INV_STATUS_OPTIONS)}</div>
-      </div>
-      <div style="margin-top:10px;">
-        <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">제품 상태 (다중 선택)</label>
-        <div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>
-      </div>
-      <div class="small-note" style="margin-top:10px;">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}${clearanceStats ? ` · 소진 카운팅 기준일(시작일) <b>${clearanceStats.date}</b> · 소진완료 <b>${clearanceStats.depleted}대</b> / ${clearanceStats.total}건 (소진율 <b>${clearanceStats.pct}%</b>)` : ''}</div>
-    </div>
 
-    <div class="card">
-      <div class="table-scroll">
-        <table class="inv-table">
-          <colgroup>
-            <col style="width:70px;"><col style="width:52px;"><col style="width:200px;">
-            <col style="width:100px;"><col style="width:130px;">
-            <col style="width:80px;"><col style="width:60px;"><col style="width:90px;">
-            <col style="width:110px;"><col style="width:100px;"><col style="width:120px;">
-          </colgroup>
-          <thead><tr><th>매장</th><th>유형</th><th>상품명</th><th>구분1</th><th>모델명</th><th>코드</th><th>수량</th><th>재고금액</th><th>구분(상태)</th><th>제품 상태</th><th>진열일자</th></tr></thead>
-          <tbody>${tableRows}</tbody>
-        </table>
-      </div>
-      <div class="flex-between" style="margin-top:12px;">
-        <button class="btn btn-sm" onclick="setInvPage(-1)" ${f.page<=1?'disabled':''}>◀ 이전</button>
-        <span class="muted">${f.page} / ${totalPages} 페이지</span>
-        <button class="btn btn-sm" onclick="setInvPage(1)" ${f.page>=totalPages?'disabled':''}>다음 ▶</button>
+      <div style="flex:1;min-width:520px;">
+        <div class="card">
+          <div class="table-scroll">
+            <table class="inv-table">
+              <colgroup>
+                <col style="width:70px;"><col style="width:52px;"><col style="width:200px;">
+                <col style="width:100px;"><col style="width:130px;">
+                <col style="width:80px;"><col style="width:60px;"><col style="width:90px;">
+                <col style="width:110px;"><col style="width:100px;"><col style="width:120px;">
+              </colgroup>
+              <thead><tr><th>매장</th><th>유형</th><th>상품명</th><th>구분1</th><th>모델명</th><th>코드</th><th>수량</th><th>재고금액</th><th>구분(상태)</th><th>제품 상태</th><th>진열일자</th></tr></thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+          </div>
+          <div class="flex-between" style="margin-top:12px;">
+            <button class="btn btn-sm" onclick="setInvPage(-1)" ${f.page<=1?'disabled':''}>◀ 이전</button>
+            <span class="muted">${f.page} / ${totalPages} 페이지</span>
+            <button class="btn btn-sm" onclick="setInvPage(1)" ${f.page>=totalPages?'disabled':''}>다음 ▶</button>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -8672,7 +8727,8 @@ function icCountBarConfig(labels, values, color){
   return {
     type:'bar',
     data:{ labels, datasets:[{ data: values, backgroundColor: color||'#A50034' }] },
-    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+    plugins: [barValueLabelsPlugin(v=>v+'건')],
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:30}},
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>c.parsed.x+'건'}} },
       scales:{ x:{ ticks:{ precision:0 } } } }
   };
@@ -10608,36 +10664,15 @@ function renderKakaoFriendsBanner(){
     </div>`;
 }
 // 지점별 카카오 플러스 친구 누적 등록건 수 막대그래프 설정 (세로 막대 · 이슈제품 성공사례
-// 대시보드의 icCountBarConfig와 달리 기본 세로축 방향을 그대로 사용한다).
-// 막대 위에 "N명" 값을 직접 그려주는 경량 플러그인 — 별도 CDN(chartjs-plugin-datalabels) 없이
-// Chart.js v4의 afterDatasetsDraw 훅만으로 구현해서, 다른 곳처럼 외부 의존성을 늘리지 않는다.
-const kakaoBarValueLabelsPlugin = {
-  id: 'kakaoBarValueLabelsPlugin',
-  afterDatasetsDraw(chart){
-    const {ctx} = chart;
-    chart.data.datasets.forEach((dataset, dsIndex)=>{
-      const meta = chart.getDatasetMeta(dsIndex);
-      meta.data.forEach((bar, i)=>{
-        const value = dataset.data[i];
-        if(value==null) return;
-        ctx.save();
-        ctx.fillStyle = '#333';
-        ctx.font = 'bold 11px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(`${fmtNum(value)}명`, bar.x, bar.y - 4);
-        ctx.restore();
-      });
-    });
-  }
-};
+// 대시보드의 icCountBarConfig와 달리 기본 세로축 방향을 그대로 사용한다). 막대 위 값 표시는
+// 공용 barValueLabelsPlugin(moRenderChart 옆에 정의)을 그대로 재사용한다.
 function kakaoCumulativeBarConfig(labels, values){
   return {
     type:'bar',
     // 진행률 표(빨간 progress-bar)와 포스터에서 이미 쓰고 있는 브랜드 컬러(--primary, #A50034)로
     // 통일해서 페이지 전체 톤이 일관되게 보이도록 한다.
     data:{ labels, datasets:[{ data: values, backgroundColor:'#A50034' }] },
-    plugins: [kakaoBarValueLabelsPlugin],
+    plugins: [barValueLabelsPlugin(v=>fmtNum(v)+'명')],
     options:{ responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ top:20 } },
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>fmtNum(c.parsed.y)+'명'}} },
