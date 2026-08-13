@@ -284,6 +284,9 @@
      고정되도록 만든다 - 결과적으로 등록폼 등 위쪽 내용은 그대로 보이면서 표만 자체
      스크롤되는, 엑셀 틀고정과 더 비슷한 형태가 된다. (2026.08) */
   .table-scroll{overflow-x:auto;overflow-y:auto;max-height:65vh;}
+  .inv-layout{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+  .inv-sidebar{width:280px;flex-shrink:0;}
+  .inv-main{flex:1;min-width:520px;}
   .inv-table{font-size:12px;table-layout:fixed;width:max-content;min-width:100%;}
   .inv-table th,.inv-table td{padding:6px 8px;white-space:nowrap;}
   .inv-table th{font-size:11px;}
@@ -518,6 +521,11 @@
 
     .branch-pill{ padding:5px 10px; font-size:11.5px; }
     .grid-3, .grid-2{ grid-template-columns:1fr; }
+
+    /* 재고 조회 페이지: 사이드바(280px)+본문(min-width:520px) 고정폭 flex 레이아웃이
+       좁은 화면에서 전체 페이지를 가로로 밀어내던 문제 수정 -- 모바일에서는 세로로 100% 스택 */
+    .inv-sidebar{ width:100%; }
+    .inv-main{ min-width:0; width:100%; }
   }
 </style>
 </head>

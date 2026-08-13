@@ -6640,8 +6640,8 @@ function renderInventory(){
     <div class="page-title">재고 조회</div>
     <div class="page-desc">전 지점 공유 · 관리자와 지점 매니저 모두 전 지점 재고를 동일하게 조회 가능 · 행사(행)/진열(진) 재고만 표시 · 통합 보드.xlsx &quot;재고장&quot; 시트 기준(관리자가 새 파일을 업로드해도 아래 구분/구분(상태)/제품 상태/진열일자는 직접 수정 전까지 값이 유지됩니다).</div>
 
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="width:280px;flex-shrink:0;">
+    <div class="inv-layout">
+      <div class="inv-sidebar">
         <div class="card inv-filter-card" style="margin-bottom:16px;">
           <div class="field" style="margin-bottom:12px;">
             <label>매장</label>
@@ -6682,7 +6682,7 @@ function renderInventory(){
         <div class="small-note">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}${clearanceStats ? ` · 소진 카운팅 기준일(시작일) <b>${clearanceStats.date}</b> · 소진완료 <b>${clearanceStats.depleted}대</b> / ${clearanceStats.total}건 (소진율 <b>${clearanceStats.pct}%</b>)` : ''}</div>
       </div>
 
-      <div style="flex:1;min-width:520px;">
+      <div class="inv-main">
         <div class="card">
           <div class="table-scroll">
             <table class="inv-table">
