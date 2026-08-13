@@ -8,6 +8,7 @@ const REAL_SEED_RAW = {"branches":[{"id":"b01","name":"(신)이마트 E/T비산�
 
 function pad(n){ return n<10 ? '0'+n : ''+n; }
 function todayStr(){ const d=new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function tomorrowStr(){ const d=new Date(); d.setDate(d.getDate()+1); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function periodStr(d){ d=d||new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}`; }
 function daysInMonth(d){ d=d||new Date(); return new Date(d.getFullYear(), d.getMonth()+1, 0).getDate(); }
 /* =========================================================================
@@ -1824,6 +1825,7 @@ function renderHome(){
   const attBranchId = state.homeAttBranchId || myBranch;
   const attBranch = DB.branches.find(b=>b.id===attBranchId) || branch;
   const attRecords = attendanceRecordsForBranch(attBranchId, todayStr());
+  const attRecordsTomorrow = attendanceRecordsForBranch(attBranchId, tomorrowStr());
   const attBranchSelectorHtml = `<select style="width:120px;font-size:12px;" onchange="setHomeAttBranch(this.value)">${DB.branches.map(b=>`<option value="${b.id}" ${b.id===attBranchId?'selected':''}>${b.name}</option>`).join('')}</select>`;
 
   let branchSelectorHtml = '';
@@ -1834,6 +1836,12 @@ function renderHome(){
   }
 
   const attRows = attRecords.map(r=>`
+    <tr>
+      <td>${r.name}</td><td class="muted">${r.empId}</td>
+      <td>${statusBadge(r.status)}</td>
+      <td>${r.checkin}</td><td>${r.checkout}</td>
+    </tr>`).join('');
+  const attRowsTomorrow = attRecordsTomorrow.map(r=>`
     <tr>
       <td>${r.name}</td><td class="muted">${r.empId}</td>
       <td>${statusBadge(r.status)}</td>
@@ -1869,10 +1877,10 @@ function renderHome(){
       </div>
     </div>
 
-    <div class="grid grid-2">
+    <div class="grid grid-2" style="margin-bottom:16px;">
       <div class="card">
         <div class="flex-between" style="align-items:center;">
-          <h3 style="margin:0;">오늘 출근 현황 <small>(${attBranch?attBranch.name:''})</small></h3>
+          <h3 style="margin:0;">금일 근무 일정 <small>(${attBranch?attBranch.name:''} · ${todayStr()})</small></h3>
           ${attBranchSelectorHtml}
         </div>
         <table style="margin-top:10px;">
@@ -1881,11 +1889,19 @@ function renderHome(){
         </table>
       </div>
       <div class="card">
-        <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
-        <div class="ai-box">
-          <div class="ai-title">💡 오늘의 코멘트</div>
-          ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
-        </div>
+        <h3 style="margin:0;">익일 근무 일정 <small>(${attBranch?attBranch.name:''} · ${tomorrowStr()})</small></h3>
+        <table style="margin-top:10px;">
+          <thead><tr><th>이름</th><th>사번</th><th>상태</th><th>출근</th><th>퇴근</th></tr></thead>
+          <tbody>${attRowsTomorrow}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
+      <div class="ai-box">
+        <div class="ai-title">💡 오늘의 코멘트</div>
+        ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
       </div>
     </div>
 
@@ -6822,7 +6838,7 @@ function renderCollectPhoto(){
     if(canEdit && editId===r.id){
       const editPhotosHtml = (r.photos||[]).map((p,idx)=> noticeAttachmentHtml(p, 52, `removeExecPhotoImage('${r.id}',${idx})`)).join('');
       return `
-      <div class="card" style="width:220px;border:1.5px dashed var(--primary);">
+      <div class="card" style="width:100%;border:1.5px dashed var(--primary);">
         <div class="field" style="margin-bottom:8px;">
           <label>지점명</label>
           <select id="epe_${r.id}_branch" style="width:100%">${branchOptionsHtml(r.branchId)}</select>
@@ -6848,7 +6864,7 @@ function renderCollectPhoto(){
       : `<div class="muted" style="margin-bottom:6px;">등록된 파일이 없습니다.</div>`;
     const hasFiles = (r.photos||[]).length>0;
     return `
-    <div class="card" style="width:220px;">
+    <div class="card" style="width:100%;">
       <div class="flex-between" style="margin-bottom:6px;">
         <div style="font-weight:600;display:flex;align-items:center;gap:6px;">
           ${SESSION.role==='admin' ? `<input type="checkbox" ${state.epSelectedIds.has(r.id)?'checked':''} onchange="toggleExecPhotoSelect('${r.id}', this.checked)" title="선택">` : ''}

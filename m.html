@@ -515,7 +515,7 @@
     /* form-row 안 입력칸들은 세로로 쌓아서 폭이 좁아도 절대 깨지지 않게 한다.
        (인라인 style="width:160px" 같은 값이 곳곳에 있어 !important로 덮어써야 함) */
     .form-row{ flex-direction:column; align-items:stretch; gap:8px; }
-    .form-row .field{ width:100%; }
+    .form-row .field{ width:100%; min-width:0 !important; }
     .form-row input, .form-row select, .form-row textarea{ width:100% !important; max-width:100% !important; }
     input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea{ max-width:100%; box-sizing:border-box; }
 
@@ -526,6 +526,15 @@
        좁은 화면에서 전체 페이지를 가로로 밀어내던 문제 수정 -- 모바일에서는 세로로 100% 스택 */
     .inv-sidebar{ width:100%; }
     .inv-main{ min-width:0; width:100%; }
+
+    /* 사이트 전역: "flex:1;min-width:NNNpx" / "widthpx;flex-shrink:0" 형태의 고정폭 flex 자식
+       요소들이(실적/제품분석, 가망고객관리, 각종 취합 페이지 등 다수) 좁은 화면에서 부모 폭을
+       넘어서며 페이지 전체가 옆으로 밀리는 문제를 공통으로 막는다 -- 모바일에서는 전부 폭 100%로
+       세로 스택. (인라인 스타일보다 우선 적용되도록 !important 필요) */
+    .main div[style*="flex:1;min-width:"]{ min-width:0 !important; width:100% !important; }
+    .main div[style*="width:280px;flex-shrink:0"],
+    .main div[style*="width:300px;flex-shrink:0"],
+    .main div[style*="width:260px;flex-shrink:0"]{ width:100% !important; }
   }
 </style>
 </head>
