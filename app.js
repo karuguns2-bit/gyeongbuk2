@@ -1824,9 +1824,19 @@ function renderHome(){
   // 포함 누구나 이 카드에서 바로 지점을 바꿔볼 수 있게 한다).
   const attBranchId = state.homeAttBranchId || myBranch;
   const attBranch = DB.branches.find(b=>b.id===attBranchId) || branch;
-  const attRecords = attendanceRecordsForBranch(attBranchId, todayStr());
-  const attRecordsTomorrow = attendanceRecordsForBranch(attBranchId, tomorrowStr());
+  // 근무 일정 카드: 날짜를 고정(오늘/내일)해서 두 칸으로 나눠 보여주던 방식 대신, 달력으로 원하는
+  // 날짜를 직접 검색하거나 좌/우 버튼으로 하루씩 이동하며 한 칸(기존 카드 크기)에서 조회한다.
+  const attDate = state.homeAttDate || todayStr();
+  const attRecords = attendanceRecordsForBranch(attBranchId, attDate);
   const attBranchSelectorHtml = `<select style="width:120px;font-size:12px;" onchange="setHomeAttBranch(this.value)">${DB.branches.map(b=>`<option value="${b.id}" ${b.id===attBranchId?'selected':''}>${b.name}</option>`).join('')}</select>`;
+  const attDateRelLabel = homeAttDateRelLabel(attDate);
+  const attDateNavHtml = `
+    <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
+      <button type="button" class="btn btn-sm" onclick="shiftHomeAttDate(-1)" title="전날">◀</button>
+      <input type="date" value="${attDate}" onchange="setHomeAttDate(this.value)" style="flex:1;min-width:0;">
+      <button type="button" class="btn btn-sm" onclick="shiftHomeAttDate(1)" title="다음날">▶</button>
+      ${attDate!==todayStr() ? `<button type="button" class="btn btn-sm" onclick="setHomeAttDate('${todayStr()}')">오늘</button>` : ''}
+    </div>`;
 
   let branchSelectorHtml = '';
   if(SESSION.role==='admin'){
@@ -1836,12 +1846,6 @@ function renderHome(){
   }
 
   const attRows = attRecords.map(r=>`
-    <tr>
-      <td>${r.name}</td><td class="muted">${r.empId}</td>
-      <td>${statusBadge(r.status)}</td>
-      <td>${r.checkin}</td><td>${r.checkout}</td>
-    </tr>`).join('');
-  const attRowsTomorrow = attRecordsTomorrow.map(r=>`
     <tr>
       <td>${r.name}</td><td class="muted">${r.empId}</td>
       <td>${statusBadge(r.status)}</td>
@@ -1877,31 +1881,24 @@ function renderHome(){
       </div>
     </div>
 
-    <div class="grid grid-2" style="margin-bottom:16px;">
+    <div class="grid grid-2">
       <div class="card">
         <div class="flex-between" style="align-items:center;">
-          <h3 style="margin:0;">금일 근무 일정 <small>(${attBranch?attBranch.name:''} · ${todayStr()})</small></h3>
+          <h3 style="margin:0;">근무 일정 <small>(${attBranch?attBranch.name:''} · ${attDate}${attDateRelLabel?' · '+attDateRelLabel:''})</small></h3>
           ${attBranchSelectorHtml}
         </div>
+        ${attDateNavHtml}
         <table style="margin-top:10px;">
           <thead><tr><th>이름</th><th>사번</th><th>상태</th><th>출근</th><th>퇴근</th></tr></thead>
           <tbody>${attRows}</tbody>
         </table>
       </div>
       <div class="card">
-        <h3 style="margin:0;">익일 근무 일정 <small>(${attBranch?attBranch.name:''} · ${tomorrowStr()})</small></h3>
-        <table style="margin-top:10px;">
-          <thead><tr><th>이름</th><th>사번</th><th>상태</th><th>출근</th><th>퇴근</th></tr></thead>
-          <tbody>${attRowsTomorrow}</tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:16px;">
-      <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
-      <div class="ai-box">
-        <div class="ai-title">💡 오늘의 코멘트</div>
-        ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
+        <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
+        <div class="ai-box">
+          <div class="ai-title">💡 오늘의 코멘트</div>
+          ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
+        </div>
       </div>
     </div>
 
@@ -2111,6 +2108,25 @@ function canEditAttendance(branchId){
 function setViewBranch(id){ state.viewBranchId = id; state.homeAttBranchId = null; renderTab(state.tab); }
 // 매니저가 홈 대시보드 [오늘 출근 현황] 카드에서만 다른 지점을 참고 조회할 때 사용(본인 소속 지점 자체는 그대로 유지됨).
 function setHomeAttBranch(id){ state.homeAttBranchId = id; renderTab('home'); }
+function setHomeAttDate(dateStr){
+  if(!dateStr) return;
+  state.homeAttDate = dateStr;
+  renderTab('home');
+}
+function shiftHomeAttDate(deltaDays){
+  const base = toDateObj(state.homeAttDate || todayStr());
+  base.setDate(base.getDate() + deltaDays);
+  state.homeAttDate = `${base.getFullYear()}-${pad(base.getMonth()+1)}-${pad(base.getDate())}`;
+  renderTab('home');
+}
+// 홈 대시보드 근무 일정 카드 제목에 붙는 상대 날짜 라벨("오늘"/"내일"/"어제"/"N일 후"/"N일 전").
+function homeAttDateRelLabel(dateStr){
+  const diff = Math.round((toDateObj(dateStr) - toDateObj(todayStr())) / 86400000);
+  if(diff===0) return '오늘';
+  if(diff===1) return '내일';
+  if(diff===-1) return '어제';
+  return diff>0 ? `${diff}일 후` : `${-diff}일 전`;
+}
 
 /* =========================================================================
    5a. RENDER: 시스템 관리 (관리자 전용) — 계정 관리 / 신규 계정 생성 / 데이터 업로드 허브
