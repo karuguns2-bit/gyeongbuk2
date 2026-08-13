@@ -4154,9 +4154,9 @@ function renderGoals(){
         </div>
 
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-          <div style="flex:1;min-width:340px;display:flex;flex-direction:column;gap:16px;">
+          <div style="flex:1;min-width:340px;">
             <div class="card">
-              <h3>1. 지점 목표 설정 <small>${isAdmin?'(본사 관리자 설정 · 목표 파일 업로드로 자동 반영)':'(관리자 설정 · 소속 지점 매니저 조회 전용)'}</small></h3>
+              <h3>판매 목표 배분 <small>${isAdmin?'(본사 관리자 설정 · 목표 파일 업로드로 자동 반영)':'(관리자 설정 · 소속 지점 매니저 조회 전용)'}</small></h3>
               <div class="form-row" style="align-items:flex-start;flex-wrap:wrap;gap:24px;">
                 <div class="field">
                   <label>GROSS 목표 금액 (KK)</label>
@@ -4174,10 +4174,10 @@ function renderGoals(){
                 </div>
               </div>
               <div class="muted" style="margin-top:10px;">배분 합계: ${fmtKK(allocSum)} / MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 대비 잔여: <b style="color:${remaining<0?'var(--bad)':'var(--text)'}">${fmtKK(remaining)}</b></div>
-            </div>
 
-            <div class="card">
-              <h3>2. 팀원별 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
+              <div class="divider"></div>
+
+              <h3 style="margin-top:0;">팀원별 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
               <div class="small-note" style="margin-bottom:10px;">※ MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 기준으로 팀원별 목표를 나눠서 설정해 주세요.</div>
               <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
                 <div><span class="muted">합계 배분 목표</span> <b>${fmtKK(allocSum)}</b></div>
@@ -4194,9 +4194,9 @@ function renderGoals(){
             </div>
           </div>
 
-          <div style="flex:1;min-width:340px;display:flex;flex-direction:column;gap:16px;">
+          <div style="flex:1;min-width:340px;">
             <div class="card">
-              <h3>3. 구독 판매 목표 설정 <small>${canSetSubTarget?'(관리자/소속 지점 매니저 설정 · 구독 금액 목표는 목표 파일 업로드로 자동 반영)':'(조회 전용)'}</small></h3>
+              <h3>구독 목표 배분 <small>${canSetSubTarget?'(관리자/소속 지점 매니저 설정 · 구독 금액 목표는 목표 파일 업로드로 자동 반영)':'(조회 전용)'}</small></h3>
               <div class="form-row">
                 <div class="field">
                   <label>구독 판매 건수 목표</label>
@@ -4211,10 +4211,10 @@ function renderGoals(){
                 </div>
               </div>
               ${canSetSubTarget ? `<button class="btn btn-primary" onclick="updateSubTargets('${branchId}')">저장</button>` : ''}
-            </div>
 
-            <div class="card">
-              <h3>팀원별 구독 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
+              <div class="divider"></div>
+
+              <h3 style="margin-top:0;">팀원별 구독 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
               <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
                 <div><span class="muted">합계 건수 목표</span> <b>${subAllocSumQty}건</b></div>
                 <div><span class="muted">합계 금액 목표</span> <b>${subAllocSumAmt}KK</b></div>
@@ -5383,15 +5383,14 @@ function moChipsHtml(chips){
     `</div>`;
 }
 // 지점 하나를 "한눈에" 보여주는 미니 카드 — 클릭하면 그 지점의 상세 한눈에 보기로 드릴다운
-function moBranchCardHtml(r, showManager, selBranch){
+function moBranchCardHtml(r, showManager){
   const m = r.m;
   const rate = m.g_tp_rate;
   const rateColor = rate==null ? '#999' : rate>=100 ? 'var(--good)' : rate>=80 ? 'var(--warn)' : 'var(--bad)';
-  const isSel = selBranch && r.branchId===selBranch;
   return `
-    <div class="card" style="padding:10px 12px;min-width:270px;flex:1;cursor:pointer;border-left:3px solid ${rateColor};transition:box-shadow .15s;${isSel?'box-shadow:0 0 0 2px var(--primary);':''}" onclick="setMetricsOverviewBranch('${r.branchId}')">
+    <div class="card" style="padding:10px 12px;min-width:270px;flex:1;cursor:pointer;border-left:3px solid ${rateColor};transition:box-shadow .15s;" onclick="setMetricsOverviewBranch('${r.branchId}')">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-        <div style="font-weight:700;font-size:13.5px;">${escapeHtml(r.branchName)}${isSel?' <span class="badge" style="background:var(--primary-light);color:var(--primary);">선택됨</span>':''}</div>
+        <div style="font-weight:700;font-size:13.5px;">${escapeHtml(r.branchName)}</div>
         ${showManager?`<div class="muted" style="font-size:11px;white-space:nowrap;">${escapeHtml(r.manager||'-')}</div>`:''}
       </div>
       <div style="font-size:18px;font-weight:800;color:${rateColor};margin-top:3px;">${moPct(rate)}</div>
@@ -5404,9 +5403,9 @@ function moBranchCardHtml(r, showManager, selBranch){
       </div>
     </div>`;
 }
-function moBranchGridHtml(rows, showManager, selBranch){
+function moBranchGridHtml(rows, showManager){
   const sorted = rows.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
-  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">${sorted.map(r=>moBranchCardHtml(r, showManager, selBranch)).join('')}</div>`;
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">${sorted.map(r=>moBranchCardHtml(r, showManager)).join('')}</div>`;
 }
 function renderMetricsOverview(){
   if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
@@ -5504,42 +5503,32 @@ function renderMetricsOverview(){
       </div>`;
 
     // 신장률 비교 — 선택 대상 vs 평균(들)을 값 그대로 막대로 보여준다(Chart.js가 알아서 보기 좋은 눈금을 잡아줌)
-    // ※ 지점/관리자를 선택할 때마다 이 카드가 나타났다 사라졌다 하면 아래 레이아웃 전체가 위아래로
-    // 흔들리므로, 선택 여부와 무관하게 카드 자체는 항상 "고정 높이"로 렌더링하고 내용만 바꾼다.
-    const MO_COMPARE_HEIGHT = 160;
-    let compareHtml;
-    if(selBranch || selManager){
-      const labels = selBranch
-        ? ['경북팀 전체 평균', ...(managerAgg?[`${selManager} 관리자 평균`]:[]), scopeLabel]
-        : ['경북팀 전체 평균', scopeLabel];
-      const values = selBranch
-        ? [teamAgg.g_tp_yoy, ...(managerAgg?[managerAgg.g_tp_yoy]:[]), agg.g_tp_yoy]
-        : [teamAgg.g_tp_yoy, agg.g_tp_yoy];
+    let compareHtml = '';
+    if(selBranch){
+      const labels = ['경북팀 전체 평균', ...(managerAgg?[`${selManager} 관리자 평균`]:[]), scopeLabel];
+      const values = [teamAgg.g_tp_yoy, ...(managerAgg?[managerAgg.g_tp_yoy]:[]), agg.g_tp_yoy];
       compareHtml = `<div class="card" style="margin-top:16px;">
         <h3>📐 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
-        <div style="position:relative;height:${MO_COMPARE_HEIGHT}px;"><canvas id="moCompareChart"></canvas></div>
+        <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
       </div>`;
       moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1));
-    } else {
+    } else if(selManager){
+      const labels = ['경북팀 전체 평균', scopeLabel];
+      const values = [teamAgg.g_tp_yoy, agg.g_tp_yoy];
       compareHtml = `<div class="card" style="margin-top:16px;">
         <h3>📐 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
-        <div style="height:${MO_COMPARE_HEIGHT}px;display:flex;align-items:center;justify-content:center;">
-          <div class="muted" style="font-size:13px;text-align:center;">관리자 또는 지점을 선택하면<br>경북팀 평균 대비 비교 그래프가 표시됩니다.</div>
-        </div>
+        <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
       </div>`;
+      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1));
     }
 
-    // 지점별 한눈에 보기 그리드 — 지점 상세를 조회 중이어도 항상 표시해 좌측 컬럼이 통째로 사라지며
-    // 레이아웃이 흔들리는 일이 없게 한다(선택된 지점 카드는 moBranchGridHtml에서 강조 표시).
-    const branchGridHtml = `<div class="card">
+    // 지점별 한눈에 보기 그리드 — 지점을 하나씩 눌러보지 않아도 전체 상태를 카드로 동시에 파악
+    const branchGridHtml = !selBranch ? `<div class="card">
         <h3>🏬 지점별 한눈에 보기 <small>${selManager?escapeHtml(selManager)+' 소속 '+branchesInScope.length+'개 지점':'전체 '+branchesInScope.length+'개 지점'} · 카드를 클릭하면 해당 지점 상세로 이동</small></h3>
-        ${moBranchGridHtml(branchesInScope, !selManager, selBranch)}
-      </div>`;
+        ${moBranchGridHtml(branchesInScope, !selManager)}
+      </div>` : '';
 
     // 순위 차트: 관리자 선택/지점 선택에 따라 "관리자별" 또는 "소속 지점별" 신장률·달성률 순위를 각각 막대 차트로
-    // ※ 항목 수(관리자 5명 vs 지점 최대 14개)에 따라 캔버스 높이가 달라지면 선택할 때마다 차트 박스
-    // 크기가 늘었다 줄었다 해서 레이아웃이 흔들리므로, 높이는 고정하고 Chart.js가 막대 두께를 알아서 맞추게 한다.
-    const MO_RANK_CHART_HEIGHT = 420;
     const yoyRankScope = selManager ? branchListRaw : managerListRaw;
     const yoyRankSortedByYoy = yoyRankScope.slice().sort((a,b)=>{
       const av = selManager? a.m.g_tp_yoy : a.agg.g_tp_yoy, bv = selManager? b.m.g_tp_yoy : b.agg.g_tp_yoy;
@@ -5572,11 +5561,11 @@ function renderMetricsOverview(){
         <div style="flex:2;min-width:320px;display:flex;flex-direction:column;gap:16px;">
           <div class="card">
             <h3>📈 ${yoyRankTitle} <small>전년 동기 대비, 단위 %</small></h3>
-            <div style="position:relative;height:${MO_RANK_CHART_HEIGHT}px;"><canvas id="moYoyRankChart"></canvas></div>
+            <div style="position:relative;height:${Math.max(160, yoyRankLabels.length*36)}px;"><canvas id="moYoyRankChart"></canvas></div>
           </div>
           <div class="card">
             <h3>🎯 ${rateRankTitle} <small>단위 %</small></h3>
-            <div style="position:relative;height:${MO_RANK_CHART_HEIGHT}px;"><canvas id="moRateRankChart"></canvas></div>
+            <div style="position:relative;height:${Math.max(160, rateRankLabels.length*36)}px;"><canvas id="moRateRankChart"></canvas></div>
           </div>
         </div>
       </div>`;
@@ -5698,26 +5687,18 @@ function renderMetricsOverview(){
     moRenderChart('moHighBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%'));
   }
 
-  // 실적/제품 분석 페이지와 동일한 레이아웃: 좌측에 필터(탭/관리자)와 지점 목록, 우측에 실적 콘텐츠
-  const branchListHtml = `<div class="sales-branch-item ${!selBranch?'active':''}" onclick="setMetricsOverviewBranch('')">전체 지점</div>` +
-    branchesInScope.map(r=>`<div class="sales-branch-item ${r.branchId===selBranch?'active':''}" onclick="setMetricsOverviewBranch('${r.branchId}')">${escapeHtml(r.branchName)}</div>`).join('');
-
   return `
     <div class="page-title">지표 한 눈에 보기</div>
     <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자 DATA기준)</div>
     <div class="page-desc">기준일자 <b>${DB.metricsOverview.asOfDate}</b> (D-1, 전일) · ${DB.metricsOverview.rows.length}개 지점 · 전체 직원 조회 가능</div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="width:220px;flex-shrink:0;">
-        <div class="card" style="margin-bottom:16px;padding:14px;">
-          <div style="margin-bottom:10px;">${tabPillsHtml}</div>
-          <div>${managerPills}</div>
-        </div>
-        <div class="card" style="padding:10px;">${branchListHtml}</div>
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>${managerPills}</div>
+        <div>${branchSelectHtml}</div>
       </div>
-      <div style="flex:1;min-width:480px;">
-        ${bodyHtml}
-      </div>
-    </div>`;
+      <div style="margin-top:10px;">${tabPillsHtml}</div>
+    </div>
+    ${bodyHtml}`;
 }
 
 
