@@ -1742,6 +1742,35 @@ function competitivenessDataForPeriod(period){
   }
   return null;
 }
+// 실적/제품 분석 페이지의 "제품별 수량/금액 경쟁력" 그래프용 데이터를 만든다. msis경쟁력 시트 기준으로
+// LG vs 경쟁사(SS)를 제품 카테고리(TV/냉장고/세탁기 등)별 수량·금액으로 비교한다. 실적(salesData)과
+// 달리 시장 경쟁력은 "전체 기간 누적"이라는 개념이 없는 월별 스냅샷이므로, period가 null(전체 기간
+// 선택 시)이면 최신 스냅샷(currentGoalsPeriod)으로 대체해서 보여준다. 담당자(개인) 단위 데이터는
+// 원본 시트에 없어 지점(Ship To) 단위로만 제공된다 — scopeBranch가 'ALL'이면 전체 지점을 합산한다.
+function salesCompetitivenessCategoryData(scopeBranch, period){
+  const effPeriod = period || currentGoalsPeriod();
+  const data = competitivenessDataForPeriod(effPeriod);
+  if(!data || !data.competitiveness) return null;
+  const comp = data.competitiveness;
+  const branchIds = scopeBranch==='ALL' ? Object.keys(comp) : (comp[scopeBranch] ? [scopeBranch] : []);
+  if(branchIds.length===0) return null;
+  const catAgg = {};
+  branchIds.forEach(bid=>{
+    const b = comp[bid];
+    (b.categories||[]).forEach(c=>{
+      if(!catAgg[c.category]) catAgg[c.category] = { category:c.category, lgQty:0, lgAmtWon:0, ssQty:0, ssAmtWon:0 };
+      catAgg[c.category].lgQty += c.lgQty||0;
+      catAgg[c.category].lgAmtWon += c.lgAmtWon||0;
+      catAgg[c.category].ssQty += c.ssQty||0;
+      catAgg[c.category].ssAmtWon += c.ssAmtWon||0;
+    });
+  });
+  const categories = Object.values(catAgg)
+    .map(c=>({ ...c, msPct: (c.lgAmtWon+c.ssAmtWon)>0 ? Math.round(c.lgAmtWon/(c.lgAmtWon+c.ssAmtWon)*1000)/10 : 0 }))
+    .sort((a,b)=>(b.lgAmtWon+b.ssAmtWon)-(a.lgAmtWon+a.ssAmtWon));
+  if(categories.length===0) return null;
+  return { categories, asOf: data.asOf, period: effPeriod };
+}
 // 관리자별 합산 경쟁력(msis경쟁력 시트 기준): 홈 대시보드에서 GROSS 목표 배너와 같은 스타일로
 // 관리자가 담당하는 지점들을 합산한 LG/SS/MS/GAP을 보여준다.
 function competManagerSummary(period){
@@ -6005,6 +6034,8 @@ function chartColors(n){
 let productChartInstance = null;
 let empShareChartInstance = null;
 let categoryShareChartInstance = null;
+let compQtyChartInstance = null;
+let compAmtChartInstance = null;
 function renderSales(){
   const canUpload = SESSION.role==='admin'; // 업로드는 관리자 전용
   const scopeBranch = SESSION.role==='admin' ? state.viewBranchId : SESSION.branchId;
@@ -6045,6 +6076,10 @@ function renderSales(){
     `<span class="branch-pill ${salesPeriod===null?'active':''}" onclick="setSalesPeriod(null)">전체 기간(누적)</span>` +
     salesMonthOptions.map(p=>`<span class="branch-pill ${p===salesPeriod?'active':''}" onclick="setSalesPeriod('${p}')">${p}${p===periodStr()?' (이번달)':''}</span>`).join('') +
     `</div>`;
+
+  // 제품별 수량/금액 경쟁력(msis경쟁력 시트 기준, LG vs 경쟁사(SS)) — 지점(Ship To) 단위로만 제공되는
+  // 데이터라 담당자 선택과는 무관하게 scopeBranch(선택된 지점 또는 전체)를 기준으로 집계한다.
+  const salesCompData = salesCompetitivenessCategoryData(scopeBranch, salesPeriod);
 
   let rows = scopeBranch==='ALL' ? DB.salesData : DB.salesData.filter(r=>r.branchId===scopeBranch);
   if(state.salesEmp!=='ALL') rows = rows.filter(r=>r.empId===state.salesEmp);
@@ -6154,6 +6189,48 @@ function renderSales(){
         options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:pctLegendPlugin(), tooltip:pctTooltip()} }
       });
     }
+    const compQtyCtx = document.getElementById('compQtyChart');
+    if(compQtyCtx && salesCompData){
+      if(compQtyChartInstance) compQtyChartInstance.destroy();
+      compQtyChartInstance = new Chart(compQtyCtx, {
+        type:'bar',
+        data:{
+          labels: salesCompData.categories.map(c=>c.category),
+          datasets:[
+            { label:'LG', data: salesCompData.categories.map(c=>c.lgQty), backgroundColor:'#A50034' },
+            { label:'경쟁사(SS)', data: salesCompData.categories.map(c=>c.ssQty), backgroundColor:'#c7c7cc' }
+          ]
+        },
+        options:{
+          indexAxis:'y', responsive:true, maintainAspectRatio:false,
+          plugins:{
+            legend:{position:'top', labels:{boxWidth:12, font:{size:11}}},
+            tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${Math.round(ctx.parsed.x).toLocaleString('ko-KR')}대`}}
+          }
+        }
+      });
+    }
+    const compAmtCtx = document.getElementById('compAmtChart');
+    if(compAmtCtx && salesCompData){
+      if(compAmtChartInstance) compAmtChartInstance.destroy();
+      compAmtChartInstance = new Chart(compAmtCtx, {
+        type:'bar',
+        data:{
+          labels: salesCompData.categories.map(c=>c.category),
+          datasets:[
+            { label:'LG', data: salesCompData.categories.map(c=>c.lgAmtWon), backgroundColor:'#A50034' },
+            { label:'경쟁사(SS)', data: salesCompData.categories.map(c=>c.ssAmtWon), backgroundColor:'#c7c7cc' }
+          ]
+        },
+        options:{
+          indexAxis:'y', responsive:true, maintainAspectRatio:false,
+          plugins:{
+            legend:{position:'top', labels:{boxWidth:12, font:{size:11}}},
+            tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${fmtKK(ctx.parsed.x)}`}}
+          }
+        }
+      });
+    }
   }, 0);
 
   let rightCardHtml;
@@ -6232,6 +6309,28 @@ function renderSales(){
           ${empSelectorHtml}
         </div>`;
 
+  // 제품별 수량/금액 경쟁력 카드: 좌우로(위아래 아님) 나란히 배치해 스크롤 범위를 줄인다.
+  // msis경쟁력 시트는 지점(Ship To) 단위 데이터라 담당자 선택과는 무관하게 지점 기준으로만 표시된다.
+  const salesCompCardHtml = salesCompData ? `
+    <div class="card" style="margin-top:16px;">
+      <h3>📊 제품별 수량/금액 경쟁력 <small>(LG vs 경쟁사(SS) · msis경쟁력 시트 기준 · ${goalsPeriodLabel(salesCompData.period)}${salesCompData.asOf?' · as of '+salesCompData.asOf:''})</small></h3>
+      ${state.salesEmp!=='ALL' ? `<div class="small-note" style="margin-top:-4px;">※ 지점(Ship To) 단위 데이터라 담당자 선택과 무관하게 ${scopeBranch==='ALL'?'전체 지점':branchName(scopeBranch)} 기준으로 표시됩니다.</div>` : ''}
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;">
+        <div style="flex:1;min-width:340px;">
+          <div class="muted" style="font-size:12px;font-weight:700;margin-bottom:6px;">판매 수량 경쟁력</div>
+          <div style="position:relative;height:${Math.max(220, salesCompData.categories.length*34)}px;"><canvas id="compQtyChart"></canvas></div>
+        </div>
+        <div style="flex:1;min-width:340px;">
+          <div class="muted" style="font-size:12px;font-weight:700;margin-bottom:6px;">판매 금액 경쟁력</div>
+          <div style="position:relative;height:${Math.max(220, salesCompData.categories.length*34)}px;"><canvas id="compAmtChart"></canvas></div>
+        </div>
+      </div>
+    </div>` : `
+    <div class="card" style="margin-top:16px;">
+      <h3>📊 제품별 수량/금액 경쟁력 <small>(LG vs 경쟁사(SS) · msis경쟁력 시트 기준)</small></h3>
+      <div class="muted" style="font-size:13px;">아직 경쟁력 데이터가 없습니다. [목표 관리] 파일 업로드 시 msis경쟁력 시트가 포함되어 있으면 자동으로 반영됩니다.</div>
+    </div>`;
+
   return `
     <div class="page-title">실적 / 제품 분석</div>
     <div class="page-desc">${scopeBranch==='ALL' ? '전체 지점' : branchName(scopeBranch)} · ${salesPeriod ? salesPeriod+' 월 데이터' : '전체 기간 누적 데이터'} · 금액은 모두 KK(백만원) 단위 · "실판매 목표대비 실적조회" 시트 기반(관리자가 [시스템 관리]에서 목표/실적 파일을 새로 올리면 갱신됩니다)</div>
@@ -6240,6 +6339,7 @@ function renderSales(){
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
       ${salesMainContentHtml}
     </div>
+    ${salesCompCardHtml}
   `;
 }
 function setSalesEmp(val){ state.salesEmp = val; renderTab('sales'); }
