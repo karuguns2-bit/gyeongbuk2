@@ -7249,8 +7249,40 @@ const SUB_TIER_CONTEST_OPTIONS = [
   // 다른 항목들과 달리 실제 배송 주소가 필요한 항목이라 needsAddress로 표시해 둔다.
   // 이 항목을 선택했을 때만 주소 검색 버튼이 활성화되고, 그 외 항목은 "매장으로 입고"로
   // 자동 고정된다(구독연동사은품 취합 페이지의 로니 항목과 반대 방향의 동일한 패턴).
-  { value:'에어컨 진열 판매', gift:'셰퍼 에어브리즈 14인치 선풍기', needsAddress:true }
+  { value:'에어컨 진열 판매', gift:'셰퍼 에어브리즈 14인치 선풍기', needsAddress:true },
+  // ---- 2026-08-14 추가: 식기세척기/스타일러 연동사은품 + 워시타워·콤보/냉장고 구재고 판매 사은품 ----
+  // 식기세척기/스타일러 연동사은품: 고객 댁으로 실제 배송되는 항목이라 needsAddress로 표시하고,
+  // windowStart~windowEnd 기간(8/14~8/18)에만 신청 가능하도록 제한한다.
+  { value:'식기세척기 연동사은품', gift:'[프로쉬]식기세척기 그린 레몬 세제 2EA', needsAddress:true, windowStart:'2026-08-14', windowEnd:'2026-08-18' },
+  { value:'스타일러 연동사은품', gift:'스타일러 이불걸이 1EA', needsAddress:true, windowStart:'2026-08-14', windowEnd:'2026-08-18' },
+  // 워시타워/콤보·냉장고 구재고 판매 사은품: 매장으로 배송되는 항목이라 fixedAddress로 주소를 자동
+  // 고정하고("매장으로 입고"가 아니라 "매장으로 배송"), 8/14~8/17 기간 + 선착순 5건 한정으로 제한한다.
+  { value:'워시타워/콤보 구재고 판매시', gift:'[LG생활건강]피지 캡슐세제+아우리 드라이시트 2종세트', fixedAddress:'매장으로 배송', windowStart:'2026-08-14', windowEnd:'2026-08-17', limit:5 },
+  { value:'냉장고 구재고 판매시', gift:'[가이타이너] 와이드 전기 그릴', fixedAddress:'매장으로 배송', windowStart:'2026-08-14', windowEnd:'2026-08-17', limit:5 }
 ];
+// 신청기간이 정해진 항목(windowStart/windowEnd)이면 오늘 날짜가 그 범위(포함) 안에 있는지 확인한다.
+// 기간이 지정되지 않은 기존 항목들은 항상 true(기존 동작 그대로 상시 신청 가능).
+function subTierContestOptionWithinWindow(opt){
+  if(!opt || (!opt.windowStart && !opt.windowEnd)) return true;
+  const today = todayStr();
+  if(opt.windowStart && today < opt.windowStart) return false;
+  if(opt.windowEnd && today > opt.windowEnd) return false;
+  return true;
+}
+// 선착순 한정수량 항목의 누적 등록 건수(전 지점 취합 기준, 건당 1건으로 카운트). excludeId를 넘기면
+// 해당 레코드는 집계에서 제외한다(수정 화면에서 자기 자신을 이중 차감하지 않기 위함).
+function subTierContestIssuedCount(contestTypeValue, excludeId){
+  return (DB.subTierContestGifts||[]).reduce((sum,r)=>{
+    if(!r || r.contestType!==contestTypeValue) return sum;
+    if(excludeId!=null && r.id===excludeId) return sum;
+    return sum + 1;
+  }, 0);
+}
+// "새 건 등록" 드롭다운에는 신청기간이 지난 항목은 아예 노출하지 않는다(과거 항목 선택 자체를 원천 차단).
+// 기존에 이미 등록된 건을 수정하는 화면(edit-row select)은 과거 값을 그대로 보여줘야 하므로 영향받지 않는다.
+function subTierContestOptionsForNewEntry(){
+  return SUB_TIER_CONTEST_OPTIONS.filter(o=>subTierContestOptionWithinWindow(o));
+}
 function syncContestGiftName(){
   const sel = document.getElementById('cgContestType');
   const giftEl = document.getElementById('cgGiftName');
@@ -7801,18 +7833,46 @@ function syncSubTierGiftNameFor(selectId, giftId, addressId, addressBtnId){
   const giftInput = document.getElementById(giftId);
   if(!sel || !giftInput) return;
   const opt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===sel.value);
+  // 신청기간이 지난 항목을 골랐다면(수동으로 URL/상태 조작 등 예외 상황 대비) 선택을 되돌리고 안내한다.
+  if(opt && !subTierContestOptionWithinWindow(opt)){
+    alert(`"${opt.value}" 항목은 ${opt.windowStart||''}${opt.windowStart&&opt.windowEnd?'~':''}${opt.windowEnd||''} 기간에만 신청 가능합니다. 신청 기간이 지나 선택할 수 없습니다.`);
+    sel.value = '';
+    giftInput.value = '';
+    if(addressId){
+      const addrEl = document.getElementById(addressId);
+      if(addrEl) addrEl.value = '';
+      if(addressBtnId){ const btnEl = document.getElementById(addressBtnId); if(btnEl) btnEl.disabled = true; }
+    }
+    return;
+  }
   giftInput.value = opt ? opt.gift : '';
   if(addressId){
     const addrEl = document.getElementById(addressId);
     const needsAddress = !!(opt && opt.needsAddress);
-    if(addrEl) addrEl.value = needsAddress ? '' : '매장으로 입고';
+    if(addrEl) addrEl.value = needsAddress ? '' : ((opt && opt.fixedAddress) ? opt.fixedAddress : '매장으로 입고');
     if(addressBtnId){
       const btnEl = document.getElementById(addressBtnId);
       if(btnEl) btnEl.disabled = !needsAddress;
     }
-    // "에어컨 진열 판매"는 매장이 아니라 고객 댁으로 직접 배송되는 항목이라, 선택하는 순간
+    // "에어컨 진열 판매"처럼 매장이 아니라 고객 댁으로 직접 배송되는 항목이라면, 선택하는 순간
     // 주소를 반드시 입력해야 한다는 것을 바로 알려준다.
     if(needsAddress) alert('고객 댁으로 배송됩니다. 주소창에 배송지를 입력해주세요.');
+  }
+  // 선착순 한정수량 항목이면 선택 시점의 잔여수량을 바로 안내한다(소진되었으면 선택을 취소시킨다).
+  if(opt && opt.limit!=null){
+    const remaining = Math.max(0, opt.limit - subTierContestIssuedCount(opt.value, null));
+    if(remaining<=0){
+      alert(`"${opt.value}" 항목은 선착순 한정수량 ${opt.limit}건이 모두 소진되어 더 이상 신청할 수 없습니다.`);
+      sel.value = '';
+      giftInput.value = '';
+      if(addressId){
+        const addrEl = document.getElementById(addressId);
+        if(addrEl) addrEl.value = '';
+        if(addressBtnId){ const btnEl = document.getElementById(addressBtnId); if(btnEl) btnEl.disabled = true; }
+      }
+      return;
+    }
+    alert(`"${opt.value}" 항목 현재 잔여수량은 ${remaining}건입니다. (선착순 ${opt.limit}건 한정)`);
   }
 }
 // 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
@@ -7893,8 +7953,9 @@ function renderSubTierContest(){
   }).join('') || `<tr><td colspan="8" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
-    <div class="page-title">구독4품목↑/금액대별 사은품/에어컨 진열판매 연동사은품 취합</div>
-    <div class="page-desc">구독 4품목 이상 계약, 결제금액 기준, 에어컨 진열판매 연동 사은품 컨테스트 건을 취합·관리합니다.</div>
+    <div class="page-title">기타 사은품 취합</div>
+    <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(다품목/금액대/연동사은품등)</div>
+    <div class="page-desc">구독 4품목 이상 계약, 결제금액 기준, 에어컨 진열판매/식기세척기·스타일러 연동, 워시타워·콤보/냉장고 구재고 판매 사은품 컨테스트 건을 취합·관리합니다.</div>
 
     ${renderCollectionNotice('subTierContest','subTierContest')}
 
@@ -7907,7 +7968,7 @@ function renderSubTierContest(){
           <label>컨테스트 항목 선택</label>
           <select id="stcContestType" style="width:230px" onchange="syncSubTierGiftName()">
             <option value="">선택하세요</option>
-            ${SUB_TIER_CONTEST_OPTIONS.map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(o.value)}</option>`).join('')}
+            ${subTierContestOptionsForNewEntry().map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(o.value)}</option>`).join('')}
           </select>
         </div>
         <div class="field">
@@ -7927,12 +7988,13 @@ function renderSubTierContest(){
         <div class="field" style="min-width:300px;">
           <label>주소</label>
           <div style="display:flex;gap:6px;">
-            <input id="stcAddress" placeholder="&quot;에어컨 진열 판매&quot; 선택 시 주소 검색 버튼을 눌러 입력하세요 (직접 입력 불가)" style="width:300px;background:#f7f7f8;" readonly>
+            <input id="stcAddress" placeholder="고객 댁으로 배송되는 항목 선택 시 주소 검색 버튼을 눌러 입력하세요 (직접 입력 불가)" style="width:300px;background:#f7f7f8;" readonly>
             <button type="button" id="stcAddressBtn" class="btn btn-sm" onclick="openAddressSearch('stcAddress')" disabled>주소 검색</button>
           </div>
-          <div class="small-note">※ "에어컨 진열 판매" 선택 시에만 주소를 검색해서 입력할 수 있습니다. 그 외 항목은 "매장으로 입고"로 자동 설정됩니다.</div>
+          <div class="small-note">※ 고객 댁으로 배송되는 항목(에어컨 진열 판매, 식기세척기·스타일러 연동사은품) 선택 시에만 주소를 검색해서 입력할 수 있습니다. 그 외 항목은 항목별 기본값("매장으로 입고" 또는 "매장으로 배송")으로 자동 설정됩니다.</div>
         </div>
       </div>
+      <div class="small-note" style="margin-top:-8px;">※ 신청기간이 지난 항목은 &quot;컨테스트 항목 선택&quot; 목록에서 자동으로 사라집니다. 식기세척기·스타일러 연동사은품은 8/14~8/18, 워시타워/콤보·냉장고 구재고 판매 사은품은 8/14~8/17(선착순 5건 한정)까지만 신청 가능합니다.</div>
       <div class="form-row">
         <div class="field" style="min-width:260px;">
           <label>영수증 사진 증빙</label>
@@ -7986,6 +8048,17 @@ function submitSubTierContest(){
   if(!contestType){ if(msgEl) msgEl.textContent = '컨테스트 항목을 선택해 주세요.'; return; }
   const contestOpt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===contestType);
   if(contestOpt && contestOpt.needsAddress && !address){ if(msgEl) msgEl.textContent = '주소 검색 버튼을 눌러 배송 주소를 입력해 주세요.'; return; }
+  // 신청기간이 지정된 항목은(드롭다운에서 미리 걸러지지만, 화면을 오래 띄워둔 채 마감일을 넘겨 등록을
+  // 시도하는 경우까지 대비해) 최종 등록 시점에도 한 번 더 기간을 확인한다.
+  if(contestOpt && !subTierContestOptionWithinWindow(contestOpt)){
+    if(msgEl) msgEl.textContent = `"${contestType}" 항목은 신청 기간(${contestOpt.windowStart||''}~${contestOpt.windowEnd||''})이 지나 더 이상 등록할 수 없습니다.`;
+    return;
+  }
+  // 선착순 한정수량 항목은 최종 등록 시점에도 소진 여부를 한 번 더 확인해 한도를 초과하지 않게 한다.
+  if(contestOpt && contestOpt.limit!=null && subTierContestIssuedCount(contestType, null) >= contestOpt.limit){
+    if(msgEl) msgEl.textContent = `"${contestType}" 항목은 선착순 한정수량 ${contestOpt.limit}건이 모두 소진되어 더 이상 등록할 수 없습니다.`;
+    return;
+  }
   const oversized = evidenceFiles.find(f=>f.size > 5*1024*1024);
   if(oversized){ if(msgEl) msgEl.textContent = `"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`; return; }
 
@@ -7999,6 +8072,11 @@ function submitSubTierContest(){
     saveDB();
     logActivity('post', `${SESSION.name}님이 [구독4품목/금액대별 사은품]을 등록했습니다`);
     if(msgEl) msgEl.textContent = '';
+    // 선착순 한정수량 항목은 등록 직후 누적 건수를 알림창으로 안내한다.
+    if(contestOpt && contestOpt.limit!=null){
+      const issuedNow = subTierContestIssuedCount(contestType, null);
+      alert(`"${contestType}" 등록 완료! 현재 누적 등록 건수: ${issuedNow}/${contestOpt.limit}건`);
+    }
     renderTab('subTierContest');
   }
   if(evidenceFiles.length>0){
