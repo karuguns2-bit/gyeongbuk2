@@ -5667,18 +5667,26 @@ function renderMetricsOverview(){
     moRenderChart('moHighBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%'));
   }
 
+  // 실적/제품 분석 페이지와 동일한 레이아웃: 좌측에 필터(탭/관리자)와 지점 목록, 우측에 실적 콘텐츠
+  const branchListHtml = `<div class="sales-branch-item ${!selBranch?'active':''}" onclick="setMetricsOverviewBranch('')">전체 지점</div>` +
+    branchesInScope.map(r=>`<div class="sales-branch-item ${r.branchId===selBranch?'active':''}" onclick="setMetricsOverviewBranch('${r.branchId}')">${escapeHtml(r.branchName)}</div>`).join('');
+
   return `
     <div class="page-title">지표 한 눈에 보기</div>
     <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자 DATA기준)</div>
     <div class="page-desc">기준일자 <b>${DB.metricsOverview.asOfDate}</b> (D-1, 전일) · ${DB.metricsOverview.rows.length}개 지점 · 전체 직원 조회 가능</div>
-    <div class="card" style="margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-        <div>${managerPills}</div>
-        <div>${branchSelectHtml}</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="width:220px;flex-shrink:0;">
+        <div class="card" style="margin-bottom:16px;padding:14px;">
+          <div style="margin-bottom:10px;">${tabPillsHtml}</div>
+          <div>${managerPills}</div>
+        </div>
+        <div class="card" style="padding:10px;">${branchListHtml}</div>
       </div>
-      <div style="margin-top:10px;">${tabPillsHtml}</div>
-    </div>
-    ${bodyHtml}`;
+      <div style="flex:1;min-width:480px;">
+        ${bodyHtml}
+      </div>
+    </div>`;
 }
 
 
@@ -6460,17 +6468,17 @@ function renderInventory(){
 
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
       <div style="width:280px;flex-shrink:0;">
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card inv-filter-card" style="margin-bottom:16px;">
           <div class="field" style="margin-bottom:12px;">
             <label>매장</label>
-            <select style="width:100%" onchange="setInvFilter('store', this.value)">
+            <select onchange="setInvFilter('store', this.value)">
               <option value="ALL" ${f.store==='ALL'?'selected':''}>전체 매장</option>
               ${stores.map(s=>`<option value="${s}" ${f.store===s?'selected':''}>${s}</option>`).join('')}
             </select>
           </div>
           <div class="field" style="margin-bottom:12px;">
             <label>유형</label>
-            <select style="width:100%" onchange="setInvFilter('tag', this.value)">
+            <select onchange="setInvFilter('tag', this.value)">
               <option value="ALL" ${f.tag==='ALL'||!f.tag?'selected':''}>전체(행사+진열)</option>
               <option value="행사" ${f.tag==='행사'?'selected':''}>행사</option>
               <option value="진열" ${f.tag==='진열'?'selected':''}>진열</option>
@@ -6478,22 +6486,22 @@ function renderInventory(){
           </div>
           <div class="field" style="margin-bottom:12px;">
             <label>검색 (제품명/모델명/코드)</label>
-            <input style="width:100%" value="${f.q||''}" placeholder="예: 스타일러, MW23GD, 2087685" onkeyup="if(event.key==='Enter') setInvFilter('q', this.value)" onchange="setInvFilter('q', this.value)">
+            <input value="${f.q||''}" placeholder="예: 스타일러, MW23GD, 2087685" onkeyup="if(event.key==='Enter') setInvFilter('q', this.value)" onchange="setInvFilter('q', this.value)">
           </div>
-          <div class="field" style="margin-bottom:4px;">
+          <div class="field" style="margin-bottom:0;">
             <label>소진집중</label>
             <span class="branch-pill ${f.clearanceOnly?'active':''}" style="cursor:pointer;white-space:nowrap;" onclick="toggleInvClearanceFilter()">🔥 소진집중만 보기${clearanceTotalCount>0 ? ` (${clearanceTotalCount})` : ''}</span>
           </div>
-          <div style="margin-top:12px;">
-            <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">구분 (다중 선택)</label>
-            <div>${invFilterPills('cat1', cat1s)}</div>
+          <div class="inv-filter-section">
+            <label class="muted">구분 (다중 선택)</label>
+            <div class="inv-filter-pill-scroll">${invFilterPills('cat1', cat1s)}</div>
           </div>
-          <div style="margin-top:10px;">
-            <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">구분(상태) (다중 선택)</label>
+          <div class="inv-filter-section">
+            <label class="muted">구분(상태) (다중 선택)</label>
             <div>${invFilterPills('status', INV_STATUS_OPTIONS)}</div>
           </div>
-          <div style="margin-top:10px;">
-            <label class="muted" style="font-size:12px;display:block;margin-bottom:4px;">제품 상태 (다중 선택)</label>
+          <div class="inv-filter-section">
+            <label class="muted">제품 상태 (다중 선택)</label>
             <div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>
           </div>
         </div>

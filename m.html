@@ -291,6 +291,19 @@
   .sales-branch-item:hover{background:#f7f7f9;}
   .sales-branch-item.active{background:var(--primary-light);color:var(--primary);font-weight:700;}
 
+  /* 재고 조회 페이지 좌측 필터 카드 — 매장/유형/검색 등 입력 요소를 사이트 전체 테마(카드/폼) 톤에 맞춘다 */
+  .inv-filter-card .field label{font-size:12px;font-weight:700;color:var(--text-sub);margin-bottom:6px;display:block;}
+  .inv-filter-card .field select,.inv-filter-card .field input{
+    width:100%;padding:9px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:13.5px;
+    background:#fff;color:var(--text);transition:border-color .15s ease,box-shadow .15s ease;
+  }
+  .inv-filter-section{margin-top:14px;padding-top:12px;border-top:1px solid #eef0f2;}
+  .inv-filter-section label{font-size:11.5px;font-weight:700;color:var(--text-sub);display:block;margin-bottom:6px;letter-spacing:.01em;}
+  .inv-filter-pill-scroll{max-height:200px;overflow-y:auto;padding-right:4px;}
+  .inv-filter-pill-scroll::-webkit-scrollbar{width:6px;}
+  .inv-filter-pill-scroll::-webkit-scrollbar-thumb{background:#d9d9dd;border-radius:10px;}
+  .inv-filter-card .branch-pill{padding:5px 10px;font-size:11.5px;margin-right:4px;margin-bottom:4px;}
+
   .ai-box{background:#f7f8fa;border:1px solid #edeef1;border-radius:12px;padding:16px 18px;font-size:13px;line-height:1.75;}
   .ai-box .ai-title{font-weight:700;color:var(--primary);margin-bottom:6px;font-size:13px;}
   .ai-item{margin-bottom:6px;}
