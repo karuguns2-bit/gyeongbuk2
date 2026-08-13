@@ -1851,21 +1851,21 @@ function renderHome(){
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
     <div class="grid grid-3" style="margin-bottom:16px;">
-      <div class="card">
-        <h3>이번 달 목표 <small style="font-weight:600;color:var(--text-sub);">(MSIS실판매등록 기준 예상 목표치)</small></h3>
-        <div class="stat-num">${fmtWon(msisTarget)}</div>
-        <div class="stat-sub">${periodStr()} · ${branch?branch.name:''}</div>
+      <div class="card stat-tile stat-tile-blue">
+        <div class="stat-tile-label">이번 달 목표 <span style="font-weight:400;opacity:.8;">(MSIS실판매등록 기준 예상 목표치)</span></div>
+        <div class="stat-tile-num">${fmtWon(msisTarget)}</div>
+        <div class="stat-tile-sub">${periodStr()} · ${branch?branch.name:''}</div>
       </div>
-      <div class="card">
-        <h3>누적 실적</h3>
-        <div class="stat-num">${fmtWon(achieved)}</div>
-        <div class="stat-sub">잔여 ${fmtWon(Math.max(msisTarget-achieved,0))}</div>
+      <div class="card stat-tile stat-tile-pink">
+        <div class="stat-tile-label">누적 실적</div>
+        <div class="stat-tile-num">${fmtWon(achieved)}</div>
+        <div class="stat-tile-sub">잔여 ${fmtWon(Math.max(msisTarget-achieved,0))}</div>
       </div>
-      <div class="card">
-        <h3>달성률 ${pctBadge(pct)}</h3>
-        <div class="stat-num">${pct.toFixed(1)}%</div>
-        <div class="progress-bar" style="margin-top:8px;"><div style="width:${Math.min(pct,100)}%"></div></div>
-        <div class="stat-sub" style="margin-top:6px;">목표 페이스 ${expectedPacePct().toFixed(1)}%</div>
+      <div class="card stat-tile ${pct>=100?'stat-tile-green':pct>=80?'stat-tile-amber':'stat-tile-pink'}">
+        <div class="stat-tile-label">달성률 ${pctBadge(pct)}</div>
+        <div class="stat-tile-num">${pct.toFixed(1)}%</div>
+        <div class="progress-bar" style="margin-top:8px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(pct,100)}%"></div></div>
+        <div class="stat-tile-sub" style="margin-top:6px;">목표 페이스 ${expectedPacePct().toFixed(1)}%</div>
       </div>
     </div>
 
