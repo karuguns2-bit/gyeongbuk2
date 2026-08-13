@@ -10504,7 +10504,7 @@ function renderKakaoContestResultImage(){
     </div>` : '';
   if(!img && !isAdmin) return '';
   return `
-    <div class="card" style="margin-bottom:16px;text-align:center;">
+    <div class="card" style="margin-bottom:0;text-align:center;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;">
       ${img ? `
         <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;">등록일 ${img.uploadedAt||''} · ${escapeHtml(img.uploadedBy||'')}</div>
         <img src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:100%;max-height:640px;border-radius:10px;cursor:zoom-in;box-shadow:0 4px 16px rgba(0,0,0,.12);">
@@ -10609,11 +10609,37 @@ function renderKakaoFriendsBanner(){
 }
 // 지점별 카카오 플러스 친구 누적 등록건 수 막대그래프 설정 (세로 막대 · 이슈제품 성공사례
 // 대시보드의 icCountBarConfig와 달리 기본 세로축 방향을 그대로 사용한다).
+// 막대 위에 "N명" 값을 직접 그려주는 경량 플러그인 — 별도 CDN(chartjs-plugin-datalabels) 없이
+// Chart.js v4의 afterDatasetsDraw 훅만으로 구현해서, 다른 곳처럼 외부 의존성을 늘리지 않는다.
+const kakaoBarValueLabelsPlugin = {
+  id: 'kakaoBarValueLabelsPlugin',
+  afterDatasetsDraw(chart){
+    const {ctx} = chart;
+    chart.data.datasets.forEach((dataset, dsIndex)=>{
+      const meta = chart.getDatasetMeta(dsIndex);
+      meta.data.forEach((bar, i)=>{
+        const value = dataset.data[i];
+        if(value==null) return;
+        ctx.save();
+        ctx.fillStyle = '#333';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(`${fmtNum(value)}명`, bar.x, bar.y - 4);
+        ctx.restore();
+      });
+    });
+  }
+};
 function kakaoCumulativeBarConfig(labels, values){
   return {
     type:'bar',
-    data:{ labels, datasets:[{ data: values, backgroundColor:'#4a7fd6' }] },
+    // 진행률 표(빨간 progress-bar)와 포스터에서 이미 쓰고 있는 브랜드 컬러(--primary, #A50034)로
+    // 통일해서 페이지 전체 톤이 일관되게 보이도록 한다.
+    data:{ labels, datasets:[{ data: values, backgroundColor:'#A50034' }] },
+    plugins: [kakaoBarValueLabelsPlugin],
     options:{ responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ top:20 } },
       plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>fmtNum(c.parsed.y)+'명'}} },
       scales:{ y:{ ticks:{ precision:0 } } } }
   };
@@ -10634,11 +10660,11 @@ function renderKakaoFriends(){
   return `
     <div class="page-title">카카오 플친 관리 현황</div>
     <div class="page-desc">지점별 카카오톡 플러스친구(플친) 컨테스트 현황입니다.</div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="flex:1;min-width:280px;max-width:420px;">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;">
+      <div style="flex:1;min-width:280px;max-width:420px;display:flex;">
         ${renderKakaoContestResultImage()}
       </div>
-      <div style="flex:2;min-width:340px;">
+      <div style="flex:2;min-width:340px;display:flex;flex-direction:column;">
         ${renderKakaoFriendsBanner()}
         ${renderKakaoContestBanner()}
       </div>
