@@ -5080,10 +5080,15 @@ function handleWorkScheduleFile(evt){
 // metrics=[key, col] 목록. 세 시트 모두 헤더가 9행(0-based row8)까지이고 10행(row9)부터 지점
 // 데이터가 시작된다.
 const METRICS_OVERVIEW_BLOCKS = {
+  // 2026-08-13 수정: 실제 파일을 다시 확인해보니 총판/실판 블록 모두 "전년 마감比"(26/32번 칸)와
+  // "전년 동기比"(27/33번 칸)가 서로 다른 별도 칸인데, g_tp_yoy/g_sp_yoy가 실수로 "전년 마감比" 칸을
+  // 가리키고 있었다 — 그 결과 화면의 "전년동기비"가 실제로는 "전년마감비"와 같은 값(마감비 원본
+  // 수치)을 보여주는 버그가 있었다. 마감비는 화면에서 별도로(lyClose 기준) 다시 계산해서 쓰므로,
+  // 결과적으로 "전년마감비"와 "전년동기비" 두 칸이 똑같은 숫자로 보이는 문제였다. 27/33번 칸으로 수정.
   gross: { sheetMatch: s=>s.trim()==='Gross(CC포함)', idCol:16, dataStartRow:9, metrics:[
     ['g_target',21],
-    ['g_tp_lyClose',22],['g_tp_lySame',23],['g_tp_cur',24],['g_tp_rate',25],['g_tp_yoy',26],
-    ['g_sp_lyClose',28],['g_sp_lySame',29],['g_sp_cur',30],['g_sp_rate',31],['g_sp_yoy',32]
+    ['g_tp_lyClose',22],['g_tp_lySame',23],['g_tp_cur',24],['g_tp_rate',25],['g_tp_yoy',27],
+    ['g_sp_lyClose',28],['g_sp_lySame',29],['g_sp_cur',30],['g_sp_rate',31],['g_sp_yoy',33]
   ]},
   sub: { sheetMatch: s=>s.trim()==='구독', idCol:36, dataStartRow:9, metrics:[
     ['s_target',41],
@@ -5093,6 +5098,13 @@ const METRICS_OVERVIEW_BLOCKS = {
   high: { sheetMatch: s=>s.trim()==='고수익', idCol:18, dataStartRow:9, metrics:[
     ['h_tp_pool',23],['h_tp_high',24],['h_tp_highRatio',25],
     ['h_sp_pool',30],['h_sp_high',31],['h_sp_highRatio',32]
+  ]},
+  // 2026-08-13 추가: "인센티브" 시트의 "◆ 지점별 인센티브" 표에서 "목표달성인센티브(예상 금액)" 칸만
+  // 가져온다(GROSS(CC포함) 탭에 구독목표/구독총판과 나란히 보여주기 위함 — 구독목표/구독총판은
+  // 이미 '구독' 시트에서 s_target/s_tp_cur로 파싱되고 있어 별도 추가가 필요 없다). 이 시트는 다른
+  // 3개 시트(Gross/구독/고수익)와 달리 없어도 업로드 자체는 계속 진행되도록(선택 항목으로) 둔다.
+  incentive: { sheetMatch: s=>s.trim()==='인센티브', idCol:1, dataStartRow:17, metrics:[
+    ['inc_expectedAmt',15]
   ]}
 };
 function metricsOverviewNormName(s){
@@ -5165,17 +5177,26 @@ function parseMetricsOverviewWorkbook(wb){
   const gross = metricsOverviewParseBlock(grossRows, METRICS_OVERVIEW_BLOCKS.gross, metricsOverviewSheetColOffset(grossWs));
   const sub = metricsOverviewParseBlock(subRows, METRICS_OVERVIEW_BLOCKS.sub, metricsOverviewSheetColOffset(subWs));
   const high = metricsOverviewParseBlock(highRows, METRICS_OVERVIEW_BLOCKS.high, metricsOverviewSheetColOffset(highWs));
-  const allKeys = new Set([...Object.keys(gross), ...Object.keys(sub), ...Object.keys(high)]);
+  // "인센티브" 시트는 Gross/구독/고수익과 달리 없어도 업로드가 실패하지 않는 선택 항목이다 — 예전
+  // 형식 파일(이 시트가 없는 파일)을 올려도 나머지 데이터는 그대로 반영되도록 하기 위함.
+  const incentiveSheetName = sheetFor(METRICS_OVERVIEW_BLOCKS.incentive.sheetMatch);
+  let incentive = {};
+  if(incentiveSheetName){
+    const incWs = wb.Sheets[incentiveSheetName];
+    const incRows = XLSX.utils.sheet_to_json(incWs, {header:1, defval:null, raw:true});
+    incentive = metricsOverviewParseBlock(incRows, METRICS_OVERVIEW_BLOCKS.incentive, metricsOverviewSheetColOffset(incWs));
+  }
+  const allKeys = new Set([...Object.keys(gross), ...Object.keys(sub), ...Object.keys(high), ...Object.keys(incentive)]);
   const rows = [];
   allKeys.forEach(key=>{
-    const g = gross[key], s = sub[key], h = high[key];
-    const base = g || s || h;
+    const g = gross[key], s = sub[key], h = high[key], inc = incentive[key];
+    const base = g || s || h || inc;
     rows.push({
       normName: key, team: base.team, manager: base.manager, branchNameRaw: base.branchNameRaw,
-      m: { ...(g?g.m:{}), ...(s?s.m:{}), ...(h?h.m:{}) }
+      m: { ...(g?g.m:{}), ...(s?s.m:{}), ...(h?h.m:{}), ...(inc?inc.m:{}) }
     });
   });
-  return { ok:true, rows };
+  return { ok:true, rows, incentiveMissing: !incentiveSheetName };
 }
 function handleMetricsOverviewFile(evt){
   const file = evt.target.files[0];
@@ -5216,7 +5237,8 @@ function handleMetricsOverviewFile(evt){
       logActivity('update', `${SESSION.name}님(관리자)이 [지표 한 눈에 보기] 파일을 업로드했습니다: ${file.name}`);
       renderTab('systemAdmin');
       const unmatchedMsg = unmatchedNames.length>0 ? ` / 지점 매칭 실패 ${unmatchedNames.length}건 제외(${unmatchedNames.slice(0,5).join(', ')}${unmatchedNames.length>5?' 외':''})` : '';
-      showUploadResult('metricsOverviewUploadMsg', true, `${asOfDate} 기준(D-1) ${matchedRows.length}개 지점 반영 완료${unmatchedMsg}`);
+      const incentiveMsg = parsed.incentiveMissing ? ' / ⚠ "인센티브" 시트를 찾지 못해 목표달성금액(예상)은 갱신하지 않았습니다.' : '';
+      showUploadResult('metricsOverviewUploadMsg', true, `${asOfDate} 기준(D-1) ${matchedRows.length}개 지점 반영 완료${unmatchedMsg}${incentiveMsg}`);
     }catch(err){
       showUploadResult('metricsOverviewUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
@@ -5293,7 +5315,7 @@ function moManagerList(){
 function moAggregate(rows){
   const s = { g_target:0, g_tp_cur:0, g_tp_lySame:0, g_tp_lyClose:0, g_sp_cur:0, g_sp_lySame:0, g_sp_lyClose:0,
     s_target:0, s_tp_cur:0, s_sp_cur:0, s_sp_qty:0,
-    h_tp_pool:0, h_tp_high:0, h_sp_pool:0, h_sp_high:0, branchCount: rows.length };
+    h_tp_pool:0, h_tp_high:0, h_sp_pool:0, h_sp_high:0, inc_expectedAmt:0, branchCount: rows.length };
   rows.forEach(r=>{
     const m = r.m || {};
     Object.keys(s).forEach(k=>{ if(k!=='branchCount' && typeof m[k]==='number') s[k] += m[k]; });
@@ -5614,6 +5636,7 @@ function renderMetricsOverview(){
         <td>${moFmt(m.g_target)}</td>
         <td>${moFmt(m.g_tp_cur)} ${moBadgeRank(gTpCurRankMap[r.branchId], branchListRaw.length)}</td><td class="muted">${moFmt(m.g_tp_lyClose)}</td><td>${moYoy(moCloseYoy(m.g_tp_cur, m.g_tp_lyClose))}</td><td>${moFmt(m.g_tp_lySame)}</td><td>${moYoy(m.g_tp_yoy)}</td><td>${moPct(m.g_tp_rate)} ${moBadgeRank(gTpRateRankMap[r.branchId], branchListRaw.length)}</td>
         <td>${moFmt(m.g_sp_cur)}</td><td class="muted">${moFmt(m.g_sp_lyClose)}</td><td>${moYoy(moCloseYoy(m.g_sp_cur, m.g_sp_lyClose))}</td><td>${moFmt(m.g_sp_lySame)}</td><td>${moYoy(m.g_sp_yoy)}</td><td>${moPct(m.g_sp_rate)} ${pctBadge(m.g_sp_rate||0)}</td>
+        <td>${moFmt(m.s_target)}</td><td>${moFmt(m.s_tp_cur)}</td><td>${moFmt(m.inc_expectedAmt)}</td>
       </tr>`;
     }).join('');
     const chartRows = branchListRaw.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
@@ -5624,19 +5647,21 @@ function renderMetricsOverview(){
         <table>
           <thead><tr>
             <th rowspan="2">지점</th><th rowspan="2">관리자</th><th rowspan="2">목표</th>
-            <th colspan="6">총판</th><th colspan="6">실판(MSIS)</th>
+            <th colspan="6">총판</th><th colspan="6">실판</th><th colspan="3">구독/인센티브</th>
           </tr>
-          <tr><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th></tr></thead>
+          <tr><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th><th>구독목표</th><th>구독총판</th><th>목표달성금액(예상)</th></tr></thead>
           <tbody>
-            ${trs || '<tr><td colspan="15" class="muted">데이터 없음</td></tr>'}
+            ${trs || '<tr><td colspan="18" class="muted">데이터 없음</td></tr>'}
             <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
               <td colspan="2">합계</td><td>${moFmt(agg.g_target)}</td>
               <td>${moFmt(agg.g_tp_cur)}</td><td>${moFmt(agg.g_tp_lyClose)}</td><td>${moYoy(agg.g_tp_closeYoy)}</td><td>${moFmt(agg.g_tp_lySame)}</td><td>${moYoy(agg.g_tp_yoy)}</td><td>${moPct(agg.g_tp_rate)}</td>
               <td>${moFmt(agg.g_sp_cur)}</td><td>${moFmt(agg.g_sp_lyClose)}</td><td>${moYoy(agg.g_sp_closeYoy)}</td><td>${moFmt(agg.g_sp_lySame)}</td><td>${moYoy(agg.g_sp_yoy)}</td><td>${moPct(agg.g_sp_rate)}</td>
+              <td>${moFmt(agg.s_target)}</td><td>${moFmt(agg.s_tp_cur)}</td><td>${moFmt(agg.inc_expectedAmt)}</td>
             </tr>
           </tbody>
         </table>
         </div>
+        <div class="small-note" style="margin-top:8px;">※ 구독목표/구독총판은 [구독] 시트, 목표달성금액(예상)은 [인센티브] 시트의 "목표달성인센티브(예상 금액)" 기준입니다.</div>
       </div>
       <div class="card" style="margin-top:16px;">
         <h3>지점별 총판 달성률 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 14개 지점'}</small></h3>
@@ -5699,7 +5724,7 @@ function renderMetricsOverview(){
         <h3>💎 고수익(HIGH-END) 판매 비중 <small>${escapeHtml(scopeLabel)}</small></h3>
         <div style="overflow-x:auto;">
         <table>
-          <thead><tr><th rowspan="2">지점</th><th rowspan="2">관리자</th><th colspan="3">총판</th><th colspan="3">실판(MSIS)</th></tr>
+          <thead><tr><th rowspan="2">지점</th><th rowspan="2">관리자</th><th colspan="3">총판</th><th colspan="3">실판</th></tr>
           <tr><th>모수</th><th>HIGH</th><th>비중</th><th>모수</th><th>HIGH</th><th>비중</th></tr></thead>
           <tbody>
             ${trs || '<tr><td colspan="8" class="muted">데이터 없음</td></tr>'}
@@ -6201,8 +6226,9 @@ function renderSales(){
             { label:'경쟁사(SS)', data: salesCompData.categories.map(c=>c.ssQty), backgroundColor:'#c7c7cc' }
           ]
         },
+        plugins: [barValueLabelsPlugin(v=>`${Math.round(v).toLocaleString('ko-KR')}대`)],
         options:{
-          indexAxis:'y', responsive:true, maintainAspectRatio:false,
+          indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:36}},
           plugins:{
             legend:{position:'top', labels:{boxWidth:12, font:{size:11}}},
             tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${Math.round(ctx.parsed.x).toLocaleString('ko-KR')}대`}}
@@ -6222,8 +6248,9 @@ function renderSales(){
             { label:'경쟁사(SS)', data: salesCompData.categories.map(c=>c.ssAmtWon), backgroundColor:'#c7c7cc' }
           ]
         },
+        plugins: [barValueLabelsPlugin(v=>fmtKK(v))],
         options:{
-          indexAxis:'y', responsive:true, maintainAspectRatio:false,
+          indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:36}},
           plugins:{
             legend:{position:'top', labels:{boxWidth:12, font:{size:11}}},
             tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${fmtKK(ctx.parsed.x)}`}}
