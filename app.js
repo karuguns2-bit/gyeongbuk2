@@ -4032,10 +4032,12 @@ function renderGoals(){
   const isCurrentPeriod = period === currentGoalsPeriod();
   const g = getGoals(branchId, period);
 
+  // 실적/제품 분석 페이지와 동일하게 선택 항목(월/지점)을 좌측에 세로로 배치한다 — 지점 목록은
+  // 관리자만 전환할 수 있으므로 관리자가 아니면 아예 렌더링하지 않는다(기존 동작 유지).
   let branchSelectorHtml = '';
   if(isAdmin){
-    branchSelectorHtml = `<div style="margin-bottom:14px;">` +
-      DB.branches.map(b=>`<span class="branch-pill ${b.id===branchId?'active':''}" onclick="setViewBranch('${b.id}')">${b.name}</span>`).join('') +
+    branchSelectorHtml = `<div class="card" style="padding:10px;">` +
+      DB.branches.map(b=>`<div class="sales-branch-item ${b.id===branchId?'active':''}" onclick="setViewBranch('${b.id}')">${b.name}</div>`).join('') +
       `</div>`;
   }
 
@@ -4046,8 +4048,8 @@ function renderGoals(){
     addMonthsToPeriod(currentGoalsPeriod(), 1)
   ])).sort();
   const periodSelectorHtml = `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>🗓️ 월별 목표관리</h3>
+    <div class="card" style="margin-bottom:16px;padding:14px;">
+      <h3 style="font-size:14px;">🗓️ 월별 목표관리</h3>
       <div class="small-note" style="margin-bottom:10px;">원하는 달을 선택하면 그 달의 목표를 별도 양식으로 입력·조회할 수 있습니다. 지점 목표, 팀원별 배분, 구독 목표가 달마다 독립적으로 저장됩니다.</div>
       <div>${periodOptions.map(p=>`<span class="branch-pill ${p===period?'active':''}" onclick="setGoalsPeriod('${p}')">${goalsPeriodLabel(p)}${p===currentGoalsPeriod()?' (이번달)':''}</span>`).join('')}</div>
     </div>`;
@@ -4135,105 +4137,123 @@ function renderGoals(){
   return `
     <div class="page-title">목표 관리(MSIS기준)</div>
     <div class="page-desc">${branch.name} · ${goalsPeriodLabel(period)}${isCurrentPeriod?'':' <span class="badge warn">이번달 아님</span>'}</div>
-    ${branchSelectorHtml}
-    ${periodSelectorHtml}
-
-    <div class="card ai-box" style="margin-bottom:16px;">
-      <div class="ai-title">📌 데이터 조회시 참고사항</div>
-      <div style="font-size:12.5px;line-height:1.75;">
-        <div style="margin-bottom:8px;"><b>1. GROSS 목표</b> : 평가, 판매 목표 달성 수당 등에 반영되는 목표(실제 판매 금액에서 20~30% 편차 발생됨)<br>※구독 판매 목표도 GROSS 금액으로 산정됨</div>
-        <div style="margin-bottom:8px;"><b>2.</b> MSIS에 매장에서 등록하는 매출/경쟁력은 참고 지표로 활용됨<br>※경쟁력 실제 유통 DATA 比 -1% ~ -5% 편차 발생 할 수 있음</div>
-        <div><b>3. 구독 비중</b> = 구독 판매 금액 ÷ (일시불+구독 판매 금액)</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="width:220px;flex-shrink:0;">
+        ${periodSelectorHtml}
+        ${branchSelectorHtml}
       </div>
-    </div>
 
-    <div class="card" style="margin-bottom:16px;">
-      <h3>1. 지점 목표 설정 <small>${isAdmin?'(본사 관리자 설정 · 목표 파일 업로드로 자동 반영)':'(관리자 설정 · 소속 지점 매니저 조회 전용)'}</small></h3>
-      <div class="form-row" style="align-items:flex-start;flex-wrap:wrap;gap:24px;">
-        <div class="field">
-          <label>GROSS 목표 금액 (KK)</label>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <input id="branchTargetInput" type="number" step="0.1" style="width:160px" value="${wonToKKRaw(g.target)}" ${canSetBranchTarget?'':'disabled'}>
-            ${canSetBranchTarget ? `<button class="btn btn-primary" onclick="updateBranchTarget('${branchId}')">저장</button>` : ''}
+      <div style="flex:1;min-width:640px;">
+        <div class="card ai-box" style="margin-bottom:16px;">
+          <div class="ai-title">📌 데이터 조회시 참고사항</div>
+          <div style="font-size:12.5px;line-height:1.75;">
+            <div style="margin-bottom:8px;"><b>1. GROSS 목표</b> : 평가, 판매 목표 달성 수당 등에 반영되는 목표(실제 판매 금액에서 20~30% 편차 발생됨)<br>※구독 판매 목표도 GROSS 금액으로 산정됨</div>
+            <div style="margin-bottom:8px;"><b>2.</b> MSIS에 매장에서 등록하는 매출/경쟁력은 참고 지표로 활용됨<br>※경쟁력 실제 유통 DATA 比 -1% ~ -5% 편차 발생 할 수 있음</div>
+            <div><b>3. 구독 비중</b> = 구독 판매 금액 ÷ (일시불+구독 판매 금액)</div>
           </div>
         </div>
-        <div class="field" style="min-width:230px;max-width:280px;">
-          <label>MSIS실판매 등록 기준 예상 목표치</label>
-          <div style="font-size:20px;font-weight:800;color:var(--primary);line-height:1.3;">${fmtKK(g.target*1.25)}</div>
-          <div style="font-size:12px;margin-top:4px;white-space:nowrap;">달성율/진행율: <b>${branchAchievedPct.toFixed(1)}%</b> ${pctBadge(branchAchievedPct)}</div>
-          <div class="muted" style="font-size:11px;margin-top:2px;">(매니저 총매출 ${fmtKK(branchAchievedWon)} 기준)</div>
-          <div class="muted" style="font-size:10.5px;line-height:1.45;margin-top:6px;white-space:normal;word-break:keep-all;">※GROSS금액과 편차가 작거나 클수도 있으므로, 참고지표로만 활용 바랍니다</div>
+
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+          <div style="flex:1;min-width:340px;display:flex;flex-direction:column;gap:16px;">
+            <div class="card">
+              <h3>1. 지점 목표 설정 <small>${isAdmin?'(본사 관리자 설정 · 목표 파일 업로드로 자동 반영)':'(관리자 설정 · 소속 지점 매니저 조회 전용)'}</small></h3>
+              <div class="form-row" style="align-items:flex-start;flex-wrap:wrap;gap:24px;">
+                <div class="field">
+                  <label>GROSS 목표 금액 (KK)</label>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <input id="branchTargetInput" type="number" step="0.1" style="width:160px" value="${wonToKKRaw(g.target)}" ${canSetBranchTarget?'':'disabled'}>
+                    ${canSetBranchTarget ? `<button class="btn btn-primary" onclick="updateBranchTarget('${branchId}')">저장</button>` : ''}
+                  </div>
+                </div>
+                <div class="field" style="min-width:230px;max-width:280px;">
+                  <label>MSIS실판매 등록 기준 예상 목표치</label>
+                  <div style="font-size:20px;font-weight:800;color:var(--primary);line-height:1.3;">${fmtKK(g.target*1.25)}</div>
+                  <div style="font-size:12px;margin-top:4px;white-space:nowrap;">달성율/진행율: <b>${branchAchievedPct.toFixed(1)}%</b> ${pctBadge(branchAchievedPct)}</div>
+                  <div class="muted" style="font-size:11px;margin-top:2px;">(매니저 총매출 ${fmtKK(branchAchievedWon)} 기준)</div>
+                  <div class="muted" style="font-size:10.5px;line-height:1.45;margin-top:6px;white-space:normal;word-break:keep-all;">※GROSS금액과 편차가 작거나 클수도 있으므로, 참고지표로만 활용 바랍니다</div>
+                </div>
+              </div>
+              <div class="muted" style="margin-top:10px;">배분 합계: ${fmtKK(allocSum)} / MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 대비 잔여: <b style="color:${remaining<0?'var(--bad)':'var(--text)'}">${fmtKK(remaining)}</b></div>
+            </div>
+
+            <div class="card">
+              <h3>2. 팀원별 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
+              <div class="small-note" style="margin-bottom:10px;">※ MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 기준으로 팀원별 목표를 나눠서 설정해 주세요.</div>
+              <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
+                <div><span class="muted">합계 배분 목표</span> <b>${fmtKK(allocSum)}</b></div>
+                <div><span class="muted">합계 누적 실적</span> <b>${fmtKK(allocAchievedSum)}</b></div>
+                <div><span class="muted">합계 달성률</span> <b>${allocAchievedPct.toFixed(1)}%</b> ${pctBadge(allocAchievedPct)}</div>
+                <div style="flex:1;min-width:100px;"><div class="progress-bar"><div style="width:${Math.min(allocAchievedPct,100)}%"></div></div></div>
+              </div>
+              <div class="table-scroll">
+              <table>
+                <thead><tr><th>이름</th><th>배분 목표</th><th>누적 실적</th><th>달성률</th><th style="width:120px">진행률</th></tr></thead>
+                <tbody>${allocRows}</tbody>
+              </table>
+              </div>
+            </div>
+          </div>
+
+          <div style="flex:1;min-width:340px;display:flex;flex-direction:column;gap:16px;">
+            <div class="card">
+              <h3>3. 구독 판매 목표 설정 <small>${canSetSubTarget?'(관리자/소속 지점 매니저 설정 · 구독 금액 목표는 목표 파일 업로드로 자동 반영)':'(조회 전용)'}</small></h3>
+              <div class="form-row">
+                <div class="field">
+                  <label>구독 판매 건수 목표</label>
+                  <input id="subQtyTargetInput" type="number" style="width:150px" value="${g.subQtyTarget||0}" ${canSetSubTarget?'':'disabled'}>
+                </div>
+                <div class="muted" style="align-self:center;font-size:11px;">건수 목표는 파일에 없어 직접 입력합니다.</div>
+              </div>
+              <div class="form-row">
+                <div class="field">
+                  <label>구독 판매 금액 목표 (KK)</label>
+                  <input id="subAmtTargetInput" type="number" step="0.1" style="width:150px" value="${roundKK1(g.subAmtTarget||0)}" ${canSetSubTarget?'':'disabled'}>
+                </div>
+              </div>
+              ${canSetSubTarget ? `<button class="btn btn-primary" onclick="updateSubTargets('${branchId}')">저장</button>` : ''}
+            </div>
+
+            <div class="card">
+              <h3>팀원별 구독 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
+              <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
+                <div><span class="muted">합계 건수 목표</span> <b>${subAllocSumQty}건</b></div>
+                <div><span class="muted">합계 금액 목표</span> <b>${subAllocSumAmt}KK</b></div>
+                <div><span class="muted">합계 실적</span> <b>${subActualQtySum}건 / ${roundKK1(subActualAmtSum)}KK</b></div>
+                <div><span class="muted">합계 금액 달성률</span> <b>${subAllocSumAmt>0 ? subActualAmtPctTotal.toFixed(1) : '0.0'}%</b> ${pctBadge(subActualAmtPctTotal)}</div>
+              </div>
+              <div class="table-scroll">
+              <table>
+                <thead><tr><th>이름</th><th>구독 건수 목표</th><th>구독 금액 목표(KK)</th><th>구독 실적(건수/금액)</th><th>금액 달성률</th></tr></thead>
+                <tbody>${subAllocRows}</tbody>
+              </table>
+              </div>
+              <div class="muted" style="margin-top:8px;">배분 합계: 건수 <b>${subAllocSumQty}건</b> / 금액 <b>${subAllocSumAmt}KK</b> — 지점 목표 대비 잔여: 건수 <b style="color:${(g.subQtyTarget-subAllocSumQty)<0?'var(--bad)':'var(--text)'}">${g.subQtyTarget-subAllocSumQty}건</b> / 금액 <b style="color:${(g.subAmtTarget-subAllocSumAmt)<0?'var(--bad)':'var(--text)'}">${roundKK1((g.subAmtTarget||0)-subAllocSumAmt)}KK</b></div>
+              <div class="small-note">※ 팀원별로 각자 이름에 맞는 구독 건수/금액 목표를 직접 입력할 수 있습니다. 실적은 &quot;구독 실적&quot; 메뉴의 최근 데이터를 이름 기준으로 매칭한 값입니다.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px;">
+          <h3>주차별 목표 달성 현황 <small>(1주 55% / 2주 25% / 3주 10% / 4주 10% 자동 배분 · 미달성분은 다음 주차에 비중대로 재배분)</small></h3>
+          <div style="overflow-x:auto;">
+          <table>
+            <thead><tr><th>이름</th><th>${goalsWeekLabel(period,1)}</th><th>${goalsWeekLabel(period,2)}</th><th>${goalsWeekLabel(period,3)}</th><th>${goalsWeekLabel(period,4)}</th></tr></thead>
+            <tbody>
+              <tr style="font-weight:800;border-bottom:2px solid var(--border);">
+                <td>합계</td>
+                ${weeklyTotal.map(w=>{
+                  const bg = w.isCurrent ? 'background:#fff7e0;' : 'background:#f7f8fa;';
+                  const body = w.known ? (w.pct!=null ? `실적 ${fmtKK(w.actual)}<br>${w.pct}% ${pctBadge(w.pct)}` : `실적 ${fmtKK(w.actual)}<br><span class="muted" style="font-weight:400;">목표 미설정</span>`) : `<span class="muted" style="font-weight:400;">미집계</span>`;
+                  return `<td style="${bg}font-size:12px;line-height:1.6;">목표 ${fmtKK(w.target)}<br>${body}</td>`;
+                }).join('')}
+              </tr>
+              ${weeklyRows}
+            </tbody>
+          </table>
+          </div>
+          <div class="small-note">※ 현재 ${nowWeekIdx}주차로 계산됩니다(노란색 강조). 맨 위 "합계" 행은 지점 전체(팀원 배분 목표 합산) 기준입니다. 지난 주차 실적이 목표에 못 미치면 그 미달성분이 이후 남은 주차들에 원래 비중 그대로 다시 나뉘어 더해집니다. "미집계"는 아직 그 주차의 실적 파일이 올라오지 않았다는 뜻입니다.</div>
         </div>
       </div>
-      <div class="muted" style="margin-top:10px;">배분 합계: ${fmtKK(allocSum)} / MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 대비 잔여: <b style="color:${remaining<0?'var(--bad)':'var(--text)'}">${fmtKK(remaining)}</b></div>
-    </div>
-
-    <div class="card" style="margin-bottom:16px;">
-      <h3>2. 팀원별 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
-      <div class="small-note" style="margin-bottom:10px;">※ MSIS실판매등록 기준 예상목표치(${fmtKK(msisExpectedTarget)}) 기준으로 팀원별 목표를 나눠서 설정해 주세요.</div>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
-        <div><span class="muted">합계 배분 목표</span> <b>${fmtKK(allocSum)}</b></div>
-        <div><span class="muted">합계 누적 실적</span> <b>${fmtKK(allocAchievedSum)}</b></div>
-        <div><span class="muted">합계 달성률</span> <b>${allocAchievedPct.toFixed(1)}%</b> ${pctBadge(allocAchievedPct)}</div>
-        <div style="flex:1;min-width:100px;"><div class="progress-bar"><div style="width:${Math.min(allocAchievedPct,100)}%"></div></div></div>
-      </div>
-      <table>
-        <thead><tr><th>이름</th><th>배분 목표</th><th>누적 실적</th><th>달성률</th><th style="width:120px">진행률</th></tr></thead>
-        <tbody>${allocRows}</tbody>
-      </table>
-    </div>
-
-    <div class="card" style="margin-bottom:16px;">
-      <h3>주차별 목표 달성 현황 <small>(1주 55% / 2주 25% / 3주 10% / 4주 10% 자동 배분 · 미달성분은 다음 주차에 비중대로 재배분)</small></h3>
-      <div style="overflow-x:auto;">
-      <table>
-        <thead><tr><th>이름</th><th>${goalsWeekLabel(period,1)}</th><th>${goalsWeekLabel(period,2)}</th><th>${goalsWeekLabel(period,3)}</th><th>${goalsWeekLabel(period,4)}</th></tr></thead>
-        <tbody>
-          <tr style="font-weight:800;border-bottom:2px solid var(--border);">
-            <td>합계</td>
-            ${weeklyTotal.map(w=>{
-              const bg = w.isCurrent ? 'background:#fff7e0;' : 'background:#f7f8fa;';
-              const body = w.known ? (w.pct!=null ? `실적 ${fmtKK(w.actual)}<br>${w.pct}% ${pctBadge(w.pct)}` : `실적 ${fmtKK(w.actual)}<br><span class="muted" style="font-weight:400;">목표 미설정</span>`) : `<span class="muted" style="font-weight:400;">미집계</span>`;
-              return `<td style="${bg}font-size:12px;line-height:1.6;">목표 ${fmtKK(w.target)}<br>${body}</td>`;
-            }).join('')}
-          </tr>
-          ${weeklyRows}
-        </tbody>
-      </table>
-      </div>
-      <div class="small-note">※ 현재 ${nowWeekIdx}주차로 계산됩니다(노란색 강조). 맨 위 "합계" 행은 지점 전체(팀원 배분 목표 합산) 기준입니다. 지난 주차 실적이 목표에 못 미치면 그 미달성분이 이후 남은 주차들에 원래 비중 그대로 다시 나뉘어 더해집니다. "미집계"는 아직 그 주차의 실적 파일이 올라오지 않았다는 뜻입니다.</div>
-    </div>
-
-    <div class="card">
-      <h3>3. 구독 판매 목표 설정 <small>${canSetSubTarget?'(관리자/소속 지점 매니저 설정 · 구독 금액 목표는 목표 파일 업로드로 자동 반영)':'(조회 전용)'}</small></h3>
-      <div class="form-row">
-        <div class="field">
-          <label>구독 판매 건수 목표</label>
-          <input id="subQtyTargetInput" type="number" style="width:150px" value="${g.subQtyTarget||0}" ${canSetSubTarget?'':'disabled'}>
-        </div>
-        <div class="muted" style="align-self:center;font-size:11px;">건수 목표는 파일에 없어 직접 입력합니다.</div>
-      </div>
-      <div class="form-row">
-        <div class="field">
-          <label>구독 판매 금액 목표 (KK)</label>
-          <input id="subAmtTargetInput" type="number" step="0.1" style="width:150px" value="${roundKK1(g.subAmtTarget||0)}" ${canSetSubTarget?'':'disabled'}>
-        </div>
-      </div>
-      ${canSetSubTarget ? `<button class="btn btn-primary" onclick="updateSubTargets('${branchId}')">저장</button>` : ''}
-
-      <h3 style="margin-top:20px;">팀원별 구독 목표 배분 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 전체 팀원 목표를 배분·조정)':'(조회 전용)'}</small></h3>
-      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center;padding:10px 14px;margin-bottom:10px;background:#f7f8fa;border:1px solid #edeef1;border-radius:8px;font-size:13px;">
-        <div><span class="muted">합계 건수 목표</span> <b>${subAllocSumQty}건</b></div>
-        <div><span class="muted">합계 금액 목표</span> <b>${subAllocSumAmt}KK</b></div>
-        <div><span class="muted">합계 실적</span> <b>${subActualQtySum}건 / ${roundKK1(subActualAmtSum)}KK</b></div>
-        <div><span class="muted">합계 금액 달성률</span> <b>${subAllocSumAmt>0 ? subActualAmtPctTotal.toFixed(1) : '0.0'}%</b> ${pctBadge(subActualAmtPctTotal)}</div>
-      </div>
-      <table>
-        <thead><tr><th>이름</th><th>구독 건수 목표</th><th>구독 금액 목표(KK)</th><th>구독 실적(건수/금액)</th><th>금액 달성률</th></tr></thead>
-        <tbody>${subAllocRows}</tbody>
-      </table>
-      <div class="muted" style="margin-top:8px;">배분 합계: 건수 <b>${subAllocSumQty}건</b> / 금액 <b>${subAllocSumAmt}KK</b> — 지점 목표 대비 잔여: 건수 <b style="color:${(g.subQtyTarget-subAllocSumQty)<0?'var(--bad)':'var(--text)'}">${g.subQtyTarget-subAllocSumQty}건</b> / 금액 <b style="color:${(g.subAmtTarget-subAllocSumAmt)<0?'var(--bad)':'var(--text)'}">${roundKK1((g.subAmtTarget||0)-subAllocSumAmt)}KK</b></div>
-      <div class="small-note">※ 팀원별로 각자 이름에 맞는 구독 건수/금액 목표를 직접 입력할 수 있습니다. 실적은 &quot;구독 실적&quot; 메뉴의 최근 데이터를 이름 기준으로 매칭한 값입니다.</div>
     </div>
   `;
 }
@@ -5363,14 +5383,15 @@ function moChipsHtml(chips){
     `</div>`;
 }
 // 지점 하나를 "한눈에" 보여주는 미니 카드 — 클릭하면 그 지점의 상세 한눈에 보기로 드릴다운
-function moBranchCardHtml(r, showManager){
+function moBranchCardHtml(r, showManager, selBranch){
   const m = r.m;
   const rate = m.g_tp_rate;
   const rateColor = rate==null ? '#999' : rate>=100 ? 'var(--good)' : rate>=80 ? 'var(--warn)' : 'var(--bad)';
+  const isSel = selBranch && r.branchId===selBranch;
   return `
-    <div class="card" style="padding:10px 12px;min-width:270px;flex:1;cursor:pointer;border-left:3px solid ${rateColor};transition:box-shadow .15s;" onclick="setMetricsOverviewBranch('${r.branchId}')">
+    <div class="card" style="padding:10px 12px;min-width:270px;flex:1;cursor:pointer;border-left:3px solid ${rateColor};transition:box-shadow .15s;${isSel?'box-shadow:0 0 0 2px var(--primary);':''}" onclick="setMetricsOverviewBranch('${r.branchId}')">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-        <div style="font-weight:700;font-size:13.5px;">${escapeHtml(r.branchName)}</div>
+        <div style="font-weight:700;font-size:13.5px;">${escapeHtml(r.branchName)}${isSel?' <span class="badge" style="background:var(--primary-light);color:var(--primary);">선택됨</span>':''}</div>
         ${showManager?`<div class="muted" style="font-size:11px;white-space:nowrap;">${escapeHtml(r.manager||'-')}</div>`:''}
       </div>
       <div style="font-size:18px;font-weight:800;color:${rateColor};margin-top:3px;">${moPct(rate)}</div>
@@ -5383,9 +5404,9 @@ function moBranchCardHtml(r, showManager){
       </div>
     </div>`;
 }
-function moBranchGridHtml(rows, showManager){
+function moBranchGridHtml(rows, showManager, selBranch){
   const sorted = rows.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
-  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">${sorted.map(r=>moBranchCardHtml(r, showManager)).join('')}</div>`;
+  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">${sorted.map(r=>moBranchCardHtml(r, showManager, selBranch)).join('')}</div>`;
 }
 function renderMetricsOverview(){
   if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
@@ -5483,32 +5504,42 @@ function renderMetricsOverview(){
       </div>`;
 
     // 신장률 비교 — 선택 대상 vs 평균(들)을 값 그대로 막대로 보여준다(Chart.js가 알아서 보기 좋은 눈금을 잡아줌)
-    let compareHtml = '';
-    if(selBranch){
-      const labels = ['경북팀 전체 평균', ...(managerAgg?[`${selManager} 관리자 평균`]:[]), scopeLabel];
-      const values = [teamAgg.g_tp_yoy, ...(managerAgg?[managerAgg.g_tp_yoy]:[]), agg.g_tp_yoy];
+    // ※ 지점/관리자를 선택할 때마다 이 카드가 나타났다 사라졌다 하면 아래 레이아웃 전체가 위아래로
+    // 흔들리므로, 선택 여부와 무관하게 카드 자체는 항상 "고정 높이"로 렌더링하고 내용만 바꾼다.
+    const MO_COMPARE_HEIGHT = 160;
+    let compareHtml;
+    if(selBranch || selManager){
+      const labels = selBranch
+        ? ['경북팀 전체 평균', ...(managerAgg?[`${selManager} 관리자 평균`]:[]), scopeLabel]
+        : ['경북팀 전체 평균', scopeLabel];
+      const values = selBranch
+        ? [teamAgg.g_tp_yoy, ...(managerAgg?[managerAgg.g_tp_yoy]:[]), agg.g_tp_yoy]
+        : [teamAgg.g_tp_yoy, agg.g_tp_yoy];
       compareHtml = `<div class="card" style="margin-top:16px;">
         <h3>📐 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
-        <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
+        <div style="position:relative;height:${MO_COMPARE_HEIGHT}px;"><canvas id="moCompareChart"></canvas></div>
       </div>`;
       moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1));
-    } else if(selManager){
-      const labels = ['경북팀 전체 평균', scopeLabel];
-      const values = [teamAgg.g_tp_yoy, agg.g_tp_yoy];
+    } else {
       compareHtml = `<div class="card" style="margin-top:16px;">
         <h3>📐 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
-        <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
+        <div style="height:${MO_COMPARE_HEIGHT}px;display:flex;align-items:center;justify-content:center;">
+          <div class="muted" style="font-size:13px;text-align:center;">관리자 또는 지점을 선택하면<br>경북팀 평균 대비 비교 그래프가 표시됩니다.</div>
+        </div>
       </div>`;
-      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1));
     }
 
-    // 지점별 한눈에 보기 그리드 — 지점을 하나씩 눌러보지 않아도 전체 상태를 카드로 동시에 파악
-    const branchGridHtml = !selBranch ? `<div class="card">
+    // 지점별 한눈에 보기 그리드 — 지점 상세를 조회 중이어도 항상 표시해 좌측 컬럼이 통째로 사라지며
+    // 레이아웃이 흔들리는 일이 없게 한다(선택된 지점 카드는 moBranchGridHtml에서 강조 표시).
+    const branchGridHtml = `<div class="card">
         <h3>🏬 지점별 한눈에 보기 <small>${selManager?escapeHtml(selManager)+' 소속 '+branchesInScope.length+'개 지점':'전체 '+branchesInScope.length+'개 지점'} · 카드를 클릭하면 해당 지점 상세로 이동</small></h3>
-        ${moBranchGridHtml(branchesInScope, !selManager)}
-      </div>` : '';
+        ${moBranchGridHtml(branchesInScope, !selManager, selBranch)}
+      </div>`;
 
     // 순위 차트: 관리자 선택/지점 선택에 따라 "관리자별" 또는 "소속 지점별" 신장률·달성률 순위를 각각 막대 차트로
+    // ※ 항목 수(관리자 5명 vs 지점 최대 14개)에 따라 캔버스 높이가 달라지면 선택할 때마다 차트 박스
+    // 크기가 늘었다 줄었다 해서 레이아웃이 흔들리므로, 높이는 고정하고 Chart.js가 막대 두께를 알아서 맞추게 한다.
+    const MO_RANK_CHART_HEIGHT = 420;
     const yoyRankScope = selManager ? branchListRaw : managerListRaw;
     const yoyRankSortedByYoy = yoyRankScope.slice().sort((a,b)=>{
       const av = selManager? a.m.g_tp_yoy : a.agg.g_tp_yoy, bv = selManager? b.m.g_tp_yoy : b.agg.g_tp_yoy;
@@ -5541,11 +5572,11 @@ function renderMetricsOverview(){
         <div style="flex:2;min-width:320px;display:flex;flex-direction:column;gap:16px;">
           <div class="card">
             <h3>📈 ${yoyRankTitle} <small>전년 동기 대비, 단위 %</small></h3>
-            <div style="position:relative;height:${Math.max(160, yoyRankLabels.length*36)}px;"><canvas id="moYoyRankChart"></canvas></div>
+            <div style="position:relative;height:${MO_RANK_CHART_HEIGHT}px;"><canvas id="moYoyRankChart"></canvas></div>
           </div>
           <div class="card">
             <h3>🎯 ${rateRankTitle} <small>단위 %</small></h3>
-            <div style="position:relative;height:${Math.max(160, rateRankLabels.length*36)}px;"><canvas id="moRateRankChart"></canvas></div>
+            <div style="position:relative;height:${MO_RANK_CHART_HEIGHT}px;"><canvas id="moRateRankChart"></canvas></div>
           </div>
         </div>
       </div>`;
@@ -6207,11 +6238,12 @@ function renderSales(){
           <h3>제품군 비중 <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
           <div style="position:relative;height:220px;"><canvas id="categoryShareChart"></canvas></div>
         </div>
-        ${showEmpShareChart ? `
         <div class="card">
           <h3>매니저별 판매 비중</h3>
-          <div style="position:relative;height:220px;"><canvas id="empShareChart"></canvas></div>
-        </div>` : ''}
+          ${showEmpShareChart
+            ? `<div style="position:relative;height:220px;"><canvas id="empShareChart"></canvas></div>`
+            : `<div style="height:220px;display:flex;align-items:center;justify-content:center;"><div class="muted" style="font-size:13px;text-align:center;">${state.salesEmp!=='ALL' ? '담당자를 &quot;전체&quot;로 선택하면<br>매니저별 판매 비중이 표시됩니다.' : '표시할 판매 데이터가 없습니다.'}</div></div>`}
+        </div>
       </div>
     </div>
   `;
