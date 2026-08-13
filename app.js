@@ -10607,212 +10607,45 @@ function renderKakaoFriendsBanner(){
       <div>⚠ 저조 지점: <b>${branchName(worst.branchId)}</b> — ${worst.diff>=0?'+':''}${fmtNum(worst.diff)}명 (<span style="color:${worst.rate>=0?'var(--primary)':'var(--bad)'}">${worst.rate>=0?'+':''}${worst.rate.toFixed(1)}%</span>) <span class="muted" style="font-size:11px;">(${worst.prevWeek} → ${worst.latestWeek})</span></div>
     </div>`;
 }
+// 지점별 카카오 플러스 친구 누적 등록건 수 막대그래프 설정 (세로 막대 · 이슈제품 성공사례
+// 대시보드의 icCountBarConfig와 달리 기본 세로축 방향을 그대로 사용한다).
+function kakaoCumulativeBarConfig(labels, values){
+  return {
+    type:'bar',
+    data:{ labels, datasets:[{ data: values, backgroundColor:'#4a7fd6' }] },
+    options:{ responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>fmtNum(c.parsed.y)+'명'}} },
+      scales:{ y:{ ticks:{ precision:0 } } } }
+  };
+}
 function renderKakaoFriends(){
-  const isAdmin = SESSION.role==='admin';
-  const uploadHtml = isAdmin ? `
-    <div class="card" style="margin-bottom:16px;">
-      <div class="small-note">📋 카카오 플친 데이터 업로드는 <b>[시스템 관리]</b> 메뉴로 이동했습니다.</div>
-    </div>` : '';
-
-  // ---- 전체 누적 현황 (지점별 최신 누적 플친수) ----
+  // 지점별 최신 누적 플친수 (하단 "지점별 카카오 플러스 친구 누적 등록건 수" 막대그래프에 사용)
   const cumulativeRows = DB.branches.map(b=>({branchId:b.id, count:kakaoFriendsLatestCumulative(b.id)}))
     .filter(r=>r.count>0)
     .sort((a,b)=>b.count-a.count);
-  const cumulativeHtml = `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>전체 누적 현황 <small>(지점별 최신 누적 플친수)</small></h3>
-      ${cumulativeRows.length ? `
-      <table>
-        <thead><tr><th>지점</th><th>누적 플친수</th></tr></thead>
-        <tbody>${cumulativeRows.map(r=>`<tr><td>${branchName(r.branchId)}</td><td><b>${fmtNum(r.count)}</b>명</td></tr>`).join('')}</tbody>
-      </table>` : `<div class="muted">등록된 데이터가 없습니다.</div>`}
-    </div>`;
 
-  // ---- 주차별 현황 (일별 누적 입력값 중 각 주의 최신값을 자동 집계) ----
-  const weeklyByBranch = kakaoFriendsByBranch();
-  const weeklyRows = [];
-  Object.keys(weeklyByBranch).forEach(branchId=>{
-    const list = weeklyByBranch[branchId];
-    list.forEach((r,i)=>{
-      const prev = i>0 ? list[i-1] : null;
-      const diff = prev ? r.count - prev.count : null;
-      const rate = prev ? (prev.count>0 ? (diff/prev.count*100) : (r.count>0?100:0)) : null;
-      weeklyRows.push({branchId, weekStart:r.weekStart, date:r.date, count:r.count, diff, rate});
-    });
-  });
-  weeklyRows.sort((a,b)=> branchName(a.branchId).localeCompare(branchName(b.branchId)) || String(a.weekStart).localeCompare(String(b.weekStart)));
-
-  const weeklyTableRows = weeklyRows.map(r=>{
-    const editable = canEditKakaoFriends(r.branchId);
-    const domId = kfRowDomId(r.branchId, r.date);
-    if(state.kfEditKey === kfRowKey(r.branchId, r.date)){
-      return `
-    <tr>
-      <td>${branchName(r.branchId)}</td>
-      <td>${r.weekStart}</td>
-      <td><input id="kfeCount_${domId}" type="number" value="${r.count}" style="width:90px"></td>
-      <td>${r.diff==null ? '-' : `${r.diff>=0?'+':''}${fmtNum(r.diff)}`}</td>
-      <td style="color:${r.rate==null?'inherit':(r.rate>=0?'var(--primary)':'var(--bad)')}">${r.rate==null?'-':`${r.rate>=0?'+':''}${r.rate.toFixed(1)}%`}</td>
-      <td style="white-space:nowrap;">
-        <button class="btn btn-sm btn-primary" onclick="saveEditKakaoFriendsRow('${r.branchId}','${r.date}')">저장</button>
-        <button class="btn btn-sm" onclick="cancelEditKakaoFriendsRow()">취소</button>
-      </td>
-    </tr>`;
-    }
-    return `
-    <tr>
-      <td>${branchName(r.branchId)}</td>
-      <td>${r.weekStart}</td>
-      <td>${fmtNum(r.count)}</td>
-      <td>${r.diff==null ? '-' : `${r.diff>=0?'+':''}${fmtNum(r.diff)}`}</td>
-      <td style="color:${r.rate==null?'inherit':(r.rate>=0?'var(--primary)':'var(--bad)')}">${r.rate==null?'-':`${r.rate>=0?'+':''}${r.rate.toFixed(1)}%`}</td>
-      <td style="white-space:nowrap;">${editable ? `<button class="btn btn-sm" onclick="startEditKakaoFriendsRow('${r.branchId}','${r.date}')">수정</button> <button class="btn btn-sm" onclick="deleteKakaoFriendsRow('${r.branchId}','${r.date}')">삭제</button>` : ''}</td>
-    </tr>`;
-  }).join('') || `<tr><td colspan="6" class="muted">등록된 데이터가 없습니다.</td></tr>`;
-
-  // ---- 월별 현황 (일별 누적 입력값 중 각 달의 최신값을 자동 집계) ----
-  const monthlyByBranch = kakaoFriendsMonthlyByBranch();
-  const monthlyRows = [];
-  Object.keys(monthlyByBranch).forEach(branchId=>{
-    const list = monthlyByBranch[branchId];
-    list.forEach((r,i)=>{
-      const prev = i>0 ? list[i-1] : null;
-      const diff = prev ? r.count - prev.count : null;
-      const rate = prev ? (prev.count>0 ? (diff/prev.count*100) : (r.count>0?100:0)) : null;
-      monthlyRows.push({branchId, month:r.month, count:r.count, diff, rate});
-    });
-  });
-  monthlyRows.sort((a,b)=> branchName(a.branchId).localeCompare(branchName(b.branchId)) || String(a.month).localeCompare(String(b.month)));
-  const monthlyTableRows = monthlyRows.map(r=>`
-    <tr>
-      <td>${branchName(r.branchId)}</td>
-      <td>${r.month}</td>
-      <td>${fmtNum(r.count)}</td>
-      <td>${r.diff==null ? '-' : `${r.diff>=0?'+':''}${fmtNum(r.diff)}`}</td>
-      <td style="color:${r.rate==null?'inherit':(r.rate>=0?'var(--primary)':'var(--bad)')}">${r.rate==null?'-':`${r.rate>=0?'+':''}${r.rate.toFixed(1)}%`}</td>
-    </tr>`).join('') || `<tr><td colspan="5" class="muted">등록된 데이터가 없습니다.</td></tr>`;
-
-  // ---- 전체지점 합계 증감율 추이 (그래프 + 정리된 표, 월별로 데이터가 쌓일수록 자동으로 길어짐) ----
-  const trend = kakaoFriendsTotalTrend();
-  const trendTableRows = [...trend].reverse().map(t=>`
-    <tr>
-      <td>${t.week}</td>
-      <td>${fmtNum(t.total)}</td>
-      <td class="muted" style="font-size:12px;">${t.branchesCounted}개 지점</td>
-      <td>${t.diff==null ? '-' : `${t.diff>=0?'+':''}${fmtNum(t.diff)}`}</td>
-      <td style="color:${t.rate==null?'inherit':(t.rate>=0?'var(--primary)':'var(--bad)')}">${t.rate==null?'-':`${t.rate>=0?'+':''}${t.rate.toFixed(1)}%`}</td>
-    </tr>`).join('') || `<tr><td colspan="5" class="muted">등록된 데이터가 없습니다.</td></tr>`;
-
-  setTimeout(()=>{
-    const ctx = document.getElementById('kakaoTrendChart');
-    if(!ctx) return;
-    if(kakaoTrendChartInstance) kakaoTrendChartInstance.destroy();
-    if(trend.length===0) return;
-    kakaoTrendChartInstance = new Chart(ctx, {
-      type:'line',
-      data:{
-        labels: trend.map(t=>t.week),
-        datasets:[
-          { label:'전체 누적 플친수', data: trend.map(t=>t.total), borderColor:'#A50034', backgroundColor:'rgba(165,0,52,.08)', tension:.25, fill:true, yAxisID:'y' }
-        ]
-      },
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        interaction:{mode:'index', intersect:false},
-        scales:{
-          y:{ position:'left', title:{display:true, text:'전체 누적 플친수'} }
-        }
-      }
-    });
-  }, 0);
-
-  const trendHtml = `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>전체지점 증감율 추이 <small>(주차별 합계 기준 · 월별 누적)</small></h3>
-      <div style="position:relative;height:280px;">
-        <canvas id="kakaoTrendChart"></canvas>
-      </div>
-      <table style="margin-top:14px;">
-        <thead><tr><th>주차</th><th>전체 누적</th><th>집계 지점 수</th><th>전주 대비 증감</th><th>증감율</th></tr></thead>
-        <tbody>${trendTableRows}</tbody>
-      </table>
-    </div>`;
-
-  // ---- 지점별 증감율 추이 (매니저가 본인 지점을 선택해서 따로 볼 수 있음) ----
-  const branchTrendId = defaultKakaoTrendBranchId();
-  const branchTrend = branchTrendId ? kakaoFriendsBranchTrend(branchTrendId) : [];
-  const branchTrendTableRows = [...branchTrend].reverse().map(t=>`
-    <tr>
-      <td>${t.week}</td>
-      <td>${fmtNum(t.total)}</td>
-      <td>${t.diff==null ? '-' : `${t.diff>=0?'+':''}${fmtNum(t.diff)}`}</td>
-      <td style="color:${t.rate==null?'inherit':(t.rate>=0?'var(--primary)':'var(--bad)')}">${t.rate==null?'-':`${t.rate>=0?'+':''}${t.rate.toFixed(1)}%`}</td>
-    </tr>`).join('') || `<tr><td colspan="4" class="muted">등록된 데이터가 없습니다.</td></tr>`;
-
-  setTimeout(()=>{
-    const ctx = document.getElementById('kakaoBranchTrendChart');
-    if(!ctx) return;
-    if(kakaoBranchTrendChartInstance) kakaoBranchTrendChartInstance.destroy();
-    if(branchTrend.length===0) return;
-    kakaoBranchTrendChartInstance = new Chart(ctx, {
-      type:'line',
-      data:{
-        labels: branchTrend.map(t=>t.week),
-        datasets:[
-          { label:'누적 플친수', data: branchTrend.map(t=>t.total), borderColor:'#A50034', backgroundColor:'rgba(165,0,52,.08)', tension:.25, fill:true, yAxisID:'y' }
-        ]
-      },
-      options:{
-        responsive:true,
-        maintainAspectRatio:false,
-        interaction:{mode:'index', intersect:false},
-        scales:{
-          y:{ position:'left', title:{display:true, text:'누적 플친수'} }
-        }
-      }
-    });
-  }, 0);
-
-  const branchTrendHtml = `
-    <div class="card" style="margin-bottom:16px;">
-      <div class="flex-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
-        <h3 style="margin:0;">지점별 증감율 추이 <small>(지점을 선택해서 따로 확인)</small></h3>
-        <select style="width:200px;" onchange="setKakaoTrendBranch(this.value)">${branchOptionsHtml(branchTrendId)}</select>
-      </div>
-      ${branchTrend.length ? `
-      <div style="position:relative;height:280px;">
-        <canvas id="kakaoBranchTrendChart"></canvas>
-      </div>
-      <table style="margin-top:14px;">
-        <thead><tr><th>주차</th><th>누적 플친수</th><th>전주 대비 증감</th><th>증감율</th></tr></thead>
-        <tbody>${branchTrendTableRows}</tbody>
-      </table>` : `<div class="muted">${branchTrendId ? branchName(branchTrendId) : ''} 지점의 등록된 데이터가 없습니다.</div>`}
-    </div>`;
+  if(cumulativeRows.length>0){
+    moRenderChart('kakaoCumulativeChart', kakaoCumulativeBarConfig(
+      cumulativeRows.map(r=>branchName(r.branchId)),
+      cumulativeRows.map(r=>r.count)
+    ));
+  }
 
   return `
     <div class="page-title">카카오 플친 관리 현황</div>
-    <div class="page-desc">지점별 카카오톡 플러스친구(플친) 누적 현황입니다. [시스템 관리]에서 실적 파일을 업로드하면 전체 누적/월별/주차별 현황과 증감율 추이가 모두 자동으로 계산됩니다.</div>
-    ${renderKakaoContestResultImage()}
-    ${renderKakaoContestBanner()}
-    ${renderKakaoFriendsBanner()}
-    ${trendHtml}
-    ${branchTrendHtml}
-    ${uploadHtml}
-    ${cumulativeHtml}
-    <div class="card" style="margin-bottom:16px;">
-      <h3>월별 현황</h3>
-      <table>
-        <thead><tr><th>지점</th><th>월</th><th>누적 플친수</th><th>전월 대비 증감</th><th>증감율</th></tr></thead>
-        <tbody>${monthlyTableRows}</tbody>
-      </table>
+    <div class="page-desc">지점별 카카오톡 플러스친구(플친) 컨테스트 현황입니다.</div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="flex:1;min-width:280px;max-width:420px;">
+        ${renderKakaoContestResultImage()}
+      </div>
+      <div style="flex:2;min-width:340px;">
+        ${renderKakaoFriendsBanner()}
+        ${renderKakaoContestBanner()}
+      </div>
     </div>
     <div class="card">
-      <h3>주차별 현황</h3>
-      <table>
-        <thead><tr><th>지점</th><th>주차</th><th>누적 플친수</th><th>전주 대비 증감</th><th>증감율</th><th></th></tr></thead>
-        <tbody>${weeklyTableRows}</tbody>
-      </table>
+      <h3>지점별 카카오 플러스 친구 누적 등록건 수</h3>
+      ${cumulativeRows.length ? `<div style="position:relative;height:340px;"><canvas id="kakaoCumulativeChart"></canvas></div>` : `<div class="muted">등록된 데이터가 없습니다.</div>`}
     </div>
   `;
 }
