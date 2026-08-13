@@ -7254,7 +7254,7 @@ const SUB_TIER_CONTEST_OPTIONS = [
   // 식기세척기/스타일러 연동사은품: 고객 댁으로 실제 배송되는 항목이라 needsAddress로 표시하고,
   // windowStart~windowEnd 기간(8/14~8/18)에만 신청 가능하도록 제한한다.
   { value:'식기세척기 연동사은품', gift:'[프로쉬]식기세척기 그린 레몬 세제 2EA', needsAddress:true, windowStart:'2026-08-14', windowEnd:'2026-08-18' },
-  { value:'스타일러 연동사은품', gift:'스타일러 이불걸이 1EA', needsAddress:true, windowStart:'2026-08-14', windowEnd:'2026-08-18' },
+  { value:'스타일러 연동사은품', gift:'스타일러 전용옷걸이 1EA', needsAddress:true, windowStart:'2026-08-14', windowEnd:'2026-08-18' },
   // 워시타워/콤보·냉장고 구재고 판매 사은품: 매장으로 배송되는 항목이라 fixedAddress로 주소를 자동
   // 고정하고("매장으로 입고"가 아니라 "매장으로 배송"), 8/14~8/17 기간 + 선착순 5건 한정으로 제한한다.
   { value:'워시타워/콤보 구재고 판매시', gift:'[LG생활건강]피지 캡슐세제+아우리 드라이시트 2종세트', fixedAddress:'매장으로 배송', windowStart:'2026-08-14', windowEnd:'2026-08-17', limit:5 },
