@@ -6885,7 +6885,7 @@ function renderCollectPhoto(){
         <div style="margin-bottom:6px;">${editPhotosHtml || '<div class="muted" style="font-size:11.5px;">첨부된 파일 없음</div>'}</div>
         <div class="field" style="margin-bottom:8px;">
           <label>파일 추가 (선택, 사진/PPT/엑셀 등 여러 개 가능)</label>
-          <input id="epe_${r.id}_file" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" style="width:100%;font-size:11px;">
+          <input id="epe_${r.id}_file" type="file" multiple style="width:100%;font-size:11px;">
         </div>
         <button class="btn btn-sm btn-primary" style="width:100%;margin-bottom:4px;" onclick="saveEditExecPhoto('${r.id}')">저장</button>
         <button class="btn btn-sm" style="width:100%;" onclick="cancelEditExecPhoto()">취소</button>
@@ -6933,7 +6933,7 @@ function renderCollectPhoto(){
         </div>
         <div class="field">
           <label>파일 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
-          <input id="epFile" type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
+          <input id="epFile" type="file" multiple>
         </div>
         <button class="btn btn-primary" onclick="submitExecPhoto()">등록</button>
       </div>
