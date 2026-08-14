@@ -932,6 +932,16 @@ function migrateDB(){
   if(!DB.kakaoContestInfo) DB.kakaoContestInfo = JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO));
   if(DB.kakaoContestResultImage===undefined) DB.kakaoContestResultImage = null;
   if(DB.execPhotoGuide===undefined) DB.execPhotoGuide = null;
+  // 실행력 점검 사진 가이드: 예전엔 이미지 1장(dataUrl 단일 필드)만 등록 가능했는데, 여러 장을
+  // 한 번에 올릴 수 있도록 images[] 배열 구조로 바꿨다. 기존에 저장돼 있던 단일 이미지는
+  // images 배열의 첫 번째 항목으로 옮겨서 그대로 보존한다.
+  if(DB.execPhotoGuide && DB.execPhotoGuide.dataUrl && !DB.execPhotoGuide.images){
+    DB.execPhotoGuide = {
+      week: DB.execPhotoGuide.week,
+      images: [{dataUrl: DB.execPhotoGuide.dataUrl, name: DB.execPhotoGuide.name}],
+      uploadedAt: DB.execPhotoGuide.uploadedAt, uploadedBy: DB.execPhotoGuide.uploadedBy
+    };
+  }
   // ---- 취합 페이지 공지배너(문구+사진, 관리자 편집/삭제 가능) ----
   // 신규 페이지(구독연동사은품 취합)는 빈 상태로 시작하고, 기존에 코드에 하드코딩되어 있던
   // 구독4품목↑/금액대별 사은품 취합 · 모바일 상품권 취합 배너는 최초 1회만 기존 문구/이미지를
@@ -6812,52 +6822,69 @@ function execPhotoWeekOptionsHtml(selected){
   return '<option value="">주차 선택</option>' + EXEC_PHOTO_WEEK_OPTIONS.map(w=>`<option value="${w}" ${w===selected?'selected':''}>${w}</option>`).join('');
 }
 // ---- 실행력 점검 사진 가이드 이미지 (관리자만 게시/수정/삭제, 전 직원 열람 — 카카오 컨테스트 결과 이미지와 동일 패턴) ----
+// 예전에는 가이드 이미지를 1장만 등록할 수 있었는데(dataUrl 단일 필드), 여러 장을 한 번에
+// 올릴 수 있도록 images[] 배열 구조로 바꾼다. 새로 올리는 파일들은 기존 갤러리에 추가되고
+// (전체 교체가 아님), 각 사진마다 개별 삭제(×) 버튼으로 필요한 것만 뺄 수 있다.
 async function handleExecPhotoGuideUpload(evt){
   if(SESSION.role!=='admin') return;
-  const file = evt.target.files && evt.target.files[0];
-  if(!file) return;
+  const files = evt.target.files ? Array.from(evt.target.files).slice(0, 20) : [];
+  if(files.length===0) return;
   const weekEl = document.getElementById('epgWeek');
   const week = weekEl ? weekEl.value : '';
   if(!week){ alert('실행 주차를 먼저 선택해 주세요.'); evt.target.value=''; return; }
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ alert(`"${oversized.name}" 파일은 5MB 이하로 업로드해 주세요.`); evt.target.value=''; return; }
   const msgEl = document.getElementById('epgMsg');
   if(msgEl) msgEl.textContent = '업로드 중...';
   try{
-    const oldUrl = DB.execPhotoGuide && DB.execPhotoGuide.dataUrl;
-    const uploaded = await readFileAsDataUrl(file);
-    DB.execPhotoGuide = { dataUrl: uploaded.dataUrl, name: uploaded.name, week, uploadedAt: todayStr(), uploadedBy: SESSION.name };
-    if(oldUrl && oldUrl!==uploaded.dataUrl) deleteFromStorage(oldUrl);
+    const uploaded = await Promise.all(files.map(readFileAsDataUrl));
+    const existingImages = (DB.execPhotoGuide && DB.execPhotoGuide.images) || [];
+    DB.execPhotoGuide = {
+      week,
+      images: existingImages.concat(uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name}))),
+      uploadedAt: todayStr(), uploadedBy: SESSION.name
+    };
     saveDB();
-    logActivity('update', `${SESSION.name}님(관리자)이 [실행력 점검 사진 가이드](${week})를 등록했습니다`);
+    logActivity('update', `${SESSION.name}님(관리자)이 [실행력 점검 사진 가이드](${week})에 사진 ${uploaded.length}장을 추가했습니다`);
     renderTab('collectPhoto');
   }catch(err){
     if(msgEl) msgEl.textContent = '업로드 중 오류가 발생했습니다.';
   }
 }
-function deleteExecPhotoGuideImage(){
+function deleteExecPhotoGuideImage(idx){
   if(SESSION.role!=='admin') return;
-  if(!confirm('실행력 점검 사진 가이드 이미지를 삭제하시겠습니까?')) return;
-  const url = DB.execPhotoGuide && DB.execPhotoGuide.dataUrl;
-  if(url) deleteFromStorage(url);
-  DB.execPhotoGuide = null;
+  if(!DB.execPhotoGuide || !DB.execPhotoGuide.images) return;
+  if(!confirm('이 가이드 사진을 삭제하시겠습니까?')) return;
+  const removed = DB.execPhotoGuide.images.splice(idx, 1)[0];
+  if(removed && removed.dataUrl) deleteFromStorage(removed.dataUrl);
+  if(DB.execPhotoGuide.images.length===0) DB.execPhotoGuide = null;
   saveDB();
   renderTab('collectPhoto');
 }
 function renderExecPhotoGuide(){
   const isAdmin = SESSION.role==='admin';
-  const img = DB.execPhotoGuide;
+  const guide = DB.execPhotoGuide;
+  const images = (guide && guide.images) || [];
   const adminControls = isAdmin ? `
-    <div style="margin-top:${img?'10px':'0'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <select id="epgWeek" style="width:140px">${execPhotoWeekOptionsHtml(img ? img.week : '')}</select>
-      <input type="file" accept="image/*" onchange="handleExecPhotoGuideUpload(event)" style="max-width:240px;">
-      ${img ? `<button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="deleteExecPhotoGuideImage()">이미지 삭제</button>` : ''}
+    <div style="margin-top:${images.length?'10px':'0'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <select id="epgWeek" style="width:140px">${execPhotoWeekOptionsHtml(guide ? guide.week : '')}</select>
+      <input type="file" accept="image/*" multiple onchange="handleExecPhotoGuideUpload(event)" style="max-width:240px;">
       <span id="epgMsg" class="small-note"></span>
     </div>` : '';
-  if(!img && !isAdmin) return '';
+  if(images.length===0 && !isAdmin) return '';
+  const galleryHtml = images.length>0 ? `
+    <div style="text-align:left;display:flex;flex-wrap:wrap;gap:10px;">
+      ${images.map((img,idx)=>`
+        <span style="position:relative;display:inline-block;">
+          <img src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="width:160px;height:160px;object-fit:cover;border-radius:10px;cursor:zoom-in;box-shadow:0 4px 16px rgba(0,0,0,.12);">
+          ${isAdmin ? `<span onclick="deleteExecPhotoGuideImage(${idx})" title="삭제" style="position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;border-radius:50%;width:20px;height:20px;font-size:13px;line-height:20px;text-align:center;cursor:pointer;">×</span>` : ''}
+        </span>`).join('')}
+    </div>` : '';
   return `
     <div class="card" style="margin-bottom:16px;text-align:center;">
-      ${img ? `
-        <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;"><b style="color:var(--primary);">${escapeHtml(img.week||'')} 실행력 점검 사진 가이드</b> · 등록일 ${img.uploadedAt||''} · ${escapeHtml(img.uploadedBy||'')}</div>
-        <img src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:100%;max-height:640px;border-radius:10px;cursor:zoom-in;box-shadow:0 4px 16px rgba(0,0,0,.12);">
+      ${images.length>0 ? `
+        <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;"><b style="color:var(--primary);">${escapeHtml(guide.week||'')} 실행력 점검 사진 가이드</b> <span class="muted">(${images.length}장)</span> · 등록일 ${guide.uploadedAt||''} · ${escapeHtml(guide.uploadedBy||'')}</div>
+        ${galleryHtml}
       ` : `<div class="muted" style="padding:10px 0;">등록된 실행력 점검 사진 가이드가 없습니다. 관리자만 등록할 수 있습니다.</div>`}
       ${adminControls}
     </div>`;
