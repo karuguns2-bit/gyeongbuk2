@@ -1831,11 +1831,11 @@ function renderHome(){
   const attBranchSelectorHtml = `<select style="width:120px;font-size:12px;" onchange="setHomeAttBranch(this.value)">${DB.branches.map(b=>`<option value="${b.id}" ${b.id===attBranchId?'selected':''}>${b.name}</option>`).join('')}</select>`;
   const attDateRelLabel = homeAttDateRelLabel(attDate);
   const attDateNavHtml = `
-    <div style="display:flex;align-items:center;gap:6px;margin-top:8px;">
-      <button type="button" class="btn btn-sm" onclick="shiftHomeAttDate(-1)" title="전날">◀</button>
-      <input type="date" value="${attDate}" onchange="setHomeAttDate(this.value)" style="flex:1;min-width:0;">
-      <button type="button" class="btn btn-sm" onclick="shiftHomeAttDate(1)" title="다음날">▶</button>
-      ${attDate!==todayStr() ? `<button type="button" class="btn btn-sm" onclick="setHomeAttDate('${todayStr()}')">오늘</button>` : ''}
+    <div class="home-att-date-nav">
+      <button type="button" class="home-att-date-arrow" onclick="shiftHomeAttDate(-1)" title="전날">◀</button>
+      <input type="date" class="home-att-date-input" value="${attDate}" onchange="setHomeAttDate(this.value)">
+      <button type="button" class="home-att-date-arrow" onclick="shiftHomeAttDate(1)" title="다음날">▶</button>
+      ${attDate!==todayStr() ? `<button type="button" class="btn btn-sm" style="margin-left:4px;" onclick="setHomeAttDate('${todayStr()}')">오늘</button>` : ''}
     </div>`;
 
   let branchSelectorHtml = '';
