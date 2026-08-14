@@ -1024,9 +1024,18 @@ function migrateDB(){
     delete r.receiptDataUrl;
     delete r.receiptName;
   });
+  // '매니저'(manager)/'사원'(staff) 두 직책으로 나뉘어 있던 것을 '매니저' 하나로 통일한다
+  // (권한 로직은 이미 staff 기준 체크가 대부분이었으므로, manager로 등록돼 있던 계정만
+  // staff로 이관하면 직책 표시도 자연히 "매니저"로 통일된다).
+  (DB.users||[]).forEach(u=>{ if(u.role==='manager') u.role = 'staff'; });
   if(JSON.stringify(DB) !== __migrateBefore) saveDB();
 }
-function saveDB(){ pushDBToServer(); }
+function saveDB(){
+  // 임원(조회 전용) 계정은 어떤 경로로 saveDB()가 호출되더라도 서버에 절대 반영되지 않는다 —
+  // 등록/수정/삭제 버튼을 개별적으로 다 찾아 막는 것보다 이 한 곳을 막는 게 가장 확실하다.
+  if(SESSION && SESSION.role==='exec') return;
+  pushDBToServer();
+}
 
 /* =========================================================================
    1b. AUTO-PROVISION FROM UPLOADED FILE (one file, all branches/managers)
@@ -1101,8 +1110,8 @@ function enterApp(user, fromRestore){
   SESSION = {empId:user.empId, name:user.name, role:user.role, branchId:user.branchId};
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').classList.add('active');
-  document.getElementById('sbUserName').textContent = user.name + (user.role==='admin'?' (관리자)':'');
-  document.getElementById('sbUserMeta').textContent = user.role==='admin' ? '본사' : (branchName(user.branchId) + ' · ' + (user.role==='manager'?'매니저':'사원'));
+  document.getElementById('sbUserName').textContent = user.name + (user.role==='admin'?' (관리자)':(user.role==='exec'?' (임원)':''));
+  document.getElementById('sbUserMeta').textContent = user.role==='admin' ? '본사' : (user.role==='exec' ? '임원 (전 지점 조회)' : (branchName(user.branchId) + ' · 매니저'));
   updateNavVisibilityForRole();
   state.viewBranchId = user.branchId || DB.branches[0].id;
   state.eduReminders = computeEduReminders();
@@ -1806,7 +1815,7 @@ function renderHomeManagerCompetitivenessBanner(){
     </div>`;
 }
 function renderHome(){
-  const myBranch = SESSION.role==='admin' ? state.viewBranchId : SESSION.branchId;
+  const myBranch = canSwitchBranch() ? state.viewBranchId : SESSION.branchId;
   const branch = DB.branches.find(b=>b.id===myBranch);
   // 반드시 "이번 달" 기준으로 명시해서 조회한다 — period를 생략하면 지금까지 업로드된
   // 모든 달의 실적이 전부 합산되어(무기한 누적) 실제 이번 달 실적과 전혀 다른 숫자가 나온다.
@@ -1839,7 +1848,7 @@ function renderHome(){
     </div>`;
 
   let branchSelectorHtml = '';
-  if(SESSION.role==='admin'){
+  if(canSwitchBranch()){
     branchSelectorHtml = `<div style="margin-bottom:14px;">` +
       DB.branches.map(b=>`<span class="branch-pill ${b.id===myBranch?'active':''}" onclick="setViewBranch('${b.id}')">${b.name}</span>`).join('') +
       `</div>`;
@@ -2103,7 +2112,7 @@ function statusBadge(status){
   return status;
 }
 function canEditAttendance(branchId){
-  return SESSION.role==='admin' || (SESSION.role==='manager' && SESSION.branchId===branchId);
+  return SESSION.role==='admin' || (SESSION.role==='staff' && SESSION.branchId===branchId);
 }
 function setViewBranch(id){ state.viewBranchId = id; state.homeAttBranchId = null; renderTab(state.tab); }
 // 매니저가 홈 대시보드 [오늘 출근 현황] 카드에서만 다른 지점을 참고 조회할 때 사용(본인 소속 지점 자체는 그대로 유지됨).
@@ -2131,8 +2140,15 @@ function homeAttDateRelLabel(dateStr){
 /* =========================================================================
    5a. RENDER: 시스템 관리 (관리자 전용) — 계정 관리 / 신규 계정 생성 / 데이터 업로드 허브
    ========================================================================= */
-const ROLE_LABELS = {admin:'관리자', manager:'매니저', staff:'사원'};
+const ROLE_LABELS = {admin:'관리자', exec:'임원', staff:'매니저'};
 function isSystemAdmin(){ return !!(SESSION && SESSION.role==='admin'); }
+// "임원" 직책은 관리자처럼 전 지점 데이터를 조회할 수 있지만, 등록/수정/삭제 등 어떤 데이터
+// 변경도 할 수 없는 순수 조회 전용 계정이다. 아래 두 헬퍼로 "조회 범위"와 "변경 가능 여부"를
+// 명확히 구분해서 쓴다 — canSwitchBranch()는 화면 조회 범위(전 지점 전환)에만 사용하고,
+// 실제 저장/등록/삭제 등 변경 권한 체크에는 절대 쓰지 않는다(그건 기존처럼 role==='admin' 등을
+// 그대로 사용해서 임원 계정은 자동으로 제외되게 둔다).
+function canSwitchBranch(){ return !!(SESSION && (SESSION.role==='admin' || SESSION.role==='exec')); }
+function isReadOnlyRole(){ return !!(SESSION && SESSION.role==='exec'); }
 function roleOptionsHtml(selected){
   return Object.entries(ROLE_LABELS).map(([v,label])=>`<option value="${v}" ${v===selected?'selected':''}>${label}</option>`).join('');
 }
@@ -2315,7 +2331,7 @@ function renderAccountManagement(){
   }
   const editId = state.sysUserEditId || null;
   const sortedUsers = [...DB.users].sort((a,b)=>{
-    if(a.role!==b.role){ const order={admin:0,manager:1,staff:2}; return order[a.role]-order[b.role]; }
+    if(a.role!==b.role){ const order={admin:0,exec:1,staff:2}; return order[a.role]-order[b.role]; }
     return branchName(a.branchId).localeCompare(branchName(b.branchId)) || String(a.name).localeCompare(String(b.name));
   });
   const userRows = sortedUsers.map(u=>{
@@ -2324,7 +2340,7 @@ function renderAccountManagement(){
       <tr>
         <td><input id="sueEmpId_${u.empId}" value="${escapeHtml(u.empId)}" style="width:100px"></td>
         <td><input id="sueName_${u.empId}" value="${escapeHtml(u.name)}" style="width:90px"></td>
-        <td>${u.empId==='admin' ? '본사(전체)' : `<select id="sueBranch_${u.empId}" style="width:130px" ${u.role==='admin'?'disabled':''}>${branchOptionsHtml(u.role==='admin'?'':u.branchId, true)}</select>`}</td>
+        <td>${u.empId==='admin' ? '본사(전체)' : (u.role==='exec' ? '전 지점(조회 전용)' : `<select id="sueBranch_${u.empId}" style="width:130px">${branchOptionsHtml(u.branchId, true)}</select>`)}</td>
         <td><select id="sueRole_${u.empId}" style="width:90px" ${u.empId==='admin'?'disabled':''} onchange="syncEditUserBranchByRole('${u.empId}')">${roleOptionsHtml(u.role)}</select></td>
         <td><input id="suePw_${u.empId}" type="text" placeholder="변경 시에만 입력" style="width:110px"></td>
         <td class="muted" style="font-size:11px;">${loginHistoryLabel(u.empId)}</td>
@@ -2338,8 +2354,8 @@ function renderAccountManagement(){
       <tr>
         <td class="muted">${escapeHtml(u.empId)}</td>
         <td>${escapeHtml(u.name)}</td>
-        <td>${u.empId==='admin' ? '본사(전체)' : branchName(u.branchId)}</td>
-        <td><span class="badge ${u.role==='admin'?'good':(u.role==='manager'?'warn':'')}">${ROLE_LABELS[u.role]||u.role}</span></td>
+        <td>${u.empId==='admin' ? '본사(전체)' : (u.role==='exec' ? '전 지점(조회 전용)' : branchName(u.branchId))}</td>
+        <td><span class="badge ${u.role==='admin'?'good':(u.role==='exec'?'warn':'')}">${ROLE_LABELS[u.role]||u.role}</span></td>
         <td class="muted">${u.pw}</td>
         <td class="muted" style="font-size:11px;">${loginHistoryLabel(u.empId)}</td>
         <td style="white-space:nowrap;">
@@ -2469,7 +2485,7 @@ function syncNewUserBranchByRole(){
   const roleSel = document.getElementById('suNewRole');
   const branchSel = document.getElementById('suNewBranch');
   if(!roleSel || !branchSel) return;
-  if(roleSel.value==='admin'){
+  if(roleSel.value==='admin' || roleSel.value==='exec'){
     branchSel.value = '';
     branchSel.disabled = true;
   }else{
@@ -2481,7 +2497,7 @@ function syncEditUserBranchByRole(empId){
   const roleSel = document.getElementById('sueRole_'+empId);
   const branchSel = document.getElementById('sueBranch_'+empId);
   if(!roleSel || !branchSel) return;
-  if(roleSel.value==='admin'){
+  if(roleSel.value==='admin' || roleSel.value==='exec'){
     branchSel.value = '';
     branchSel.disabled = true;
   }else{
@@ -2498,16 +2514,16 @@ function createSystemUser(){
   const role = document.getElementById('suNewRole').value;
   if(!empId || !name){ msgEl.textContent = '사번과 이름을 입력해 주세요.'; return; }
   if(DB.users.find(u=>u.empId===empId)){ msgEl.textContent = '이미 존재하는 사번입니다.'; return; }
-  const branchId = (role==='admin' || !branchIdRaw) ? null : branchIdRaw;
+  const branchId = (role==='admin' || role==='exec' || !branchIdRaw) ? null : branchIdRaw;
   DB.users.push({empId, pw:'1234', name, role, branchId});
-  if(role!=='admin' && branchId){
+  if(role!=='admin' && role!=='exec' && branchId){
     const g = getGoals(branchId, currentGoalsPeriod());
     if(g && !g.allocations.find(a=>a.empId===empId)) g.allocations.push({empId, name, target:0, subQtyTarget:0, subAmtTarget:0});
     const att = DB.attendance[branchId];
     if(att && !att.records.find(r=>r.empId===empId)) att.records.push({empId, name, status:'출근', checkin:'09:00', checkout:'18:00'});
   }
   saveDB();
-  msgEl.innerHTML = `<span style="color:var(--good);">계정이 생성되었습니다: ${escapeHtml(name)}(${escapeHtml(empId)}), 초기 비밀번호 1234${role==='admin'?' · 관리자 권한 부여됨':''}</span>`;
+  msgEl.innerHTML = `<span style="color:var(--good);">계정이 생성되었습니다: ${escapeHtml(name)}(${escapeHtml(empId)}), 초기 비밀번호 1234${role==='admin'?' · 관리자 권한 부여됨':(role==='exec'?' · 임원(전 지점 조회 전용) 권한 부여됨':'')}</span>`;
   renderTab('systemAdmin');
 }
 function saveEditSystemUser(oldEmpId){
@@ -2529,7 +2545,7 @@ function saveEditSystemUser(oldEmpId){
   }
   u.name = newName;
   u.role = newRole;
-  u.branchId = (newRole==='admin' || !newBranch) ? null : newBranch;
+  u.branchId = (newRole==='admin' || newRole==='exec' || !newBranch) ? null : newBranch;
   if(newPw) u.pw = newPw;
 
   state.sysUserEditId = null;
@@ -4081,12 +4097,14 @@ function setGoalsPeriod(period){
   renderTab('goals');
 }
 function renderGoals(){
-  // 지점 전체(다른 지점) 조회/전환은 관리자만 가능 - 매니저(지점 소속 직원)는 항상 본인 소속 지점으로 고정됨
-  const branchId = SESSION.role==='admin' ? state.viewBranchId : SESSION.branchId;
+  // 지점 전체(다른 지점) 조회/전환은 관리자·임원만 가능 - 매니저(지점 소속 직원)는 항상 본인 소속 지점으로 고정됨
+  const branchId = canSwitchBranch() ? state.viewBranchId : SESSION.branchId;
   const branch = DB.branches.find(b=>b.id===branchId);
   const isAdmin = SESSION.role==='admin';
   const isStaff = SESSION.role==='staff' && SESSION.branchId===branchId;
   // 지점 소속 직원(=사실상 지점 매니저 역할)이라면 관리자와 동일하게 팀원 전체 목표를 배분·조정할 수 있다
+  // (임원은 canSwitchBranch()로 조회 범위만 넓어질 뿐, 여기 canManageAllocations에는 포함되지 않으므로
+  // 목표 배분/수정은 여전히 할 수 없다 — 순수 조회 전용 원칙 유지).
   const canManageAllocations = isAdmin || isStaff;
 
   const period = state.goalsPeriod || currentGoalsPeriod();
@@ -4094,11 +4112,11 @@ function renderGoals(){
   const g = getGoals(branchId, period);
 
   // 실적/제품 분석 페이지와 동일하게 선택 항목(월/지점)을 좌측에 세로로 배치한다 — 지점 목록은
-  // 관리자만 전환할 수 있으므로 관리자가 아니면 아예 렌더링하지 않는다(기존 동작 유지).
+  // 관리자·임원만 전환할 수 있으므로 그 외에는 아예 렌더링하지 않는다(기존 동작 유지).
   // 레이아웃 리뉴얼(좌측 사이드바) 이전 방식으로 복귀: 지점/월 선택은 좁은 사이드바가 아니라
   // 페이지 맨 위에 전체 폭 카드/가로 pill로 배치한다.
   let branchSelectorHtml = '';
-  if(isAdmin){
+  if(canSwitchBranch()){
     branchSelectorHtml = `<div style="margin-bottom:14px;">` +
       DB.branches.map(b=>`<span class="branch-pill ${b.id===branchId?'active':''}" onclick="setViewBranch('${b.id}')">${b.name}</span>`).join('') +
       `</div>`;
@@ -4394,7 +4412,7 @@ function updateAllocation(branchId, empId, val){
    7b. RENDER: WORK SCHEDULE (근무 일정 확인/편집)
    ========================================================================= */
 function renderSchedule(){
-  const branchId = SESSION.role==='admin' ? state.viewBranchId : SESSION.branchId;
+  const branchId = canSwitchBranch() ? state.viewBranchId : SESSION.branchId;
   const branch = DB.branches.find(b=>b.id===branchId);
   if(!state.scheduleWeekMonday) state.scheduleWeekMonday = getMondayStr(todayStr());
   const monday = state.scheduleWeekMonday;
@@ -4403,7 +4421,7 @@ function renderSchedule(){
   const today = todayStr();
 
   let branchSelectorHtml = '';
-  if(SESSION.role==='admin'){
+  if(canSwitchBranch()){
     branchSelectorHtml = `<div style="margin-bottom:14px;">` +
       DB.branches.map(b=>`<span class="branch-pill ${b.id===branchId?'active':''}" onclick="setViewBranch('${b.id}'); renderTab('schedule')">${b.name}</span>`).join('') +
       `</div>`;
@@ -4434,7 +4452,7 @@ function renderSchedule(){
         return `<td style="${d===today?'background:#fff7f9;':''}">${statusBadge2(entry.status)}<br><span class="muted" style="font-size:11px;">${entry.start}${entry.status==='근무'||entry.status==='반차'?'~'+entry.end:''}</span></td>`;
       }
     }).join('');
-    return `<tr><td><b>${u.name}</b><br><span class="muted" style="font-size:11px;">${u.empId} · ${u.role==='manager'?'매니저':(u.role==='admin'?'관리자':'사원')}</span></td>${cells}</tr>`;
+    return `<tr><td><b>${u.name}</b><br><span class="muted" style="font-size:11px;">${u.empId} · ${u.role==='admin'?'관리자':(u.role==='exec'?'임원':'매니저')}</span></td>${cells}</tr>`;
   }).join('') || `<tr><td colspan="8" class="muted">소속 인원이 없습니다.</td></tr>`;
 
   return `
@@ -6116,12 +6134,12 @@ let compQtyChartInstance = null;
 let compAmtChartInstance = null;
 function renderSales(){
   const canUpload = SESSION.role==='admin'; // 업로드는 관리자 전용
-  const scopeBranch = SESSION.role==='admin' ? state.viewBranchId : SESSION.branchId;
+  const scopeBranch = canSwitchBranch() ? state.viewBranchId : SESSION.branchId;
 
   // 레이아웃 리뉴얼(좌측 사이드바) 이전 방식으로 복귀: 지점 선택은 좁은 사이드바가 아니라
   // 페이지 맨 위에 가로 pill로 배치한다.
   let branchSelectorHtml = '';
-  if(SESSION.role==='admin'){
+  if(canSwitchBranch()){
     branchSelectorHtml = `<div style="margin-bottom:14px;">` +
       `<span class="branch-pill ${scopeBranch==='ALL'?'active':''}" onclick="state.viewBranchId='ALL'; state.salesEmp='ALL'; renderTab('sales')">전체</span>` +
       DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); state.salesEmp='ALL'; renderTab('sales')">${b.name}</span>`).join('') +
@@ -6757,11 +6775,13 @@ function branchOptionsHtml(selectedId, includeNone){
   return noneOpt + DB.branches.map(b=>`<option value="${b.id}" ${b.id===selectedId?'selected':''}>${b.name}</option>`).join('');
 }
 function collectScopeBranch(){
-  return SESSION.role==='admin' ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : DB.branches[0].id) : SESSION.branchId;
+  return canSwitchBranch() ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : DB.branches[0].id) : SESSION.branchId;
 }
+// 실행력 점검 사진/모바일 상품권/기타 사은품/구독연동사은품 취합 4개 페이지가 공통으로 쓰는
+// 조회 범위 로직 — 관리자·임원 모두 전 지점을 볼 수 있다(등록/수정/삭제는 각 항목별
+// canEditXxx()에서 소유자/관리자 여부로 별도 체크하므로 여기서 조회 범위를 넓혀도 안전하다).
 function collectBranchPills(tab){
-  const isAdmin = SESSION.role==='admin';
-  if(!isAdmin) return '';
+  if(!canSwitchBranch()) return '';
   if(state.collectViewAll === undefined) state.collectViewAll = true;
   const myBranch = collectScopeBranch();
   return `<div style="margin-bottom:14px;">` +
@@ -6770,8 +6790,7 @@ function collectBranchPills(tab){
     `</div>`;
 }
 function collectListScope(list){
-  const isAdmin = SESSION.role==='admin';
-  if(!isAdmin){
+  if(!canSwitchBranch()){
     const myBranch = collectScopeBranch();
     return list.filter(r=>r.branchId===myBranch);
   }
@@ -10125,8 +10144,11 @@ function renderEduCompletion(cat){
     return renderEduVideoRich();
   }
   const isAdmin = SESSION.role==='admin';
+  // 조회 범위(전 지점 전환)는 관리자·임원 모두 가능하지만, showToggleBtn(AI R/P 실행여부 수동
+  // 전환) 등 실제 변경 권한은 isAdmin 그대로 유지해서 임원은 조회만 할 수 있게 한다.
+  const canBrowseAll = canSwitchBranch();
   const myBranch = SESSION.branchId || DB.branches[0].id;
-  const scopeBranch = isAdmin ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : null) : myBranch;
+  const scopeBranch = canBrowseAll ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : null) : myBranch;
 
   let staffList = DB.users.filter(u=>u.role==='staff');
   if(scopeBranch) staffList = staffList.filter(u=>u.branchId===scopeBranch);
@@ -10145,7 +10167,7 @@ function renderEduCompletion(cat){
   const doneCount = records.filter(r=>r.completed).length;
   const rate = total>0 ? (doneCount/total*100) : 0;
 
-  const branchPills = isAdmin ? `<div style="margin-bottom:14px;">` +
+  const branchPills = canBrowseAll ? `<div style="margin-bottom:14px;">` +
     DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); renderTab('${eduTabName(cat)}')">${b.name}</span>`).join('') +
     `<span class="branch-pill ${!scopeBranch?'active':''}" onclick="state.viewBranchId='ALL'; renderTab('${eduTabName(cat)}')">전체 보기</span>` +
     `</div>` : '';
@@ -10422,8 +10444,11 @@ function handleEduVideoRichFile(evt){
 }
 function renderEduVideoRich(){
   const isAdmin = SESSION.role==='admin';
+  // 조회 범위(전 지점 전환)는 관리자·임원 모두 가능하지만, uploadHtml(파일 업로드 링크) 등
+  // 실제 변경 권한은 isAdmin 그대로 유지해서 임원은 조회만 할 수 있게 한다.
+  const canBrowseAll = canSwitchBranch();
   const myBranch = SESSION.branchId || DB.branches[0].id;
-  const scopeBranch = isAdmin ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : null) : myBranch;
+  const scopeBranch = canBrowseAll ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : null) : myBranch;
   const rich = DB.eduVideoRich;
   const sessions = rich.sessions;
 
@@ -10447,7 +10472,7 @@ function renderEduVideoRich(){
   const fullyDoneCount = records.filter(r=>r.hasData && r.incompleteSessions.length===0).length;
   const rate = total>0 ? (fullyDoneCount/total*100) : 0;
 
-  const branchPills = isAdmin ? `<div style="margin-bottom:14px;">` +
+  const branchPills = canBrowseAll ? `<div style="margin-bottom:14px;">` +
     DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); renderTab('eduVideo')">${b.name}</span>`).join('') +
     `<span class="branch-pill ${!scopeBranch?'active':''}" onclick="state.viewBranchId='ALL'; renderTab('eduVideo')">전체 보기</span>` +
     `</div>` : '';
@@ -11025,7 +11050,10 @@ function prospectRepOptions(branchId){
 }
 function visibleProspects(){
   if(!SESSION) return [];
-  if(SESSION.role!=='admin') return (DB.prospects||[]).filter(p=>p.empId===SESSION.empId);
+  // 임원(조회 전용)도 관리자처럼 전체 가망고객을 조회할 수 있다 — 수정/삭제는 어차피
+  // canManage(=p.empId===SESSION.empId) 기준이라 admin도 남의 건은 못 고치는 것과 동일하게,
+  // 임원도 조회만 가능하고 편집은 되지 않는다.
+  if(!canSwitchBranch()) return (DB.prospects||[]).filter(p=>p.empId===SESSION.empId);
   let list = DB.prospects||[];
   if(state.prospectFilterBranchId) list = list.filter(p=>p.branchId===state.prospectFilterBranchId);
   if(state.prospectFilterEmpId) list = list.filter(p=>p.empId===state.prospectFilterEmpId);
@@ -11069,7 +11097,7 @@ function prospectFeedback(){
   return lines;
 }
 function renderProspects(){
-  const isAdmin = SESSION.role==='admin';
+  const isAdmin = canSwitchBranch();
   const list = [...visibleProspects()].sort((a,b)=> String(b.createdAt).localeCompare(String(a.createdAt)));
   const feedback = prospectFeedback();
 
@@ -11564,6 +11592,28 @@ function afterRenderHooks(tab){
   enableDragDropForFileInputs();
   updateExportToolbarVisibility(tab);
   refreshNavBadges();
+  applyReadOnlyLockdown();
+}
+// 임원(조회 전용) 계정은 saveDB()에서도 이중으로 막혀 있지만, 등록/저장/삭제 등 버튼을 눌렀을 때
+// "왜 안 되는지" 바로 알 수 있도록 화면에 렌더링될 때마다 그런 버튼들을 눈에 띄게 비활성화한다.
+// 지점 선택 pill/필터 드롭다운/검색창/페이지 이동 등 "조회" 관련 조작은 그대로 남겨두고,
+// 버튼 문구에 아래 변경 관련 단어가 포함된 <button>만 골라 막는다(간단하지만 이 사이트 전체가
+// 등록/저장/삭제/수정 같은 한국어 문구를 매우 일관되게 써서 커버리지가 높다).
+const READONLY_LOCKDOWN_WORDS = ['등록','저장','삭제','수정','추가','생성','초기화','업로드','발송','승인','반영','재발급','변경'];
+function applyReadOnlyLockdown(){
+  const main = document.getElementById('mainContent');
+  if(!main || !SESSION || SESSION.role!=='exec') return;
+  const msg = '임원(조회 전용) 계정은 등록/수정/삭제 기능을 사용할 수 없습니다. 조회만 가능합니다.';
+  main.querySelectorAll('button').forEach(btn=>{
+    const text = (btn.textContent||'').trim();
+    if(!text || !READONLY_LOCKDOWN_WORDS.some(w=>text.includes(w))) return;
+    btn.disabled = true;
+    btn.title = msg;
+    btn.style.opacity = '.45';
+    btn.style.cursor = 'not-allowed';
+    btn.onclick = function(e){ if(e){ e.preventDefault(); e.stopPropagation(); } alert(msg); return false; };
+  });
+  main.querySelectorAll('input[type=file]').forEach(inp=>{ inp.disabled = true; inp.title = msg; });
 }
 // 구독 실적 페이지는 외부 대시보드를 iframe으로 그대로 띄우는 화면이라 우리 쪽 표를 내보낼
 // 대상 자체가 없고, 화면 우상단에 고정(position:fixed)된 엑셀/PDF 버튼이 iframe 내부의 자체
