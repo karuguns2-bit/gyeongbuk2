@@ -10923,9 +10923,18 @@ function renderKakaoContestResultImage(){
       <span id="kcResultImgMsg" class="small-note"></span>
     </div>` : '';
   if(images.length===0 && !isAdmin) return '';
+  // 컨테스트 안내 포스터는 정사각형으로 잘라내면(noticeAttachmentHtml의 160x160 cover 크롭)
+  // 상단 문구나 하단 표가 잘려 나가 비율이 깨진 것처럼 보인다. 이 카드는 카드 폭에 맞춰
+  // 원본 비율 그대로(가로 꽉 채우고 세로는 자동) 보여준다 - 이미지가 아닌 첨부는 기존처럼
+  // 다운로드 칩(noticeAttachmentHtml)으로 표시한다.
   const galleryHtml = images.length>0 ? `
-    <div style="text-align:left;">
-      ${images.map((img,idx)=>noticeAttachmentHtml(img, 160, isAdmin ? `deleteKakaoContestResultImage(${idx})` : null)).join('')}
+    <div style="text-align:center;">
+      ${images.map((img,idx)=> isImageAttachment(img) ? `
+        <span style="position:relative;display:block;max-width:100%;margin:0 0 10px;">
+          <img src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="display:block;width:100%;height:auto;border-radius:8px;cursor:zoom-in;box-shadow:0 2px 8px rgba(16,24,32,.1);">
+          ${isAdmin ? `<span onclick="deleteKakaoContestResultImage(${idx})" title="삭제" style="position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;border-radius:50%;width:18px;height:18px;font-size:12px;line-height:18px;text-align:center;cursor:pointer;">×</span>` : ''}
+        </span>` : noticeAttachmentHtml(img, 160, isAdmin ? `deleteKakaoContestResultImage(${idx})` : null)
+      ).join('')}
     </div>` : '';
   return `
     <div class="card" style="margin-bottom:0;text-align:center;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;">
