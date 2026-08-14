@@ -518,22 +518,58 @@
 
   /* 표: 카드 안에서 가로 스크롤만 되도록(레이아웃 자체가 깨지지 않도록) 최소 폭을 준다 */
   @media (max-width:720px){
-    .card{ padding:14px 14px; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .card{ padding:12px 12px; overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:14px; }
     .main table{ min-width:560px; }
     .main .inv-table{ min-width:900px; }
-    .grid{ gap:12px; }
-    .page-title{ font-size:17px; }
+    .grid{ gap:10px; }
+    .page-title{ font-size:16px; }
+    .page-desc{ font-size:12px; line-height:1.45; margin-bottom:14px; }
     .stat-num{ font-size:21px; }
+
+    /* 세로 스크롤이 불필요하게 길어지는 것을 줄이기 위해, 모바일에서는 전체적으로 글자 크기·
+       줄간격·카드 안팎 여백을 조금씩 압축한다(사용자 요청: 글씨/간격이 줄어도 되니 화면 비율
+       최적화 우선). 개별 페이지를 일일이 손보는 대신 공통 요소에 적용해 전체 페이지에 일괄 반영. */
+    .card h3{ margin:0 0 10px; font-size:13.5px; }
+    .divider{ margin:12px 0; }
+    .ai-box{ padding:12px 14px; font-size:12px; line-height:1.55; }
+    .ai-box .ai-item{ margin-bottom:5px; }
+    .small-note{ font-size:11px; margin-top:6px; }
+    .nb-content{ font-size:12.5px; line-height:1.5; }
+    .rich-editor{ font-size:12.5px; line-height:1.5; }
+
+    /* 카드 사이 인라인 margin-bottom(16px 등)도 함께 줄여 카드가 촘촘히 붙게 한다 */
+    .main .card[style*="margin-bottom:16px"]{ margin-bottom:10px !important; }
+    .main .card[style*="margin-top:16px"]{ margin-top:10px !important; }
 
     /* form-row 안 입력칸들은 세로로 쌓아서 폭이 좁아도 절대 깨지지 않게 한다.
        (인라인 style="width:160px" 같은 값이 곳곳에 있어 !important로 덮어써야 함) */
-    .form-row{ flex-direction:column; align-items:stretch; gap:8px; }
+    .form-row{ flex-direction:column; align-items:stretch; gap:6px; margin-bottom:10px; }
     .form-row .field{ width:100%; min-width:0 !important; }
     .form-row input, .form-row select, .form-row textarea{ width:100% !important; max-width:100% !important; }
     input:not([type=checkbox]):not([type=radio]):not([type=file]), select, textarea{ max-width:100%; box-sizing:border-box; }
 
-    .branch-pill{ padding:5px 10px; font-size:11.5px; }
+    .branch-pill{ padding:4px 9px; font-size:11px; }
     .grid-3, .grid-2{ grid-template-columns:1fr; }
+
+    /* 홈 대시보드 KPI/미니통계처럼 숫자+라벨만 있는 가벼운 3분할 카드는(표·차트가 들어가는
+       무거운 grid-3와 달리) 모바일에서도 세로로 다 풀어헤치기보다 압축된 3열로 유지하는 편이
+       "세로로 늘어나는" 느낌을 훨씬 줄여준다. 폰트/여백만 작게 줄여서 3열에 맞춘다. */
+    .stat-grid-3{ grid-template-columns:repeat(3,1fr) !important; gap:7px !important; }
+    .stat-grid-3 .card, .stat-grid-3 .stat-tile{ padding:9px 7px !important; }
+    .stat-grid-3 .stat-tile-label{ font-size:9.5px !important; margin-bottom:3px !important; }
+    .stat-grid-3 .stat-tile-num{ font-size:14px !important; line-height:1.15 !important; }
+    .stat-grid-3 .stat-tile-sub{ font-size:9px !important; margin-top:3px !important; }
+    .stat-grid-3 b{ font-size:13px !important; }
+    .stat-grid-3 .muted{ font-size:9.5px !important; }
+
+    /* 홈 대시보드의 관리자별 목표/경쟁력 배너, 지표 한눈에보기의 4개 KPI 카드처럼 개수가
+       가변적인(3~5개) flex-wrap 카드 묶음도 폭이 좁아 한 줄에 한 장씩만 쌓이면 스크롤이
+       크게 늘어난다 -- 2열로 묶고 폰트를 줄여 컴팩트하게 유지한다. */
+    .mo-kpi-row{ gap:7px !important; }
+    .mo-kpi-row > .stat-tile{ min-width:calc(50% - 4px) !important; flex:none !important; padding:9px 8px !important; box-sizing:border-box; }
+    .mo-kpi-row .stat-tile-label,
+    .mo-kpi-row .stat-tile-sub{ font-size:9px !important; margin-top:2px !important; }
+    .mo-kpi-row .stat-tile-num{ font-size:15px !important; }
 
     /* 재고 조회 페이지: 사이드바(280px)+본문(min-width:520px) 고정폭 flex 레이아웃이
        좁은 화면에서 전체 페이지를 가로로 밀어내던 문제 수정 -- 모바일에서는 세로로 100% 스택 */

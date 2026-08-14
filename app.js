@@ -1755,7 +1755,7 @@ function renderHomeGoalsManagerBanner(){
   return `
     <div class="card" style="margin-bottom:16px;">
       <h3>👥 관리자별 목표 달성 현황 <small>(${goalsPeriodLabel(period)} · MSIS실판매등록 기준 예상 목표치 · 전체 지점 공개)</small></h3>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
+      <div class="mo-kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
 // 지점별 경쟁력(msis경쟁력 시트) 조회 — 월별 히스토리(DB.competitivenessHistory)에서 먼저 찾고,
@@ -1829,7 +1829,7 @@ function renderHomeManagerCompetitivenessBanner(){
   return `
     <div class="card" style="margin-bottom:16px;">
       <h3>🏆 관리자별 합산 경쟁력 <small>(${goalsPeriodLabel(period)} · msis경쟁력 시트 기준 · 전체 지점 공개)</small></h3>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
+      <div class="mo-kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
 function renderHome(){
@@ -1889,7 +1889,7 @@ function renderHome(){
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
-    <div class="grid grid-3" style="margin-bottom:16px;">
+    <div class="grid grid-3 stat-grid-3" style="margin-bottom:16px;">
       <div class="card stat-tile stat-tile-blue">
         <div class="stat-tile-label">이번 달 목표 <span style="font-weight:400;opacity:.8;">(MSIS실판매등록 기준 예상 목표치)</span></div>
         <div class="stat-tile-num">${fmtWon(msisTarget)}</div>
@@ -2029,7 +2029,7 @@ function renderHomeEduSummaryBanner(){
       <div style="font-weight:600;font-size:12.5px;color:var(--text-sub);margin-top:8px;">교육참석일자</div>
       ${scheduleHtml}
       <div style="font-weight:600;font-size:12.5px;color:var(--text-sub);margin-top:14px;">교육별 이수현황</div>
-      <div class="grid grid-3" style="margin-top:6px;">
+      <div class="grid grid-3 stat-grid-3" style="margin-top:6px;">
         ${miniStat('화상교육', videoStat, 'eduVideo')}
         ${miniStat('월간test', testStat, 'eduTest')}
         ${miniStat('AI R/P', aiRpStat, 'eduAiRp')}
@@ -5628,7 +5628,7 @@ function renderMetricsOverview(){
     if(teamAgg.s_sp_ratio!=null && agg.s_sp_ratio!=null) chips.push(`구독 비중 경북팀 평균 대비 ${moGap(agg.s_sp_ratio - teamAgg.s_sp_ratio)}`);
 
     const kpiCards = `
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+      <div class="mo-kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
         <div class="card stat-tile stat-tile-blue" style="min-width:150px;flex:1;">
           <div class="stat-tile-sub">총판 ${moBadgeRank(rankTotal, rankTotalOf)}</div>
           <div class="stat-tile-num" style="font-size:19px;">${moFmt(agg.g_tp_cur)}</div>
@@ -8548,7 +8548,7 @@ function renderMistakeNote(){
     adminSection = `
       <div class="card ai-box" style="margin-bottom:16px;">
         <div class="ai-title">📊 누적 오답노트 분석 리포트 (관리자 전용)</div>
-        <div class="grid grid-3" style="margin-bottom:10px;">
+        <div class="grid grid-3 stat-grid-3" style="margin-bottom:10px;">
           <div><b style="font-size:20px;">${stats.total}</b><div class="muted" style="font-size:12px;">누적 등록 건수</div></div>
           <div><b style="font-size:20px;">${stats.thisMonthCount}</b><div class="muted" style="font-size:12px;">이번 달 등록 건수</div></div>
           <div><b style="font-size:20px;">${stats.topCategory ? stats.topCategory[0] : '-'}</b><div class="muted" style="font-size:12px;">최다 실수 유형</div></div>
@@ -9659,7 +9659,7 @@ function renderPolicyQuiz(){
   const summaryHtml = `
     <div class="card" style="margin-bottom:16px;">
       <h3>숙지도 점검 현황 (${policyQuizWeekLabel(stats.week)}) ${isLatestRegistered ? '<span class="badge good">최근 등록 현황</span>' : ''}</h3>
-      <div class="grid grid-3">
+      <div class="grid grid-3 stat-grid-3">
         <div><b style="font-size:20px;">${stats.avgScore.toFixed(1)}점</b><div class="muted" style="font-size:12px;">평균 점수</div></div>
         <div><b style="font-size:20px;">${stats.rate.toFixed(1)}%</b><div class="muted" style="font-size:12px;">응시율 (응시자 ${stats.attemptedCount}명 / 미응시자 ${stats.notAttemptedCount}명)</div></div>
         <div><b style="font-size:20px;">${stats.total}명</b><div class="muted" style="font-size:12px;">전체 대상 인원</div></div>
