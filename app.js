@@ -6792,29 +6792,35 @@ function branchOptionsHtml(selectedId, includeNone){
   const noneOpt = includeNone ? `<option value="" ${!selectedId?'selected':''}>설정안함</option>` : '';
   return noneOpt + DB.branches.map(b=>`<option value="${b.id}" ${b.id===selectedId?'selected':''}>${b.name}</option>`).join('');
 }
-function collectScopeBranch(){
-  return canSwitchBranch() ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : DB.branches[0].id) : SESSION.branchId;
+function collectCanViewAll(allowAllStaff){
+  return canSwitchBranch() || !!(allowAllStaff && SESSION.role==='staff');
+}
+function collectScopeBranch(allowAllStaff){
+  return collectCanViewAll(allowAllStaff) ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : DB.branches[0].id) : SESSION.branchId;
 }
 // 실행력 점검 사진/모바일 상품권/기타 사은품/구독연동사은품 취합 4개 페이지가 공통으로 쓰는
 // 조회 범위 로직 — 관리자·임원 모두 전 지점을 볼 수 있다(등록/수정/삭제는 각 항목별
 // canEditXxx()에서 소유자/관리자 여부로 별도 체크하므로 여기서 조회 범위를 넓혀도 안전하다).
-function collectBranchPills(tab){
-  if(!canSwitchBranch()) return '';
+// allowAllStaff=true 로 호출하면 일반 매니저(staff)도 전 지점 조회가 가능해진다 — 현재는
+// 실행력 점검 사진 취합 페이지에서만 사용(상품권/사은품 취합은 고객 개인정보가 포함되어
+// 기존과 동일하게 관리자·임원만 전체보기 가능하도록 유지).
+function collectBranchPills(tab, allowAllStaff){
+  if(!collectCanViewAll(allowAllStaff)) return '';
   if(state.collectViewAll === undefined) state.collectViewAll = true;
-  const myBranch = collectScopeBranch();
+  const myBranch = collectScopeBranch(allowAllStaff);
   return `<div style="margin-bottom:14px;">` +
     DB.branches.map(b=>`<span class="branch-pill ${!state.collectViewAll && b.id===myBranch?'active':''}" onclick="state.collectViewAll=false; setViewBranch('${b.id}'); renderTab('${tab}')">${b.name}</span>`).join('') +
     `<span class="branch-pill ${state.collectViewAll?'active':''}" onclick="state.collectViewAll=true; renderTab('${tab}')">전체 보기</span>` +
     `</div>`;
 }
-function collectListScope(list){
-  if(!canSwitchBranch()){
-    const myBranch = collectScopeBranch();
+function collectListScope(list, allowAllStaff){
+  if(!collectCanViewAll(allowAllStaff)){
+    const myBranch = collectScopeBranch(allowAllStaff);
     return list.filter(r=>r.branchId===myBranch);
   }
   if(state.collectViewAll === undefined) state.collectViewAll = true;
   if(state.collectViewAll) return list;
-  const myBranch = collectScopeBranch();
+  const myBranch = collectScopeBranch(allowAllStaff);
   return list.filter(r=>r.branchId===myBranch);
 }
 
@@ -6897,8 +6903,8 @@ function renderExecPhotoGuide(){
 }
 function renderCollectPhoto(){
   if(!state.epSelectedIds) state.epSelectedIds = new Set();
-  const myBranch = collectScopeBranch();
-  const scoped = collectListScope(DB.execPhotos);
+  const myBranch = collectScopeBranch(true);
+  const scoped = collectListScope(DB.execPhotos, true);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const editId = state.epEditId;
   const cards = sorted.map(r=>{
@@ -6951,7 +6957,7 @@ function renderCollectPhoto(){
     <div class="page-title">실행력 점검 사진 취합</div>
     <div class="page-desc">지점별 실행력 점검 사진을 업로드·공유합니다.</div>
     ${renderExecPhotoGuide()}
-    ${collectBranchPills('collectPhoto')}
+    ${collectBranchPills('collectPhoto', true)}
 
     <div class="card" style="margin-bottom:16px;">
       <h3>사진 업로드</h3>
