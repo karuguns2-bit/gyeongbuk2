@@ -931,6 +931,14 @@ function migrateDB(){
   if(!DB.policyQuizAttempts) DB.policyQuizAttempts = [];
   if(!DB.kakaoContestInfo) DB.kakaoContestInfo = JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO));
   if(DB.kakaoContestResultImage===undefined) DB.kakaoContestResultImage = null;
+  // 컨테스트 결과 이미지도 실행력 점검 사진 가이드와 동일하게 1장(dataUrl 단일 필드) ->
+  // 여러 개(images[] 배열) 구조로 바뀌었으므로, 기존 단일 이미지를 배열 첫 항목으로 이전한다.
+  if(DB.kakaoContestResultImage && DB.kakaoContestResultImage.dataUrl && !DB.kakaoContestResultImage.images){
+    DB.kakaoContestResultImage = {
+      images: [{dataUrl: DB.kakaoContestResultImage.dataUrl, name: DB.kakaoContestResultImage.name}],
+      uploadedAt: DB.kakaoContestResultImage.uploadedAt, uploadedBy: DB.kakaoContestResultImage.uploadedBy
+    };
+  }
   if(DB.execPhotoGuide===undefined) DB.execPhotoGuide = null;
   // 실행력 점검 사진 가이드: 예전엔 이미지 1장(dataUrl 단일 필드)만 등록 가능했는데, 여러 장을
   // 한 번에 올릴 수 있도록 images[] 배열 구조로 바꿨다. 기존에 저장돼 있던 단일 이미지는
@@ -6868,22 +6876,20 @@ function renderExecPhotoGuide(){
   const adminControls = isAdmin ? `
     <div style="margin-top:${images.length?'10px':'0'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <select id="epgWeek" style="width:140px">${execPhotoWeekOptionsHtml(guide ? guide.week : '')}</select>
-      <input type="file" accept="image/*" multiple onchange="handleExecPhotoGuideUpload(event)" style="max-width:240px;">
+      <input type="file" multiple onchange="handleExecPhotoGuideUpload(event)" style="max-width:240px;">
       <span id="epgMsg" class="small-note"></span>
     </div>` : '';
   if(images.length===0 && !isAdmin) return '';
+  // 사진뿐 아니라 엑셀/PPT 등 문서도 함께 첨부할 수 있어, 이미지는 확대 가능한 썸네일로,
+  // 문서는 다운로드 칩으로 자동 구분해서 보여주는 공통 헬퍼(noticeAttachmentHtml)를 재사용한다.
   const galleryHtml = images.length>0 ? `
-    <div style="text-align:left;display:flex;flex-wrap:wrap;gap:10px;">
-      ${images.map((img,idx)=>`
-        <span style="position:relative;display:inline-block;">
-          <img src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="width:160px;height:160px;object-fit:cover;border-radius:10px;cursor:zoom-in;box-shadow:0 4px 16px rgba(0,0,0,.12);">
-          ${isAdmin ? `<span onclick="deleteExecPhotoGuideImage(${idx})" title="삭제" style="position:absolute;top:-6px;right:-6px;background:var(--bad);color:#fff;border-radius:50%;width:20px;height:20px;font-size:13px;line-height:20px;text-align:center;cursor:pointer;">×</span>` : ''}
-        </span>`).join('')}
+    <div style="text-align:left;">
+      ${images.map((img,idx)=>noticeAttachmentHtml(img, 160, isAdmin ? `deleteExecPhotoGuideImage(${idx})` : null)).join('')}
     </div>` : '';
   return `
     <div class="card" style="margin-bottom:16px;text-align:center;">
       ${images.length>0 ? `
-        <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;"><b style="color:var(--primary);">${escapeHtml(guide.week||'')} 실행력 점검 사진 가이드</b> <span class="muted">(${images.length}장)</span> · 등록일 ${guide.uploadedAt||''} · ${escapeHtml(guide.uploadedBy||'')}</div>
+        <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;"><b style="color:var(--primary);">${escapeHtml(guide.week||'')} 실행력 점검 사진 가이드</b> <span class="muted">(${images.length}개)</span> · 등록일 ${guide.uploadedAt||''} · ${escapeHtml(guide.uploadedBy||'')}</div>
         ${galleryHtml}
       ` : `<div class="muted" style="padding:10px 0;">등록된 실행력 점검 사진 가이드가 없습니다. 관리자만 등록할 수 있습니다.</div>`}
       ${adminControls}
@@ -10865,49 +10871,61 @@ function handleKakaoFriendsFile(evt){
   };
   reader.readAsArrayBuffer(file);
 }
-// ---- 컨테스트 결과 이미지 (관리자 전용 등록/교체/삭제, 클릭 시 확대) ----
+// ---- 컨테스트 결과 이미지 (관리자 전용 등록/삭제, 클릭 시 확대) ----
+// 사진뿐 아니라 결과표(엑셀)·자료(PPT) 등도 함께 올릴 수 있도록 이미지 전용 accept 제한을
+// 없애고 여러 개를 한 번에 첨부할 수 있게 images[] 배열 구조로 바꿨다(실행력 점검 사진
+// 가이드와 동일한 패턴 — 새로 올리면 기존 것에 추가되고, 개별 항목마다 × 삭제 가능).
 async function handleKakaoContestResultImageUpload(evt){
   if(SESSION.role!=='admin') return;
-  const file = evt.target.files && evt.target.files[0];
-  if(!file) return;
+  const files = evt.target.files ? Array.from(evt.target.files).slice(0, 20) : [];
+  if(files.length===0) return;
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ alert(`"${oversized.name}" 파일은 5MB 이하로 업로드해 주세요.`); evt.target.value=''; return; }
   const msgEl = document.getElementById('kcResultImgMsg');
   if(msgEl) msgEl.textContent = '업로드 중...';
   try{
-    const oldUrl = DB.kakaoContestResultImage && DB.kakaoContestResultImage.dataUrl;
-    const uploaded = await readFileAsDataUrl(file);
-    DB.kakaoContestResultImage = { dataUrl: uploaded.dataUrl, name: uploaded.name, uploadedAt: todayStr(), uploadedBy: SESSION.name };
-    if(oldUrl && oldUrl!==uploaded.dataUrl) deleteFromStorage(oldUrl);
+    const uploaded = await Promise.all(files.map(readFileAsDataUrl));
+    const existingImages = (DB.kakaoContestResultImage && DB.kakaoContestResultImage.images) || [];
+    DB.kakaoContestResultImage = {
+      images: existingImages.concat(uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name}))),
+      uploadedAt: todayStr(), uploadedBy: SESSION.name
+    };
     saveDB();
-    logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 컨테스트 결과 이미지]를 등록했습니다`);
+    logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 컨테스트 결과 이미지]에 ${uploaded.length}개를 추가했습니다`);
     renderTab('kakaoFriends');
   }catch(err){
     if(msgEl) msgEl.textContent = '업로드 중 오류가 발생했습니다.';
   }
 }
-function deleteKakaoContestResultImage(){
+function deleteKakaoContestResultImage(idx){
   if(SESSION.role!=='admin') return;
-  if(!confirm('컨테스트 결과 이미지를 삭제하시겠습니까?')) return;
-  const url = DB.kakaoContestResultImage && DB.kakaoContestResultImage.dataUrl;
-  if(url) deleteFromStorage(url);
-  DB.kakaoContestResultImage = null;
+  if(!DB.kakaoContestResultImage || !DB.kakaoContestResultImage.images) return;
+  if(!confirm('이 항목을 삭제하시겠습니까?')) return;
+  const removed = DB.kakaoContestResultImage.images.splice(idx, 1)[0];
+  if(removed && removed.dataUrl) deleteFromStorage(removed.dataUrl);
+  if(DB.kakaoContestResultImage.images.length===0) DB.kakaoContestResultImage = null;
   saveDB();
   renderTab('kakaoFriends');
 }
 function renderKakaoContestResultImage(){
   const isAdmin = SESSION.role==='admin';
-  const img = DB.kakaoContestResultImage;
+  const result = DB.kakaoContestResultImage;
+  const images = (result && result.images) || [];
   const adminControls = isAdmin ? `
-    <div style="margin-top:${img?'10px':'0'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <input type="file" accept="image/*" onchange="handleKakaoContestResultImageUpload(event)" style="max-width:260px;">
-      ${img ? `<button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="deleteKakaoContestResultImage()">이미지 삭제</button>` : ''}
+    <div style="margin-top:${images.length?'10px':'0'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <input type="file" multiple onchange="handleKakaoContestResultImageUpload(event)" style="max-width:260px;">
       <span id="kcResultImgMsg" class="small-note"></span>
     </div>` : '';
-  if(!img && !isAdmin) return '';
+  if(images.length===0 && !isAdmin) return '';
+  const galleryHtml = images.length>0 ? `
+    <div style="text-align:left;">
+      ${images.map((img,idx)=>noticeAttachmentHtml(img, 160, isAdmin ? `deleteKakaoContestResultImage(${idx})` : null)).join('')}
+    </div>` : '';
   return `
     <div class="card" style="margin-bottom:0;text-align:center;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;">
-      ${img ? `
-        <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;">등록일 ${img.uploadedAt||''} · ${escapeHtml(img.uploadedBy||'')}</div>
-        <img src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="max-width:100%;max-height:640px;border-radius:10px;cursor:zoom-in;box-shadow:0 4px 16px rgba(0,0,0,.12);">
+      ${images.length>0 ? `
+        <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;">등록일 ${result.uploadedAt||''} · ${escapeHtml(result.uploadedBy||'')}</div>
+        ${galleryHtml}
       ` : `<div class="muted" style="padding:10px 0;">등록된 컨테스트 결과 이미지가 없습니다. 관리자만 등록할 수 있습니다.</div>`}
       ${adminControls}
     </div>`;
