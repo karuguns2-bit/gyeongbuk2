@@ -630,11 +630,86 @@ try{
 
 let DB = null;
 let DB_VERSION = 0;
+// 마지막으로 서버와 100% 일치했던 시점의 스냅샷("3-way 병합"의 공통 기준점). 저장 충돌이나
+// 백그라운드 폴링으로 서버 최신본을 받아올 때, 로컬 DB를 이 기준점과 비교해서 "내가 방금
+// 새로 추가/수정한 항목"이 무엇인지 구분해내는 데 쓴다 - 그래야 서버 최신본과 병합할 때
+// 그 변경분을 통째로 잃어버리지 않는다.
+let DB_BASELINE = null;
 let dbReady = false;
 let dbPollTimer = null;
 
 function cacheDBLocally(){
   try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }catch(e){ /* 저장공간 부족 등은 무시 */ }
+}
+function cloneDBSnapshot(obj){
+  try{ return JSON.parse(JSON.stringify(obj)); }catch(e){ return obj; }
+}
+
+/* -------------------------------------------------------------------------
+   여러 매니저가 각자 다른 항목을 거의 동시에 등록/수정하면 저장 버전이 어긋난다.
+   예전에는 이때 "최신 버전 번호"만 다시 읽어와서 로컬 DB(오래된 스냅샷 기준으로 통째로
+   들고 있던 것)를 그 번호로 그대로 재전송했다 - 그런데 이러면 그 사이 다른 사람이 새로
+   등록한 내용이 함께 들어있는 서버 데이터를, 그 내용을 전혀 모르는 내 로컬 DB로 조용히
+   덮어써버리는 사고가 났다(저장은 에러 없이 "성공"하기 때문에 아무도 눈치채지 못하고,
+   나중에 "분명히 등록했는데 사라졌다"는 문의로만 드러났다).
+
+   아래 mergeRemoteDB()는 "마지막으로 서버와 일치했던 시점(DB_BASELINE)"을 기준으로 3-way
+   병합을 수행한다: id가 있는 배열(등록형 목록 - 실행력 점검 사진, 상품권/사은품 취합,
+   공지/게시글, 가망고객 등)은 항목 단위로 합쳐서 "내가 새로 추가한 것"과 "상대가 새로
+   추가한 것"이 모두 남도록 하고, 어느 한쪽에서 삭제한 항목은 삭제된 채로 유지한다.
+   id가 없는 필드(설정성 데이터)는 기준점 대비 실제로 바뀐 쪽의 값을 우선한다.
+------------------------------------------------------------------------- */
+function isIdKeyedArray(arr){
+  return Array.isArray(arr) && arr.length>0 && arr.every(x=>x && typeof x==='object' && !Array.isArray(x) && x.id!=null);
+}
+function mergeIdArray(baseArr, localArr, remoteArr){
+  const baseMap = new Map((baseArr||[]).map(x=>[x.id, x]));
+  const localMap = new Map((localArr||[]).map(x=>[x.id, x]));
+  const remoteMap = new Map((remoteArr||[]).map(x=>[x.id, x]));
+  const order = []; const seen = new Set();
+  (remoteArr||[]).forEach(x=>{ if(!seen.has(x.id)){ order.push(x.id); seen.add(x.id); } });
+  (localArr||[]).forEach(x=>{ if(!seen.has(x.id)){ order.push(x.id); seen.add(x.id); } });
+  const result = [];
+  order.forEach(id=>{
+    const inBase = baseMap.has(id), inLocal = localMap.has(id), inRemote = remoteMap.has(id);
+    if(inLocal && !inRemote){
+      if(inBase) return; // 상대방이 그 사이 삭제함 -> 삭제를 존중
+      result.push(localMap.get(id)); // 내가 새로 등록한 항목 -> 보존
+      return;
+    }
+    if(!inLocal && inRemote){
+      if(inBase) return; // 내가 그 사이 삭제함 -> 삭제를 존중
+      result.push(remoteMap.get(id)); // 상대가 새로 등록한 항목 -> 보존
+      return;
+    }
+    // 양쪽 다 있음 - 기준점 대비 어느 쪽이 실제로 바뀌었는지에 따라 값을 선택
+    const baseRec = inBase ? baseMap.get(id) : null;
+    const baseStr = baseRec ? JSON.stringify(baseRec) : null;
+    const localStr = JSON.stringify(localMap.get(id));
+    const remoteStr = JSON.stringify(remoteMap.get(id));
+    const localChanged = baseStr===null || localStr!==baseStr;
+    const remoteChanged = baseStr===null || remoteStr!==baseStr;
+    if(localChanged && !remoteChanged) result.push(localMap.get(id));
+    else if(!localChanged) result.push(remoteMap.get(id));
+    else result.push(remoteMap.get(id)); // 둘 다 바뀐 드문 경우: 먼저 저장된 서버 값을 우선
+  });
+  return result;
+}
+function mergeRemoteDB(baseline, local, remote){
+  const merged = {};
+  const keys = new Set([...Object.keys(remote||{}), ...Object.keys(local||{})]);
+  keys.forEach(key=>{
+    const localVal = local ? local[key] : undefined;
+    const remoteVal = remote ? remote[key] : undefined;
+    const baseVal = baseline ? baseline[key] : undefined;
+    if(isIdKeyedArray(localVal) || isIdKeyedArray(remoteVal) || isIdKeyedArray(baseVal)){
+      merged[key] = mergeIdArray(baseVal, localVal, remoteVal);
+      return;
+    }
+    const localChanged = JSON.stringify(localVal) !== JSON.stringify(baseVal);
+    merged[key] = localChanged ? localVal : remoteVal;
+  });
+  return merged;
 }
 
 async function loadDB(){
@@ -646,6 +721,7 @@ async function loadDB(){
         DB = data.data;
         DB_VERSION = data.version || 0;
         migrateDB();
+        DB_BASELINE = cloneDBSnapshot(DB);
         cacheDBLocally();
         dbReady = true;
         return;
@@ -654,6 +730,7 @@ async function loadDB(){
       DB = buildSeedDataFromReal();
       DB_VERSION = 0;
       dbReady = true;
+      DB_BASELINE = cloneDBSnapshot(DB);
       await pushDBToServer();
       cacheDBLocally();
       return;
@@ -664,19 +741,16 @@ async function loadDB(){
   // Supabase 연결 실패/미설정 시: 마지막으로 저장된 로컬 캐시 사용 (오프라인 대비)
   const raw = localStorage.getItem(STORAGE_KEY);
   if(raw){
-    try{ DB = JSON.parse(raw); migrateDB(); dbReady = true; return; }catch(e){ /* fall through to reseed */ }
+    try{ DB = JSON.parse(raw); migrateDB(); dbReady = true; DB_BASELINE = cloneDBSnapshot(DB); return; }catch(e){ /* fall through to reseed */ }
   }
   DB = buildSeedDataFromReal();
   dbReady = true;
+  DB_BASELINE = cloneDBSnapshot(DB);
 }
 
 // 여러 매니저가 거의 동시에 저장하면(예: 게시글 등록) 버전이 어긋나는 경우가 잦다.
-// 예전에는 이때 곧바로 로컬 DB 전체를 서버 최신본으로 덮어쓰고 "다시 확인 후 재시도해
-// 주세요" 알림을 띄웠는데, 이러면 방금 입력하던 내용(예: 막 작성한 게시글)이 그대로
-// 날아가고 화면이 다시 그려지며 사용자가 "튕겨나가는" 것처럼 느껴졌다.
-// 실제로는 대부분 몇백ms 안에 끝나는 일시적인 경합이므로, 먼저 최신 버전 번호만 가볍게
-// 확인해서 로컬 DB(=방금 입력한 내용 포함)를 그대로 들고 조용히 몇 번 재시도한다.
-// 그래도 계속 실패할 때만(드문 경우) 최신 데이터로 갱신하고 안내 문구를 띄운다.
+// 버전이 어긋나면 서버의 최신 전체 데이터를 받아와 mergeRemoteDB()로 항목 단위 병합한 뒤
+// (내가 새로 등록한 것 + 상대가 새로 등록한 것 모두 보존) 다시 저장을 시도한다.
 async function pushDBToServer(retryCount){
   retryCount = retryCount || 0;
   if(!sbClient){ cacheDBLocally(); return; }
@@ -692,21 +766,24 @@ async function pushDBToServer(retryCount){
     if(error) throw error;
     if(!data || data.length === 0){
       // 버전 불일치 = 다른 사용자가 그 사이 먼저 저장함.
-      if(retryCount < 3){
+      if(retryCount < 5){
         try{
-          const { data: latest, error: verErr } = await sbClient.from('kpi_db').select('version').eq('id',1).single();
+          const { data: latest, error: verErr } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
           if(!verErr && latest){
+            DB = mergeRemoteDB(DB_BASELINE, DB, latest.data);
             DB_VERSION = latest.version;
+            DB_BASELINE = cloneDBSnapshot(latest.data);
             await pushDBToServer(retryCount + 1);
             return;
           }
-        }catch(e2){ /* 버전 확인 자체가 실패하면 아래 최종 안내로 넘어감 */ }
+        }catch(e2){ /* 최신 데이터 확인 자체가 실패하면 아래 최종 안내로 넘어감 */ }
       }
-      // 재시도로도 해결되지 않으면(드묾) 그제서야 최신 데이터로 갱신하고 안내한다.
+      // 여러 번 재시도해도 계속 충돌하면(매우 드묾) 그제서야 최신 데이터와 병합 후 안내한다.
       await handleSaveConflict();
       return;
     }
     DB_VERSION = newVersion;
+    DB_BASELINE = cloneDBSnapshot(DB);
     cacheDBLocally();
   }catch(e){
     console.error('DB 저장 실패:', e);
@@ -718,10 +795,12 @@ async function handleSaveConflict(){
   try{
     const { data, error } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
     if(error) throw error;
-    DB = data.data;
+    // 여기서도 무조건 서버 값으로 통째로 덮어쓰지 않고, 가능한 한 방금 입력한 내용을 병합해 살린다.
+    DB = mergeRemoteDB(DB_BASELINE, DB, data.data);
     DB_VERSION = data.version || 0;
+    DB_BASELINE = cloneDBSnapshot(DB);
     cacheDBLocally();
-    alert('다른 사용자가 방금 먼저 저장했습니다. 최신 데이터로 갱신되었으니, 방금 입력/변경하신 내용을 다시 확인 후 재시도해 주세요.');
+    alert('다른 사용자와 저장이 겹쳐 최신 데이터와 병합했습니다. 방금 입력/변경하신 내용이 잘 반영됐는지 확인해 주세요.');
     if(SESSION) renderTab(state.tab);
   }catch(e){
     console.error('충돌 처리 중 데이터 갱신 실패:', e);
@@ -743,8 +822,11 @@ async function pollDbForRemoteChanges(){
     if(data && data.version > DB_VERSION){
       const { data: full, error: err2 } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
       if(err2) throw err2;
-      DB = full.data;
+      // 폴링 시점에 화면에 아직 저장 전인 로컬 변경이 남아있을 수 있으므로(예: 여러 장 사진
+      // 업로드 처리 중) 통째로 덮어쓰지 않고 저장 충돌 때와 동일하게 항목 단위로 병합한다.
+      DB = mergeRemoteDB(DB_BASELINE, DB, full.data);
       DB_VERSION = full.version;
+      DB_BASELINE = cloneDBSnapshot(full.data);
       cacheDBLocally();
       const activeTag = (typeof document!=='undefined' && document.activeElement) ? document.activeElement.tagName : '';
       if(activeTag !== 'INPUT' && activeTag !== 'TEXTAREA' && activeTag !== 'SELECT'){
