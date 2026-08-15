@@ -7041,9 +7041,10 @@ function renderInventory(){
               <option value="진열" ${f.tag==='진열'?'selected':''}>진열</option>
             </select>
           </div>
-          <div class="field" style="margin-bottom:12px;">
+          <div class="field" style="margin-bottom:12px;position:relative;">
             <label>검색 (제품명/모델명/코드)</label>
-            <input value="${f.q||''}" placeholder="예: 스타일러, MW23GD, 2087685" onkeyup="if(event.key==='Enter') setInvFilter('q', this.value)" onchange="setInvFilter('q', this.value)">
+            <input id="invSearchInput" value="${f.q||''}" placeholder="예: 스타일러, MW23GD, 2087685" onkeyup="if(event.key==='Enter') setInvFilter('q', this.value)" onchange="setInvFilter('q', this.value)" oninput="handleInvSearchInput(this.value)" onblur="setTimeout(()=>closeModelHint('invSearchSuggestHint'),150)" autocomplete="off">
+            <div id="invSearchSuggestHint" style="position:absolute;top:100%;left:0;z-index:40;"></div>
           </div>
           <div class="field" style="margin-bottom:0;">
             <label>소진집중</label>
@@ -7098,6 +7099,47 @@ function setInvFilter(field, val){
 function setInvPage(delta){
   state.invFilter.page = (state.invFilter.page||1) + delta;
   renderTab('inventory');
+}
+// 재고 조회 검색창 자동추천 - 모바일 상품권/기타 사은품 취합의 모델명 추천과 같은 방식(입력창
+// 아래 뜨는 팝오버, 레이아웃을 밀어내지 않음)으로, 지금까지 업로드된 재고장 데이터 안에서
+// 모델명·상품명이 일치하는 항목을 찾아 보여준다. 클릭하면 그 모델로 바로 검색이 실행된다.
+function invSearchSuggestions(query){
+  const q = String(query||'').trim().toLowerCase();
+  if(!q) return [];
+  const seen = new Set();
+  const out = [];
+  (DB.inventory||[]).forEach(r=>{
+    const model = String(r.model||'').trim();
+    if(!model || seen.has(model)) return;
+    const hay = (model + ' ' + (r.product||'')).toLowerCase();
+    if(!hay.includes(q)) return;
+    seen.add(model);
+    out.push({ model, product: r.product||'' });
+  });
+  return out.slice(0, 8);
+}
+function invSearchSuggestHtml(suggestions){
+  if(!suggestions || suggestions.length===0) return '';
+  const items = suggestions.map(s=>{
+    const productShort = s.product.length>26 ? s.product.slice(0,26)+'…' : s.product;
+    return `<div style="padding:4px 2px;cursor:pointer;" onclick="applyInvSearchSuggestion('${s.model.replace(/'/g,'')}')">
+      <span style="color:var(--primary);font-weight:600;">${escapeHtml(s.model)}</span>
+      ${s.product ? `<span class="muted" style="margin-left:6px;">${escapeHtml(productShort)}</span>` : ''}
+    </div>`;
+  }).join('');
+  return `<div class="muted" style="margin-bottom:2px;">일치하는 모델</div>${items}`;
+}
+function handleInvSearchInput(value){
+  const hintEl = document.getElementById('invSearchSuggestHint');
+  if(!hintEl) return;
+  const suggestions = invSearchSuggestions(value);
+  if(suggestions.length===0){ closeModelHint('invSearchSuggestHint'); return; }
+  hintEl.style.cssText = MODEL_HINT_POPOVER_STYLE;
+  hintEl.innerHTML = invSearchSuggestHtml(suggestions);
+}
+function applyInvSearchSuggestion(model){
+  closeModelHint('invSearchSuggestHint');
+  setInvFilter('q', model);
 }
 
 /* =========================================================================
