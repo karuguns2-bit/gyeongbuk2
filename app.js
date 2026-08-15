@@ -7584,10 +7584,10 @@ function renderCollectGiftcard(){
           <label>주문번호</label>
           <input id="gcOrderNo" placeholder="예: I051245311" style="width:150px">
         </div>
-        <div class="field">
+        <div class="field" style="position:relative;">
           <label>모델명</label>
-          <input id="gcModel" placeholder="예: SC5GMR81S.AKOR / FQ18GC1EB2.CKOR" style="width:190px" oninput="handleModelAutocompleteInput('gcModel','gcModelSuggestHint')">
-          <div id="gcModelSuggestHint" class="small-note" style="margin-top:4px;"></div>
+          <input id="gcModel" placeholder="예: SC5GMR81S.AKOR / FQ18GC1EB2.CKOR" style="width:190px" oninput="handleModelAutocompleteInput('gcModel','gcModelSuggestHint')" onblur="setTimeout(()=>closeModelHint('gcModelSuggestHint'),150)">
+          <div id="gcModelSuggestHint" style="position:absolute;top:100%;left:0;z-index:40;"></div>
         </div>
         <div class="field">
           <label>사용 금액</label>
@@ -7677,9 +7677,18 @@ function gcModelSuggestions(query){
 }
 function gcModelSuggestHtml(suggestions, inputId, hintId){
   if(!suggestions || suggestions.length===0) return '';
-  return `<span class="muted">재고장/과거 등록 기록 기반 추천: </span>` + suggestions.map(m=>
-    `<span style="color:var(--primary);font-weight:600;cursor:pointer;text-decoration:underline;margin-right:8px;" onclick="applyModelAutocomplete('${inputId}','${hintId}','${m.replace(/'/g,'')}')">${escapeHtml(m)}</span>`
+  const items = suggestions.map(m=>
+    `<div style="padding:4px 2px;cursor:pointer;color:var(--primary);font-weight:600;" onclick="applyModelAutocomplete('${inputId}','${hintId}','${m.replace(/'/g,'')}')">${escapeHtml(m)}</div>`
   ).join('');
+  return `<div class="muted" style="margin-bottom:2px;">재고장/과거 등록 기록 기반 추천</div>${items}`;
+}
+const MODEL_HINT_BASE_STYLE = 'position:absolute;top:100%;left:0;z-index:40;';
+const MODEL_HINT_POPOVER_STYLE = MODEL_HINT_BASE_STYLE + 'margin-top:4px;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,0.14);padding:8px 10px;font-size:11.5px;min-width:220px;max-width:320px;max-height:220px;overflow-y:auto;';
+function closeModelHint(hintId){
+  const hintEl = document.getElementById(hintId);
+  if(!hintEl) return;
+  hintEl.innerHTML = '';
+  hintEl.style.cssText = MODEL_HINT_BASE_STYLE; // 내용 없을 땐 자리를 차지하지 않게 완전히 접어둔다
 }
 function handleModelAutocompleteInput(inputId, hintId){
   const input = document.getElementById(inputId);
@@ -7687,7 +7696,10 @@ function handleModelAutocompleteInput(inputId, hintId){
   if(!input || !hintEl) return;
   const parts = input.value.split('/');
   const current = parts[parts.length-1].trim();
-  hintEl.innerHTML = gcModelSuggestHtml(gcModelSuggestions(current), inputId, hintId);
+  const suggestions = gcModelSuggestions(current);
+  if(suggestions.length===0){ closeModelHint(hintId); return; }
+  hintEl.style.cssText = MODEL_HINT_POPOVER_STYLE;
+  hintEl.innerHTML = gcModelSuggestHtml(suggestions, inputId, hintId);
 }
 function applyModelAutocomplete(inputId, hintId, model){
   const input = document.getElementById(inputId);
@@ -7696,8 +7708,7 @@ function applyModelAutocomplete(inputId, hintId, model){
     parts[parts.length-1] = model;
     input.value = parts.map(p=>p.trim()).join(parts.length>1 ? ' / ' : '');
   }
-  const hintEl = document.getElementById(hintId);
-  if(hintEl) hintEl.innerHTML = '';
+  closeModelHint(hintId);
 }
 function submitGiftcardRequest(){
   const branchId = document.getElementById('gcBranch').value;
@@ -8166,10 +8177,10 @@ function renderCollectContest(){
         </div>
       </div>
       <div class="form-row">
-        <div class="field">
+        <div class="field" style="position:relative;">
           <label>모델명</label>
-          <input id="cgModel" placeholder="예: SC5GMR81S.AKOR" style="width:170px" oninput="handleModelAutocompleteInput('cgModel','cgModelSuggestHint')">
-          <div id="cgModelSuggestHint" class="small-note" style="margin-top:4px;"></div>
+          <input id="cgModel" placeholder="예: SC5GMR81S.AKOR" style="width:170px" oninput="handleModelAutocompleteInput('cgModel','cgModelSuggestHint')" onblur="setTimeout(()=>closeModelHint('cgModelSuggestHint'),150)">
+          <div id="cgModelSuggestHint" style="position:absolute;top:100%;left:0;z-index:40;"></div>
         </div>
         <div class="field">
           <label>판매 건수</label>
