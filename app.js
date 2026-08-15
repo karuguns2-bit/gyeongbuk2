@@ -1786,29 +1786,6 @@ function branchLeaderboard(period){
   return (DB.branches||[]).map(b=> ({ branchName: b.name, ...branchLeaderboardScore(b.id, period) }))
     .sort((a,b)=> b.total - a.total);
 }
-function renderBranchLeaderboardCard(){
-  if(!SESSION) return '';
-  const period = currentGoalsPeriod();
-  const list = branchLeaderboard(period);
-  if(list.length===0) return '';
-  const medals = ['🥇','🥈','🥉'];
-  const rows = list.map((r,idx)=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);">
-      <span style="width:26px;flex-shrink:0;text-align:center;font-size:15px;">${medals[idx] || (idx+1)}</span>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;justify-content:space-between;align-items:center;">
-          <b style="font-size:12.5px;">${escapeHtml(r.branchName)}</b>
-          <b style="font-size:13px;color:var(--primary);">${r.total}점</b>
-        </div>
-        <div class="progress-bar" style="margin-top:4px;"><div style="width:${Math.min(r.total,100)}%"></div></div>
-        <div class="muted" style="font-size:10.5px;margin-top:3px;">목표 달성률 ${r.goalPct}% · 실행력 점검 등록 ${r.execCount}회 · 우수/성공사례 ${r.contentCount}건</div>
-      </div>
-    </div>`).join('');
-  return `<div class="card" style="margin-bottom:16px;">
-    <h3>🏅 이달의 지점 랭킹 <small>(${goalsPeriodLabel(period)} · 목표달성 50% + 실행력점검 등록 25% + 우수·성공사례 등록 25%)</small></h3>
-    ${rows}
-  </div>`;
-}
 // ---- 이번주 활동 요약 PPT 자동 생성 (PptxGenJS, 100% 브라우저 안에서 생성/다운로드) ----
 // 서버나 별도 백엔드 없이, 지금 화면에 있는 실제 데이터(목표 달성 현황/지점 랭킹/취합 현황/
 // 우수사례/주의 필요 지점)를 그대로 슬라이드로 옮겨 담는다. 관리자·임원 모두 쓸 수 있게
@@ -1908,32 +1885,6 @@ async function generateWeeklyReportPptx(){
     if(btn){ btn.disabled = false; btn.innerHTML = btnOrigHtml; }
   }
 }
-function renderAttentionBranchesCard(){
-  if(!SESSION || !canSwitchBranch()) return ''; // 특정 지점의 부진 상태를 보여주는 화면이라 관리자·임원만
-  const period = currentGoalsPeriod();
-  const list = branchesNeedingAttention(period);
-  if(list.length===0){
-    return `<div class="card" style="margin-bottom:16px;">
-      <h3>🔮 이번달 목표 예측 <small>(${goalsPeriodLabel(period)} · 현재 페이스 기준 월말 예상치)</small></h3>
-      <div class="muted" style="font-size:12.5px;">현재 페이스 대비 뚜렷하게 뒤처지거나 둔화되는 지점이 없습니다.</div>
-    </div>`;
-  }
-  const rows = list.map(r=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
-      <span class="badge bad" style="flex-shrink:0;">${r.behindPace && r.decelerating ? '부진+둔화' : (r.behindPace ? '부진' : '둔화')}</span>
-      <div style="flex:1;min-width:0;">
-        <b style="font-size:12.5px;">${escapeHtml(r.branchName)}</b>
-        <span class="muted" style="font-size:11.5px;margin-left:6px;">현재 ${r.currentPct}% · 이 페이스 유지 시 월말 예상 <b>${r.projectedPct}%</b></span>
-        ${r.momentum ? `<div class="muted" style="font-size:11px;margin-top:2px;">${escapeHtml(r.momentum)}</div>` : ''}
-      </div>
-    </div>`).join('');
-  return `<div class="card" style="margin-bottom:16px;">
-    <h3>🔮 이번달 목표 예측 - 주의 필요 지점 <small>(${goalsPeriodLabel(period)} · 관리자·임원 전용)</small></h3>
-    <div class="small-note" style="margin-bottom:6px;">현재 페이스가 월말까지 이어질 경우를 가정한 예상치입니다. 달이 끝나기 전에 미리 확인하고 대응하기 위한 참고용입니다.</div>
-    ${rows}
-  </div>`;
-}
-
 /* =========================================================================
    5. AI(규칙기반) 피드백 엔진
    ========================================================================= */
@@ -2277,15 +2228,6 @@ function renderHome(){
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
     ${renderNoticeBanner()}
     ${renderEduReminderBanner()}
-    ${canSwitchBranch() ? `<div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
-      <div>
-        <b style="font-size:13px;">📊 이번주 활동 요약 PPT</b>
-        <div class="muted" style="font-size:11.5px;margin-top:2px;">목표 달성 현황·지점 랭킹·취합 현황·우수사례를 담은 보고 자료를 지금 바로 만듭니다.</div>
-      </div>
-      <button id="weeklyReportPptxBtn" class="btn btn-primary" onclick="generateWeeklyReportPptx()">PPT 다운로드</button>
-    </div>` : ''}
-    ${renderAttentionBranchesCard()}
-    ${renderBranchLeaderboardCard()}
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
@@ -2690,6 +2632,14 @@ function renderSystemAdmin(){
   return `
     <div class="page-title">시스템 관리</div>
     <div class="page-desc">관리자 전용 화면입니다. 계정(매니저/사원) 관리, 신규 계정 생성, 각종 데이터 업로드를 이 화면에서 한 번에 처리할 수 있습니다.</div>
+
+    <div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div>
+        <b style="font-size:13px;">📊 이번주 활동 요약 PPT</b>
+        <div class="muted" style="font-size:11.5px;margin-top:2px;">목표 달성 현황·지점 랭킹·취합 현황·우수사례를 담은 보고 자료를 지금 바로 만듭니다.</div>
+      </div>
+      <button id="weeklyReportPptxBtn" class="btn btn-primary" onclick="generateWeeklyReportPptx()">PPT 다운로드</button>
+    </div>
 
     <div class="card" style="margin-bottom:16px;">
       <h3>스크린세이버 설정</h3>
