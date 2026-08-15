@@ -1710,6 +1710,229 @@ function pctBadge(pct){
   if(pct >= pace-15) return '<span class="badge warn">주의</span>';
   return '<span class="badge bad">부진</span>';
 }
+// ---- 목표 달성 예측/이상탐지 (관리자·임원 전용, 홈 대시보드) ----
+// 지금까지의 페이스가 이번달 남은 기간에도 그대로 유지된다고 가정했을 때의 월말 예상
+// 달성률을 계산한다. branchAchieved()는 MSIS실판매등록 기준 예상 목표치(target*1.25)와
+// 같은 금액 기준을 쓰므로 다른 화면(목표관리)과 수치가 어긋나지 않는다.
+function projectedMonthEndForBranch(branchId, period){
+  period = period || currentGoalsPeriod();
+  if(period !== currentGoalsPeriod()) return null; // 예측은 "이번달"에만 의미가 있음
+  const g = getGoals(branchId, period);
+  const target = (g.target||0) * 1.25;
+  if(target<=0) return null;
+  const achieved = branchAchieved(branchId, period);
+  const now = new Date();
+  const day = now.getDate();
+  const totalDays = daysInMonth(now);
+  if(day<=0 || totalDays<=0) return null;
+  const projectedAmount = achieved / day * totalDays;
+  return {
+    branchId, achieved, target,
+    currentPct: Math.round(pctOf(achieved, target)*10)/10,
+    projectedAmount,
+    projectedPct: Math.round(pctOf(projectedAmount, target)*10)/10
+  };
+}
+// 전 지점을 훑어 "현재 페이스가 기준(오늘까지의 정상 페이스)보다 15%p 이상 뒤처졌거나" 또는
+// "최근 주차 모멘텀이 뚜렷하게 둔화 중"인 지점만 골라낸다 - 매달 말에야 부진을 알아채는 게
+// 아니라, 달 중간에 미리 알 수 있게 하는 것이 목적이다. weeklyMomentumLine()은 이미 오답노트/
+// AI 피드백 등에 쓰이던 "주차별 가속/둔화" 판정 로직을 그대로 재사용한다.
+function branchesNeedingAttention(period){
+  period = period || currentGoalsPeriod();
+  if(period !== currentGoalsPeriod()) return [];
+  const pace = expectedPacePct();
+  const results = [];
+  (DB.branches||[]).forEach(b=>{
+    const proj = projectedMonthEndForBranch(b.id, period);
+    if(!proj) return;
+    const behindPace = proj.currentPct < pace - 15;
+    const g = getGoals(b.id, period);
+    const weeklyCum = branchWeeklyActualsCum(b.id, period);
+    const momentum = weeklyMomentumLine((g.target||0)*1.25, weeklyCum);
+    const decelerating = !!(momentum && momentum.includes('둔화'));
+    if(behindPace || decelerating){
+      results.push({
+        branchId: b.id, branchName: b.name,
+        currentPct: proj.currentPct, projectedPct: proj.projectedPct,
+        behindPace, decelerating, momentum
+      });
+    }
+  });
+  return results.sort((a,b)=>a.projectedPct-b.projectedPct);
+}
+// ---- 지점 랭킹(게이미피케이션) - 목표 달성률(50%) + 실행력 점검 사진 등록 성실도(25%) +
+// 우수사례/이슈제품 성공사례 등록(25%)을 합산한 점수로 이번달 지점 순위를 매긴다. 전 직원이
+// 볼 수 있게 공개해 자발적인 참여/선의의 경쟁을 유도하는 것이 목적이다 - 기존 "관리자별 목표
+// 달성 현황" 배너도 전체 지점에 이미 공개돼 있어 같은 맥락으로 맞췄다.
+function branchLeaderboardScore(branchId, period){
+  period = period || currentGoalsPeriod();
+  const g = getGoals(branchId, period);
+  const target = (g.target||0) * 1.25;
+  const achieved = branchAchieved(branchId, period);
+  const goalPct = target>0 ? Math.min(100, pctOf(achieved, target)) : 0;
+
+  const execCount = (DB.execPhotos||[]).filter(r=> r.branchId===branchId && String(r.createdAt||'').slice(0,7)===period).length;
+  const execScore = Math.min(100, (execCount/4)*100); // 한 달 4주 모두 등록하면 만점
+
+  const contentCount = (DB.bestPractices||[]).filter(p=> p.branchId===branchId && String(p.createdAt||'').slice(0,7)===period).length
+    + (DB.issueCases||[]).filter(p=> p.branchId===branchId && String(p.createdAt||'').slice(0,7)===period).length;
+  const contentScore = Math.min(100, (contentCount/3)*100); // 한 달 3건 이상 등록하면 만점
+
+  const total = Math.round(goalPct*0.5 + execScore*0.25 + contentScore*0.25);
+  return { branchId, goalPct: Math.round(goalPct*10)/10, execCount, contentCount, total };
+}
+function branchLeaderboard(period){
+  period = period || currentGoalsPeriod();
+  return (DB.branches||[]).map(b=> ({ branchName: b.name, ...branchLeaderboardScore(b.id, period) }))
+    .sort((a,b)=> b.total - a.total);
+}
+function renderBranchLeaderboardCard(){
+  if(!SESSION) return '';
+  const period = currentGoalsPeriod();
+  const list = branchLeaderboard(period);
+  if(list.length===0) return '';
+  const medals = ['🥇','🥈','🥉'];
+  const rows = list.map((r,idx)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 4px;border-bottom:1px solid var(--border);">
+      <span style="width:26px;flex-shrink:0;text-align:center;font-size:15px;">${medals[idx] || (idx+1)}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <b style="font-size:12.5px;">${escapeHtml(r.branchName)}</b>
+          <b style="font-size:13px;color:var(--primary);">${r.total}점</b>
+        </div>
+        <div class="progress-bar" style="margin-top:4px;"><div style="width:${Math.min(r.total,100)}%"></div></div>
+        <div class="muted" style="font-size:10.5px;margin-top:3px;">목표 달성률 ${r.goalPct}% · 실행력 점검 등록 ${r.execCount}회 · 우수/성공사례 ${r.contentCount}건</div>
+      </div>
+    </div>`).join('');
+  return `<div class="card" style="margin-bottom:16px;">
+    <h3>🏅 이달의 지점 랭킹 <small>(${goalsPeriodLabel(period)} · 목표달성 50% + 실행력점검 등록 25% + 우수·성공사례 등록 25%)</small></h3>
+    ${rows}
+  </div>`;
+}
+// ---- 이번주 활동 요약 PPT 자동 생성 (PptxGenJS, 100% 브라우저 안에서 생성/다운로드) ----
+// 서버나 별도 백엔드 없이, 지금 화면에 있는 실제 데이터(목표 달성 현황/지점 랭킹/취합 현황/
+// 우수사례/주의 필요 지점)를 그대로 슬라이드로 옮겨 담는다. 관리자·임원 모두 쓸 수 있게
+// canSwitchBranch()로 노출 범위를 맞췄다(둘 다 전 지점 조회 권한이 있으므로 안전).
+async function generateWeeklyReportPptx(){
+  const Ctor = (typeof PptxGenJS !== 'undefined') ? PptxGenJS : (typeof pptxgen !== 'undefined' ? pptxgen : null);
+  if(!Ctor){ alert('PPT 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'); return; }
+  const btn = document.getElementById('weeklyReportPptxBtn');
+  const btnOrigHtml = btn ? btn.innerHTML : null;
+  if(btn){ btn.disabled = true; btn.innerHTML = '생성 중...'; }
+  try{
+    const period = currentGoalsPeriod();
+    const pres = new Ctor();
+    pres.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 in
+    const PRIMARY = 'A50034';
+    const TEXT = '1F2328';
+    const MUTED = '6B7280';
+
+    // 1) 표지
+    const s1 = pres.addSlide();
+    s1.background = { color: PRIMARY };
+    s1.addText('혼매경북팀(경북2담당)\n주간 활동 요약', { x:0.6, y:2.5, w:12.1, h:2.0, fontSize:36, bold:true, color:'FFFFFF', align:'center', fontFace:'Malgun Gothic' });
+    s1.addText(`${goalsPeriodLabel(period)} · 생성일 ${todayStr()}`, { x:0.6, y:4.5, w:12.1, h:0.6, fontSize:16, color:'FFE3EC', align:'center', fontFace:'Malgun Gothic' });
+
+    const addSlideTitle = (slide, text)=>{
+      slide.addText(text, { x:0.5, y:0.35, w:12.3, h:0.7, fontSize:24, bold:true, color:TEXT, fontFace:'Malgun Gothic' });
+    };
+    const tableOpts = { x:0.5, y:1.25, w:12.3, fontSize:12, fontFace:'Malgun Gothic', border:{type:'solid', color:'E5E7EB', pt:1}, autoPage:true };
+    const headerRow = (cells)=> cells.map(t=>({ text:t, options:{ bold:true, color:'FFFFFF', fill:{color:PRIMARY} } }));
+
+    // 2) 관리자별 목표 달성 현황
+    const s2 = pres.addSlide();
+    addSlideTitle(s2, '관리자별 목표 달성 현황');
+    const mgrSummary = goalsManagerSummary(period);
+    const mgrRows = [headerRow(['관리자','지점수','달성률','실적','목표'])];
+    mgrSummary.forEach(m=>{
+      mgrRows.push([m.manager, String(m.branchCount), m.pct.toFixed(1)+'%', fmtKK(m.achieved), fmtKK(m.target)]);
+    });
+    s2.addTable(mgrRows, tableOpts);
+
+    // 3) 이달의 지점 랭킹
+    const s3 = pres.addSlide();
+    addSlideTitle(s3, '이달의 지점 랭킹');
+    const board = branchLeaderboard(period);
+    const rankRows = [headerRow(['순위','지점','점수','목표달성률','실행력점검 등록','우수/성공사례'])];
+    board.forEach((r,idx)=>{
+      rankRows.push([String(idx+1), r.branchName, r.total+'점', r.goalPct+'%', r.execCount+'회', r.contentCount+'건']);
+    });
+    s3.addTable(rankRows, tableOpts);
+
+    // 4) 이번주 취합 현황 (최근 7일 등록 건수)
+    const s4 = pres.addSlide();
+    addSlideTitle(s4, '이번주 취합 현황 (최근 7일 등록 건수)');
+    const since = new Date(Date.now() - 7*24*60*60*1000).toISOString();
+    const countRecent = (list)=> (list||[]).filter(r=> String(r.createdAt||'') >= since).length;
+    const collectRows = [headerRow(['취합 항목','최근 7일 등록 건수'])];
+    collectRows.push(['실행력 점검 사진', String(countRecent(DB.execPhotos))]);
+    collectRows.push(['모바일 상품권', String(countRecent(DB.giftcardRequests))]);
+    collectRows.push(['기타 사은품', String(countRecent(DB.contestGifts))]);
+    collectRows.push(['구독 연동사은품', String(countRecent(DB.subTierContestGifts))]);
+    s4.addTable(collectRows, tableOpts);
+
+    // 5) 최근 우수 활동/성공 사례
+    const s5 = pres.addSlide();
+    addSlideTitle(s5, '최근 우수 활동 · 이슈제품 성공 사례');
+    const recent = [
+      ...(DB.bestPractices||[]).map(p=>({...p, tag:'우수사례'})),
+      ...(DB.issueCases||[]).map(p=>({...p, tag:'성공사례'}))
+    ].sort((a,b)=> String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,8);
+    if(recent.length===0){
+      s5.addText('등록된 사례가 없습니다.', { x:0.5, y:1.4, w:12.3, h:0.5, fontSize:14, color:MUTED, fontFace:'Malgun Gothic' });
+    } else {
+      let y = 1.35;
+      recent.forEach(p=>{
+        s5.addText(`[${p.tag}] ${richStripTags(p.title||'(제목 없음)')}  -  ${bpBranchDisplayName(p.branchId)||''}`, { x:0.5, y, w:12.3, h:0.5, fontSize:14, color:TEXT, fontFace:'Malgun Gothic' });
+        y += 0.55;
+      });
+    }
+
+    // 6) 주의 필요 지점 (있을 때만)
+    const attention = branchesNeedingAttention(period);
+    if(attention.length>0){
+      const s6 = pres.addSlide();
+      addSlideTitle(s6, '이번달 목표 예측 - 주의 필요 지점');
+      const attRows = [headerRow(['지점','현재 달성률','월말 예상','비고'])];
+      attention.forEach(a=>{
+        attRows.push([a.branchName, a.currentPct+'%', a.projectedPct+'%', a.behindPace && a.decelerating ? '부진+둔화' : (a.behindPace ? '부진' : '둔화')]);
+      });
+      s6.addTable(attRows, tableOpts);
+    }
+
+    await pres.writeFile({ fileName: `혼매경북팀_주간활동요약_${todayStr()}.pptx` });
+  }catch(e){
+    console.error('PPT 생성 실패:', e);
+    alert('PPT 생성 중 오류가 발생했습니다. 다시 시도해 주세요.');
+  } finally {
+    if(btn){ btn.disabled = false; btn.innerHTML = btnOrigHtml; }
+  }
+}
+function renderAttentionBranchesCard(){
+  if(!SESSION || !canSwitchBranch()) return ''; // 특정 지점의 부진 상태를 보여주는 화면이라 관리자·임원만
+  const period = currentGoalsPeriod();
+  const list = branchesNeedingAttention(period);
+  if(list.length===0){
+    return `<div class="card" style="margin-bottom:16px;">
+      <h3>🔮 이번달 목표 예측 <small>(${goalsPeriodLabel(period)} · 현재 페이스 기준 월말 예상치)</small></h3>
+      <div class="muted" style="font-size:12.5px;">현재 페이스 대비 뚜렷하게 뒤처지거나 둔화되는 지점이 없습니다.</div>
+    </div>`;
+  }
+  const rows = list.map(r=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <span class="badge bad" style="flex-shrink:0;">${r.behindPace && r.decelerating ? '부진+둔화' : (r.behindPace ? '부진' : '둔화')}</span>
+      <div style="flex:1;min-width:0;">
+        <b style="font-size:12.5px;">${escapeHtml(r.branchName)}</b>
+        <span class="muted" style="font-size:11.5px;margin-left:6px;">현재 ${r.currentPct}% · 이 페이스 유지 시 월말 예상 <b>${r.projectedPct}%</b></span>
+        ${r.momentum ? `<div class="muted" style="font-size:11px;margin-top:2px;">${escapeHtml(r.momentum)}</div>` : ''}
+      </div>
+    </div>`).join('');
+  return `<div class="card" style="margin-bottom:16px;">
+    <h3>🔮 이번달 목표 예측 - 주의 필요 지점 <small>(${goalsPeriodLabel(period)} · 관리자·임원 전용)</small></h3>
+    <div class="small-note" style="margin-bottom:6px;">현재 페이스가 월말까지 이어질 경우를 가정한 예상치입니다. 달이 끝나기 전에 미리 확인하고 대응하기 위한 참고용입니다.</div>
+    ${rows}
+  </div>`;
+}
 
 /* =========================================================================
    5. AI(규칙기반) 피드백 엔진
@@ -2054,6 +2277,15 @@ function renderHome(){
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
     ${renderNoticeBanner()}
     ${renderEduReminderBanner()}
+    ${canSwitchBranch() ? `<div class="card" style="margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div>
+        <b style="font-size:13px;">📊 이번주 활동 요약 PPT</b>
+        <div class="muted" style="font-size:11.5px;margin-top:2px;">목표 달성 현황·지점 랭킹·취합 현황·우수사례를 담은 보고 자료를 지금 바로 만듭니다.</div>
+      </div>
+      <button id="weeklyReportPptxBtn" class="btn btn-primary" onclick="generateWeeklyReportPptx()">PPT 다운로드</button>
+    </div>` : ''}
+    ${renderAttentionBranchesCard()}
+    ${renderBranchLeaderboardCard()}
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
@@ -7511,11 +7743,14 @@ function renderCollectGiftcard(){
         </div>
         <div class="field">
           <label>모델명</label>
-          <input id="gcModel" placeholder="예: SC5GMR81S.AKOR / FQ18GC1EB2.CKOR" style="width:190px">
+          <input id="gcModel" list="gcModelDatalist" placeholder="예: SC5GMR81S.AKOR / FQ18GC1EB2.CKOR" style="width:190px" oninput="handleGcModelInput(this.value)">
+          <datalist id="gcModelDatalist">${knownGiftcardModels().map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist>
+          <div id="gcModelSuggestHint" class="small-note" style="margin-top:4px;"></div>
         </div>
         <div class="field">
           <label>사용 금액</label>
           <input id="gcAmount" type="number" placeholder="예: 10000" style="width:120px">
+          <div id="gcAmountOcrHint" class="small-note" style="margin-top:4px;"></div>
         </div>
       </div>
       <div class="small-note" style="margin-top:-8px;">※ &quot;I&quot;로 시작하는 주문번호를 입력해 주세요. (예: I051245311)<br>주문번호 없을 시 &quot;i&quot;만 입력하면 됨.</div>
@@ -7545,7 +7780,7 @@ function renderCollectGiftcard(){
         </div>
         <div class="field">
           <label>영수증 증빙 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
-          <input id="gcReceipt" type="file" multiple>
+          <input id="gcReceipt" type="file" multiple onchange="handleGiftcardReceiptOcr(event)">
         </div>
         <button class="btn btn-primary" onclick="submitGiftcardRequest()">등록</button>
       </div>
@@ -7565,6 +7800,176 @@ function isValidGiftcardModel(model){
   // 접미사에 AKOR2 처럼 숫자가 섞이는 경우도 있어 문자+숫자 모두 허용한다.
   // (예: .AKOR, .AKOR2, .CKOR, .AKRG, *****-KV.AKOR 등)
   return /^\S+\.[A-Za-z][A-Za-z0-9]{1,7}$/.test(String(model||'').trim());
+}
+// ---- 모델명 접미사(.AKOR/.CKOR/.AKRG 등) 자동완성 ----
+// 영수증에는 이 접미사가 인쇄되지 않아 매니저가 외워서 입력해야 했다. 참고할 수 있는 소스를
+// 두 가지 섞어서 쓴다: (1) 상품권/사은품/구독연동사은품에 예전에 등록된 적 있는 정확한
+// 모델명(기본코드+접미사) - 한 번이라도 누군가 등록한 모델이면 그다음부터 전 지점이 혜택을
+// 본다. (2) 매달 올라오는 재고장(DB.inventory)의 모델명·상품코드 - 재고장은 매장에 실제로
+// 들어온 모델이 이미 정확한 접미사와 함께 올라오므로, 상품권/사은품으로 한 번도 등록된 적
+// 없는 "완전히 새로운 모델"이어도 재고장에만 있으면 자동완성이 가능해진다(기존 방식의 가장
+// 큰 한계였던 "처음 등록되는 모델은 참고 기록이 없다" 문제를 재고장으로 보완).
+function knownGiftcardModels(){
+  const set = new Set();
+  const collect = (str)=>{
+    String(str||'').split('/').forEach(part=>{
+      const m = part.trim().toUpperCase();
+      if(isValidGiftcardModel(m)) set.add(m);
+    });
+  };
+  (DB.giftcardRequests||[]).forEach(r=> collect(r.model));
+  (DB.contestGifts||[]).forEach(r=> collect(r.model));
+  (DB.subTierContestGifts||[]).forEach(r=> collect(r.model));
+  (DB.inventory||[]).forEach(r=> collect(r.model)); // 재고장 모델명도 참고 소스에 포함
+  return Array.from(set).sort();
+}
+// 재고장의 "상품코드"(숫자) -> "모델명" 매핑. 영수증에는 모델명 텍스트 대신 숫자로 된
+// 상품코드/바코드만 찍혀 있는 경우도 있어, 그런 경우에도 매칭할 수 있게 한다.
+function inventoryCodeToModelMap(){
+  const map = {};
+  (DB.inventory||[]).forEach(r=>{
+    if(r.code==null || !r.model) return;
+    const model = String(r.model).trim().toUpperCase();
+    if(isValidGiftcardModel(model)) map[String(r.code)] = model;
+  });
+  return map;
+}
+function gcModelSuggestions(query){
+  const q = String(query||'').trim().toUpperCase();
+  if(!q) return [];
+  const all = knownGiftcardModels();
+  if(all.includes(q)) return []; // 이미 완성된 형태를 그대로 입력했으면 제안할 필요 없음
+  const base = q.split('.')[0];
+  return all.filter(m=> m.split('.')[0]===base || m.startsWith(q)).slice(0, 8);
+}
+function gcModelSuggestHtml(suggestions, introText){
+  if(!suggestions || suggestions.length===0) return '';
+  return `<span class="muted">${introText}: </span>` + suggestions.map(m=>
+    `<span style="color:var(--primary);font-weight:600;cursor:pointer;text-decoration:underline;margin-right:8px;" onclick="applyGcModelSuggestion('${m.replace(/'/g,'')}')">${escapeHtml(m)}</span>`
+  ).join('');
+}
+function handleGcModelInput(value){
+  const hintEl = document.getElementById('gcModelSuggestHint');
+  if(!hintEl) return;
+  hintEl.innerHTML = gcModelSuggestHtml(gcModelSuggestions(value), '예전에 등록된 같은 모델');
+}
+function applyGcModelSuggestion(model){
+  const input = document.getElementById('gcModel');
+  if(input) input.value = model;
+  const hintEl = document.getElementById('gcModelSuggestHint');
+  if(hintEl) hintEl.innerHTML = '';
+}
+// 영수증 OCR 텍스트에서 모델코드처럼 보이는 토큰을 찾는다 - 문자로 시작해 숫자가 섞인
+// 영숫자 조합(모델명 텍스트가 찍힌 경우)과, 4~13자리 숫자만으로 된 토큰(상품코드/바코드가
+// 찍힌 경우) 둘 다 후보로 잡는다.
+function guessModelTokensFromOcrText(text){
+  const raw = String(text||'').toUpperCase();
+  const alnumTokens = raw.match(/\b[A-Z]{1,4}[0-9][A-Z0-9]{3,12}\b/g) || [];
+  const numTokens = raw.match(/\b[0-9]{4,13}\b/g) || [];
+  return { alnumTokens: Array.from(new Set(alnumTokens)), numTokens: Array.from(new Set(numTokens)) };
+}
+function gcModelSuggestionsFromOcrText(text){
+  const { alnumTokens, numTokens } = guessModelTokensFromOcrText(text);
+  if(alnumTokens.length===0 && numTokens.length===0) return [];
+  const known = knownGiftcardModels();
+  const codeMap = inventoryCodeToModelMap();
+  const matches = [];
+  alnumTokens.forEach(tok=>{
+    known.forEach(m=>{ if(m.split('.')[0]===tok && !matches.includes(m)) matches.push(m); });
+  });
+  numTokens.forEach(tok=>{
+    const m = codeMap[tok];
+    if(m && !matches.includes(m)) matches.push(m);
+  });
+  return matches;
+}
+// ---- 영수증 사진에서 금액 자동 인식 (브라우저 내장 OCR, Tesseract.js - 외부 API 키/비용 없음) ----
+// 인터넷에서 한 번 언어팩을 내려받아 브라우저 안에서만 처리하므로 사진이 서버로 전송되지 않는다.
+// 다품목 영수증(여러 모델이 한 영수증에 같이 찍힌 경우)에는 "합계" 하나만 골라주는 게 아니라,
+// 영수증에서 찾은 금액을 전부 체크박스 후보로 보여주고 필요한 것만 골라 체크하면 그 합계가
+// 자동으로 계산된다 - 모델 1개만 등록해야 하면 그 줄 하나만, 여러 개 등록해야 하면 해당하는
+// 몇 개를 함께 체크하면 된다. 아무것도 자동으로 미리 체크해두지 않아서(다품목일 때 "합계"가
+// 잘못 미리 선택된 채 낱개 금액을 추가로 체크해 중복 합산되는 사고를 막기 위함), 항상 사람이
+// 직접 확인하고 골라야 입력칸이 채워진다.
+function extractAmountCandidatesFromOcrText(text){
+  const lines = String(text||'').split(/\n/);
+  const candidates = [];
+  const valueSeen = new Set();
+  lines.forEach(line=>{
+    const nums = line.match(/[0-9]{1,3}(,[0-9]{3})+|[0-9]{4,}/g) || [];
+    nums.forEach(n=>{
+      const val = Number(n.replace(/,/g,''));
+      if(val < 1000 || val > 50000000) return;
+      if(valueSeen.has(val)) return; // 같은 금액이 여러 줄에 반복되면 처음 나온 줄만 후보로 남긴다
+      valueSeen.add(val);
+      let label = line.trim();
+      if(label.length > 30) label = label.slice(0, 30) + '…';
+      candidates.push({ value: val, label: label || String(val) });
+    });
+  });
+  return candidates; // 영수증에 적힌 순서 그대로(사람이 읽는 순서와 같아야 고르기 쉽다)
+}
+async function handleGiftcardReceiptOcr(evt){
+  const hintEl = document.getElementById('gcAmountOcrHint');
+  if(!hintEl) return;
+  const files = evt.target.files ? Array.from(evt.target.files) : [];
+  const imgFile = files.find(f=> f.type && f.type.startsWith('image/'));
+  if(!imgFile){ hintEl.innerHTML = ''; return; }
+  if(typeof Tesseract === 'undefined'){ hintEl.innerHTML = ''; return; }
+  hintEl.innerHTML = '<span class="muted">영수증에서 금액 인식 중...</span>';
+  try{
+    const { data: { text } } = await Tesseract.recognize(imgFile, 'kor+eng');
+
+    // 영수증에서 금액 후보 인식
+    const candidates = extractAmountCandidatesFromOcrText(text);
+    state.gcOcrCandidates = candidates;
+    if(candidates.length===0){
+      hintEl.innerHTML = '<span class="muted">금액을 인식하지 못했습니다. 직접 입력해 주세요.</span>';
+    } else {
+      const rowsHtml = candidates.map((c,idx)=>`
+        <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;padding:2px 0;cursor:pointer;">
+          <input type="checkbox" class="gc-ocr-check" data-idx="${idx}" onchange="updateGcOcrSum()">
+          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.label)}</span>
+          <b>${c.value.toLocaleString()}원</b>
+        </label>`).join('');
+      hintEl.innerHTML = `
+        <div class="muted" style="margin-bottom:2px;">영수증에서 인식된 금액입니다. 등록할 항목만 체크하세요(다품목이면 여러 개 선택 가능):</div>
+        ${rowsHtml}
+        <div style="margin-top:4px;">선택 합계: <b id="gcOcrSumLabel">0원</b> <span style="color:var(--primary);font-weight:600;cursor:pointer;text-decoration:underline;" onclick="applyGcOcrSum()">적용</span></div>
+      `;
+    }
+
+    // 영수증에 찍힌 기본 모델코드로 - 예전에 정확한 접미사(.AKOR 등)와 함께 등록된 적이
+    // 있으면 그 전체 모델명을 모델명 입력칸 아래에 제안한다(접미사는 영수증에 안 찍히므로,
+    // OCR이 직접 알아낼 수 없고 과거 등록 기록에서 찾아주는 방식).
+    const modelHintEl = document.getElementById('gcModelSuggestHint');
+    if(modelHintEl){
+      const modelMatches = gcModelSuggestionsFromOcrText(text);
+      modelHintEl.innerHTML = gcModelSuggestHtml(modelMatches, '영수증에서 인식된 모델(기존 등록 기록 기준)');
+    }
+  }catch(e){
+    hintEl.innerHTML = '<span class="muted">OCR 인식에 실패했습니다. 직접 입력해 주세요.</span>';
+  }
+}
+function gcOcrCheckedSum(){
+  let sum = 0;
+  document.querySelectorAll('.gc-ocr-check').forEach(box=>{
+    if(!box.checked) return;
+    const c = (state.gcOcrCandidates||[])[Number(box.dataset.idx)];
+    if(c) sum += c.value;
+  });
+  return sum;
+}
+function updateGcOcrSum(){
+  const label = document.getElementById('gcOcrSumLabel');
+  if(label) label.textContent = gcOcrCheckedSum().toLocaleString() + '원';
+}
+function applyGcOcrSum(){
+  const sum = gcOcrCheckedSum();
+  const input = document.getElementById('gcAmount');
+  if(input) input.value = sum;
+  const label = document.getElementById('gcOcrSumLabel');
+  if(label) label.innerHTML = `${sum.toLocaleString()}원 <span style="color:var(--good);">- 적용되었습니다. 값을 다시 확인해 주세요.</span>`;
 }
 function submitGiftcardRequest(){
   const branchId = document.getElementById('gcBranch').value;
