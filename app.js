@@ -1790,9 +1790,52 @@ function branchLeaderboard(period){
 // 서버나 별도 백엔드 없이, 지금 화면에 있는 실제 데이터(목표 달성 현황/지점 랭킹/취합 현황/
 // 우수사례/주의 필요 지점)를 그대로 슬라이드로 옮겨 담는다. 관리자·임원 모두 쓸 수 있게
 // canSwitchBranch()로 노출 범위를 맞췄다(둘 다 전 지점 조회 권한이 있으므로 안전).
+function loadScriptOnce(src){
+  return new Promise((resolve, reject)=>{
+    const existing = document.querySelector(`script[data-dyn-src="${src}"]`);
+    if(existing){
+      if(existing.dataset.loaded === '1'){ resolve(); return; }
+      existing.addEventListener('load', ()=>resolve());
+      existing.addEventListener('error', ()=>reject(new Error('load failed: '+src)));
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = src;
+    s.dataset.dynSrc = src;
+    s.onload = ()=>{ s.dataset.loaded = '1'; resolve(); };
+    s.onerror = ()=> reject(new Error('load failed: '+src));
+    document.head.appendChild(s);
+  });
+}
+// CDN 스크립트 태그가 (배포 누락/일시적 CDN 장애/네트워크 차단 등으로) 로드되지 않은 경우를 대비해,
+// 버튼을 누르는 시점에 실제로 전역이 존재하는지 확인하고 없으면 다른 CDN 미러로 다시 로드를 시도한다.
+async function ensurePptxGenLoaded(){
+  if(typeof PptxGenJS !== 'undefined') return PptxGenJS;
+  if(typeof pptxgen !== 'undefined') return pptxgen;
+  const mirrors = [
+    'https://cdn.jsdelivr.net/npm/pptxgenjs@4.0.1/dist/pptxgen.bundle.js',
+    'https://unpkg.com/pptxgenjs@4.0.1/dist/pptxgen.bundle.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/PptxGenJS/4.0.1/pptxgen.bundle.js'
+  ];
+  for(const url of mirrors){
+    try{
+      await loadScriptOnce(url);
+      if(typeof PptxGenJS !== 'undefined') return PptxGenJS;
+      if(typeof pptxgen !== 'undefined') return pptxgen;
+    }catch(e){ console.warn('PPT 모듈 로드 실패, 다음 경로 시도:', url, e); }
+  }
+  return null;
+}
 async function generateWeeklyReportPptx(){
-  const Ctor = (typeof PptxGenJS !== 'undefined') ? PptxGenJS : (typeof pptxgen !== 'undefined' ? pptxgen : null);
-  if(!Ctor){ alert('PPT 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.'); return; }
+  const btnEarly = document.getElementById('weeklyReportPptxBtn');
+  const btnEarlyOrigHtml = btnEarly ? btnEarly.innerHTML : null;
+  if(btnEarly){ btnEarly.disabled = true; btnEarly.innerHTML = '모듈 로드 중...'; }
+  const Ctor = await ensurePptxGenLoaded();
+  if(!Ctor){
+    if(btnEarly){ btnEarly.disabled = false; btnEarly.innerHTML = btnEarlyOrigHtml; }
+    alert('PPT 생성 모듈을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
+    return;
+  }
   const btn = document.getElementById('weeklyReportPptxBtn');
   const btnOrigHtml = btn ? btn.innerHTML : null;
   if(btn){ btn.disabled = true; btn.innerHTML = '생성 중...'; }
@@ -7859,16 +7902,33 @@ function extractAmountCandidatesFromOcrText(text){
   });
   return candidates; // 영수증에 적힌 순서 그대로(사람이 읽는 순서와 같아야 고르기 쉽다)
 }
+// Tesseract.js도 PptxGenJS와 동일하게, 정적 스크립트 태그 로드가 실패했을 경우를 대비해
+// 실제 사용 시점에 전역을 확인하고 없으면 다른 CDN 미러로 재시도한다.
+async function ensureTesseractLoaded(){
+  if(typeof Tesseract !== 'undefined') return Tesseract;
+  const mirrors = [
+    'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',
+    'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js'
+  ];
+  for(const url of mirrors){
+    try{
+      await loadScriptOnce(url);
+      if(typeof Tesseract !== 'undefined') return Tesseract;
+    }catch(e){ console.warn('OCR 모듈 로드 실패, 다음 경로 시도:', url, e); }
+  }
+  return null;
+}
 async function handleGiftcardReceiptOcr(evt){
   const hintEl = document.getElementById('gcAmountOcrHint');
   if(!hintEl) return;
   const files = evt.target.files ? Array.from(evt.target.files) : [];
   const imgFile = files.find(f=> f.type && f.type.startsWith('image/'));
   if(!imgFile){ hintEl.innerHTML = ''; return; }
-  if(typeof Tesseract === 'undefined'){ hintEl.innerHTML = ''; return; }
   hintEl.innerHTML = '<span class="muted">영수증에서 금액 인식 중...</span>';
+  const TCtor = await ensureTesseractLoaded();
+  if(!TCtor){ hintEl.innerHTML = '<span class="muted">OCR 모듈을 불러오지 못했습니다. 직접 입력해 주세요.</span>'; return; }
   try{
-    const { data: { text } } = await Tesseract.recognize(imgFile, 'kor+eng');
+    const { data: { text } } = await TCtor.recognize(imgFile, 'kor+eng');
 
     // 영수증에서 금액 후보 인식
     const candidates = extractAmountCandidatesFromOcrText(text);
