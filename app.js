@@ -1826,7 +1826,123 @@ async function ensurePptxGenLoaded(){
   }
   return null;
 }
+// ---- PPT용 사진 삽입 유틸 ----
+// 첨부사진은 base64(dataUrl) 또는 Supabase Storage 공개 URL로 저장되어 있는데, pptxgenjs에
+// 안정적으로 넣으려면 실제 픽셀 데이터를 base64로 통일해서 넣어야 한다. 또한 사진을 찌그러뜨리지
+// 않고(=원본 가로세로 비율 유지) 프레임 안에 꽉 차게 배치하려면 원본 크기도 알아야 한다.
+function pptxBlobToDataUrl(blob){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=> resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+function pptxImageDims(src){
+  return new Promise((resolve, reject)=>{
+    const img = new Image();
+    img.onload = ()=> resolve({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+    img.onerror = ()=> reject(new Error('이미지 크기 확인 실패'));
+    img.src = src;
+  });
+}
+// 사진 1장을 pptxgenjs addImage에 바로 넣을 수 있는 {data, width, height} 형태로 만든다.
+// 실패(네트워크 오류, 깨진 파일 등)해도 전체 생성이 멈추지 않도록 null을 반환하고 콘솔에만 남긴다.
+async function loadPptxImageAsset(url){
+  try{
+    let dataUrl = url;
+    if(!/^data:/i.test(url)){
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('fetch 실패: ' + res.status);
+      const blob = await res.blob();
+      dataUrl = await pptxBlobToDataUrl(blob);
+    }
+    const dims = await pptxImageDims(dataUrl);
+    if(!dims.width || !dims.height) return null;
+    return { data: dataUrl, width: dims.width, height: dims.height };
+  }catch(e){
+    console.warn('PPT용 사진 로드 실패, 이 사진은 건너뜁니다:', url, e);
+    return null;
+  }
+}
+// 첨부파일 목록에서 이미지만 골라 최대 cap장까지 실제 로드한다. 로드에 실패한 사진은 자동으로
+// 빠지므로, 반환된 배열 길이가 이미지 개수보다 적을 수 있다(정상 동작).
+async function collectPptxPhotoAssets(files, cap){
+  const imageFiles = (files||[]).filter(isImageAttachment).slice(0, cap);
+  const assets = [];
+  for(const f of imageFiles){
+    const asset = await loadPptxImageAsset(f.dataUrl);
+    if(asset) assets.push(asset);
+  }
+  return assets;
+}
+// CSS object-fit:contain과 동일한 방식으로, 사진 원본 비율을 유지한 채 지정된 박스 안에
+// 가운데 정렬로 최대한 크게 배치할 좌표/크기를 계산한다(비율이 절대 깨지지 않는다).
+function fitImageInBox(imgW, imgH, box){
+  const boxRatio = box.w / box.h;
+  const imgRatio = imgW / imgH;
+  let w, h;
+  if(imgRatio > boxRatio){ w = box.w; h = box.w / imgRatio; }
+  else { h = box.h; w = box.h * imgRatio; }
+  return { x: box.x + (box.w - w) / 2, y: box.y + (box.h - h) / 2, w, h };
+}
+// 사진 장수에 따라 격자 칸을 자동으로 나눈다(1장=꽉 차게, 2장=좌우, 3~4장=2x2, 5~6장=3x2, 7장+=3x3).
+function photoGridCells(count, box, gap){
+  gap = gap == null ? 0.08 : gap;
+  let cols, rows;
+  if(count<=1){ cols=1; rows=1; }
+  else if(count===2){ cols=2; rows=1; }
+  else if(count<=4){ cols=2; rows=2; }
+  else if(count<=6){ cols=3; rows=2; }
+  else { cols=3; rows=3; }
+  const cellW = (box.w - gap*(cols-1)) / cols;
+  const cellH = (box.h - gap*(rows-1)) / rows;
+  const cells = [];
+  for(let i=0;i<count;i++){
+    const col = i % cols, row = Math.floor(i / cols);
+    cells.push({ x: box.x + col*(cellW+gap), y: box.y + row*(cellH+gap), w: cellW, h: cellH });
+  }
+  return cells;
+}
+// 사진 배열을 박스 안에 격자로 배치한다. 각 칸에는 연한 회색 배경/테두리를 깔아 사진 영역임을
+// 표시하고, 그 안에서 fitImageInBox로 비율을 유지한 채 삽입한다. 사진이 하나도 없으면 안내 문구만 넣는다.
+function addPptxPhotoGrid(slide, assets, box, MUTED){
+  if(!assets || assets.length===0){
+    slide.addText('첨부된 사진이 없습니다.', { x:box.x, y:box.y, w:box.w, h:box.h, fontSize:12, color:MUTED, align:'center', valign:'middle', fontFace:'Malgun Gothic' });
+    return;
+  }
+  const cells = photoGridCells(assets.length, box);
+  assets.forEach((asset, idx)=>{
+    const cell = cells[idx];
+    slide.addShape('rect', { x:cell.x, y:cell.y, w:cell.w, h:cell.h, fill:{color:'F4F4F5'}, line:{color:'E5E7EB', width:0.75} });
+    const fit = fitImageInBox(asset.width, asset.height, { x:cell.x+0.04, y:cell.y+0.04, w:cell.w-0.08, h:cell.h-0.08 });
+    slide.addImage({ data: asset.data, x:fit.x, y:fit.y, w:fit.w, h:fit.h });
+  });
+}
+// 리치 에디터 HTML 본문을 슬라이드에 넣을 순수 텍스트로 바꾼다(태그 제거 + 특수문자 복원 +
+// 공백 정리). maxLen을 넘으면 말줄임표로 잘라 슬라이드 안에 과하게 길어지지 않게 한다.
+function richPlainText(html, maxLen){
+  if(!html) return '';
+  const stripped = richStripTags(html);
+  let text = stripped;
+  if(typeof document !== 'undefined' && document.createElement){
+    const div = document.createElement('div');
+    div.innerHTML = stripped;
+    text = div.textContent || div.innerText || stripped;
+  }
+  text = text.replace(/\s+/g,' ').trim();
+  if(maxLen && text.length > maxLen) text = text.slice(0, maxLen).trim() + '…';
+  return text;
+}
+// 모든 내용 슬라이드(표지 제외)에 공통으로 들어가는 상단 헤더 - 참고로 준 실제 보고서 양식과
+// 동일하게 좌측에 보고서 제목, 우측에 담당팀 태그, 그 아래 구분선을 넣는다.
+function addPptxHeaderChrome(slide, teamLabel, PRIMARY, TEXT){
+  slide.addText('주간 활동 내용 공유', { x:0.15, y:0.06, w:5.0, h:0.32, fontSize:12, bold:true, color:TEXT, fontFace:'Malgun Gothic' });
+  slide.addText(teamLabel, { x:8.2, y:0.06, w:5.0, h:0.32, fontSize:11, bold:true, color:PRIMARY, align:'right', fontFace:'Malgun Gothic' });
+  slide.addShape('rect', { x:0.15, y:0.42, w:13.03, h:0.018, fill:{color:PRIMARY}, line:{type:'none'} });
+}
 async function generateWeeklyReportPptx(){
+
   const btnEarly = document.getElementById('weeklyReportPptxBtn');
   const btnEarlyOrigHtml = btnEarly ? btnEarly.innerHTML : null;
   if(btnEarly){ btnEarly.disabled = true; btnEarly.innerHTML = '모듈 로드 중...'; }
@@ -1853,15 +1969,17 @@ async function generateWeeklyReportPptx(){
     s1.addText('혼매경북팀(경북2담당)\n주간 활동 요약', { x:0.6, y:2.5, w:12.1, h:2.0, fontSize:36, bold:true, color:'FFFFFF', align:'center', fontFace:'Malgun Gothic' });
     s1.addText(`${goalsPeriodLabel(period)} · 생성일 ${todayStr()}`, { x:0.6, y:4.5, w:12.1, h:0.6, fontSize:16, color:'FFE3EC', align:'center', fontFace:'Malgun Gothic' });
 
+    const TEAM_LABEL = '경북2담당';
     const addSlideTitle = (slide, text)=>{
-      slide.addText(text, { x:0.5, y:0.35, w:12.3, h:0.7, fontSize:24, bold:true, color:TEXT, fontFace:'Malgun Gothic' });
+      addPptxHeaderChrome(slide, TEAM_LABEL, PRIMARY, TEXT);
+      slide.addText(text, { x:0.5, y:0.58, w:12.3, h:0.6, fontSize:22, bold:true, color:TEXT, fontFace:'Malgun Gothic' });
     };
-    const tableOpts = { x:0.5, y:1.25, w:12.3, fontSize:12, fontFace:'Malgun Gothic', border:{type:'solid', color:'E5E7EB', pt:1}, autoPage:true };
+    const tableOpts = { x:0.5, y:1.3, w:12.3, fontSize:12, fontFace:'Malgun Gothic', border:{type:'solid', color:'E5E7EB', pt:1}, autoPage:true };
     const headerRow = (cells)=> cells.map(t=>({ text:t, options:{ bold:true, color:'FFFFFF', fill:{color:PRIMARY} } }));
 
     // 2) 관리자별 목표 달성 현황
     const s2 = pres.addSlide();
-    addSlideTitle(s2, '관리자별 목표 달성 현황');
+    addSlideTitle(s2, '□ 관리자별 목표 달성 현황');
     const mgrSummary = goalsManagerSummary(period);
     const mgrRows = [headerRow(['관리자','지점수','달성률','실적','목표'])];
     mgrSummary.forEach(m=>{
@@ -1871,7 +1989,7 @@ async function generateWeeklyReportPptx(){
 
     // 3) 이달의 지점 랭킹
     const s3 = pres.addSlide();
-    addSlideTitle(s3, '이달의 지점 랭킹');
+    addSlideTitle(s3, '□ 이달의 지점 랭킹');
     const board = branchLeaderboard(period);
     const rankRows = [headerRow(['순위','지점','점수','목표달성률','실행력점검 등록','우수/성공사례'])];
     board.forEach((r,idx)=>{
@@ -1881,7 +1999,7 @@ async function generateWeeklyReportPptx(){
 
     // 4) 이번주 취합 현황 (최근 7일 등록 건수)
     const s4 = pres.addSlide();
-    addSlideTitle(s4, '이번주 취합 현황 (최근 7일 등록 건수)');
+    addSlideTitle(s4, '□ 이번주 취합 현황 (최근 7일 등록 건수)');
     const since = new Date(Date.now() - 7*24*60*60*1000).toISOString();
     const countRecent = (list)=> (list||[]).filter(r=> String(r.createdAt||'') >= since).length;
     const collectRows = [headerRow(['취합 항목','최근 7일 등록 건수'])];
@@ -1891,28 +2009,63 @@ async function generateWeeklyReportPptx(){
     collectRows.push(['구독 연동사은품', String(countRecent(DB.subTierContestGifts))]);
     s4.addTable(collectRows, tableOpts);
 
-    // 5) 최근 우수 활동/성공 사례
-    const s5 = pres.addSlide();
-    addSlideTitle(s5, '최근 우수 활동 · 이슈제품 성공 사례');
-    const recent = [
+    // 5) 최근 우수 활동 · 이슈제품 성공 사례 - 게시글마다 한 장씩, 사진(비율 유지)과 본문 내용을 함께 담는다.
+    // "이번주(최근 7일)" 등록분을 우선 쓰되, 이번 주에 새 글이 없으면 최근 등록분으로 대체해 빈 덱이 되지 않게 한다.
+    const recentAll = [
       ...(DB.bestPractices||[]).map(p=>({...p, tag:'우수사례'})),
       ...(DB.issueCases||[]).map(p=>({...p, tag:'성공사례'}))
-    ].sort((a,b)=> String(b.createdAt||'').localeCompare(String(a.createdAt||''))).slice(0,8);
-    if(recent.length===0){
+    ].sort((a,b)=> String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+    let recentPosts = recentAll.filter(p=> String(p.createdAt||'') >= since);
+    if(recentPosts.length===0) recentPosts = recentAll.slice(0, 4);
+    recentPosts = recentPosts.slice(0, 6);
+
+    if(recentPosts.length===0){
+      const s5 = pres.addSlide();
+      addSlideTitle(s5, '□ 최근 우수 활동 · 이슈제품 성공 사례');
       s5.addText('등록된 사례가 없습니다.', { x:0.5, y:1.4, w:12.3, h:0.5, fontSize:14, color:MUTED, fontFace:'Malgun Gothic' });
     } else {
-      let y = 1.35;
-      recent.forEach(p=>{
-        s5.addText(`[${p.tag}] ${richStripTags(p.title||'(제목 없음)')}  -  ${bpBranchDisplayName(p.branchId)||''}`, { x:0.5, y, w:12.3, h:0.5, fontSize:14, color:TEXT, fontFace:'Malgun Gothic' });
-        y += 0.55;
-      });
+      for(const p of recentPosts){
+        const s = pres.addSlide();
+        addPptxHeaderChrome(s, TEAM_LABEL, PRIMARY, TEXT);
+        const contentPlain = richPlainText(p.content, 220);
+        const titleText = richPlainText(p.title, 40) || contentPlain.slice(0, 24) || '(제목 없음)';
+        s.addText(`유첨. [${p.tag}] ${titleText}`, { x:0.5, y:0.55, w:12.3, h:0.5, fontSize:19, bold:true, color:TEXT, fontFace:'Malgun Gothic' });
+        const metaText = [bpBranchDisplayName(p.branchId), p.managerName||p.authorName, p.activityDate||String(p.createdAt||'').slice(0,10)].filter(Boolean).join(' · ');
+        s.addText(metaText, { x:0.5, y:1.02, w:12.3, h:0.3, fontSize:11.5, color:MUTED, fontFace:'Malgun Gothic' });
+        s.addText(contentPlain || '(작성된 활동 내용이 없습니다)', { x:0.5, y:1.35, w:12.3, h:1.1, fontSize:12, color:TEXT, fontFace:'Malgun Gothic', valign:'top' });
+        s.addText(`[${p.tag}]`, { x:0.5, y:2.5, w:2.5, h:0.28, fontSize:10.5, bold:true, color:PRIMARY, fontFace:'Malgun Gothic' });
+        const photoAssets = await collectPptxPhotoAssets(p.attachments, 6);
+        addPptxPhotoGrid(s, photoAssets, { x:0.5, y:2.82, w:12.3, h:4.5 }, MUTED);
+        const totalImages = (p.attachments||[]).filter(isImageAttachment).length;
+        if(totalImages > photoAssets.length){
+          s.addText(`사진 ${photoAssets.length}장 표시 (전체 ${totalImages}장 중)`, { x:9.3, y:2.5, w:3.5, h:0.28, fontSize:9.5, color:MUTED, align:'right', fontFace:'Malgun Gothic' });
+        }
+      }
     }
 
-    // 6) 주의 필요 지점 (있을 때만)
+    // 6) 실행력 점검 사진 - 지점별로 이번 주 등록된 사진을 모아 격자로 보여준다(비율 유지, 최대 9장/지점).
+    const recentExec = (DB.execPhotos||[]).filter(r=> String(r.createdAt||'') >= since);
+    const execBranchIds = Array.from(new Set(recentExec.map(r=>r.branchId))).slice(0, 6);
+    for(const bId of execBranchIds){
+      const entries = recentExec.filter(r=>r.branchId===bId);
+      const allPhotos = [];
+      entries.forEach(e=> (e.photos||[]).forEach(f=> allPhotos.push(f)));
+      if(allPhotos.length===0) continue;
+      const s = pres.addSlide();
+      addSlideTitle(s, `□ 실행력 점검 사진 · ${branchName(bId)}`);
+      s.addText(`이번 주 등록 ${entries.length}건 · 사진 ${allPhotos.length}장`, { x:0.5, y:1.05, w:12.3, h:0.3, fontSize:11.5, color:MUTED, fontFace:'Malgun Gothic' });
+      const photoAssets = await collectPptxPhotoAssets(allPhotos, 9);
+      addPptxPhotoGrid(s, photoAssets, { x:0.5, y:1.45, w:12.3, h:5.85 }, MUTED);
+      if(allPhotos.length > photoAssets.length){
+        s.addText(`사진 ${photoAssets.length}장 표시 (전체 ${allPhotos.length}장 중)`, { x:9.3, y:1.05, w:3.5, h:0.28, fontSize:9.5, color:MUTED, align:'right', fontFace:'Malgun Gothic' });
+      }
+    }
+
+    // 7) 주의 필요 지점 (있을 때만)
     const attention = branchesNeedingAttention(period);
     if(attention.length>0){
       const s6 = pres.addSlide();
-      addSlideTitle(s6, '이번달 목표 예측 - 주의 필요 지점');
+      addSlideTitle(s6, '□ 이번달 목표 예측 - 주의 필요 지점');
       const attRows = [headerRow(['지점','현재 달성률','월말 예상','비고'])];
       attention.forEach(a=>{
         attRows.push([a.branchName, a.currentPct+'%', a.projectedPct+'%', a.behindPace && a.decelerating ? '부진+둔화' : (a.behindPace ? '부진' : '둔화')]);
@@ -7736,14 +7889,13 @@ function renderCollectGiftcard(){
         </div>
         <div class="field">
           <label>모델명</label>
-          <input id="gcModel" list="gcModelDatalist" placeholder="예: SC5GMR81S.AKOR / FQ18GC1EB2.CKOR" style="width:190px" oninput="handleGcModelInput(this.value)">
+          <input id="gcModel" list="gcModelDatalist" placeholder="예: SC5GMR81S.AKOR / FQ18GC1EB2.CKOR" style="width:190px" oninput="handleModelAutocompleteInput('gcModel','gcModelSuggestHint')">
           <datalist id="gcModelDatalist">${knownGiftcardModels().map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist>
           <div id="gcModelSuggestHint" class="small-note" style="margin-top:4px;"></div>
         </div>
         <div class="field">
           <label>사용 금액</label>
           <input id="gcAmount" type="number" placeholder="예: 10000" style="width:120px">
-          <div id="gcAmountOcrHint" class="small-note" style="margin-top:4px;"></div>
         </div>
       </div>
       <div class="small-note" style="margin-top:-8px;">※ &quot;I&quot;로 시작하는 주문번호를 입력해 주세요. (예: I051245311)<br>주문번호 없을 시 &quot;i&quot;만 입력하면 됨.</div>
@@ -7773,7 +7925,7 @@ function renderCollectGiftcard(){
         </div>
         <div class="field">
           <label>영수증 증빙 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
-          <input id="gcReceipt" type="file" multiple onchange="handleGiftcardReceiptOcr(event)">
+          <input id="gcReceipt" type="file" multiple>
         </div>
         <button class="btn btn-primary" onclick="submitGiftcardRequest()">등록</button>
       </div>
@@ -7816,17 +7968,9 @@ function knownGiftcardModels(){
   (DB.inventory||[]).forEach(r=> collect(r.model)); // 재고장 모델명도 참고 소스에 포함
   return Array.from(set).sort();
 }
-// 재고장의 "상품코드"(숫자) -> "모델명" 매핑. 영수증에는 모델명 텍스트 대신 숫자로 된
-// 상품코드/바코드만 찍혀 있는 경우도 있어, 그런 경우에도 매칭할 수 있게 한다.
-function inventoryCodeToModelMap(){
-  const map = {};
-  (DB.inventory||[]).forEach(r=>{
-    if(r.code==null || !r.model) return;
-    const model = String(r.model).trim().toUpperCase();
-    if(isValidGiftcardModel(model)) map[String(r.code)] = model;
-  });
-  return map;
-}
+// 모델명 자동완성 결과를 화면에 그려주는 공통 렌더러. "/"로 여러 모델을 이어 입력하는
+// 페이지(기타 사은품 취합 등)에서는 지금 입력 중인 마지막 조각만 기준으로 제안하고,
+// 클릭하면 그 마지막 조각만 완성된 모델명으로 바꿔치기한다.
 function gcModelSuggestions(query){
   const q = String(query||'').trim().toUpperCase();
   if(!q) return [];
@@ -7835,151 +7979,29 @@ function gcModelSuggestions(query){
   const base = q.split('.')[0];
   return all.filter(m=> m.split('.')[0]===base || m.startsWith(q)).slice(0, 8);
 }
-function gcModelSuggestHtml(suggestions, introText){
+function gcModelSuggestHtml(suggestions, inputId, hintId){
   if(!suggestions || suggestions.length===0) return '';
-  return `<span class="muted">${introText}: </span>` + suggestions.map(m=>
-    `<span style="color:var(--primary);font-weight:600;cursor:pointer;text-decoration:underline;margin-right:8px;" onclick="applyGcModelSuggestion('${m.replace(/'/g,'')}')">${escapeHtml(m)}</span>`
+  return `<span class="muted">재고장/과거 등록 기록 기반 추천: </span>` + suggestions.map(m=>
+    `<span style="color:var(--primary);font-weight:600;cursor:pointer;text-decoration:underline;margin-right:8px;" onclick="applyModelAutocomplete('${inputId}','${hintId}','${m.replace(/'/g,'')}')">${escapeHtml(m)}</span>`
   ).join('');
 }
-function handleGcModelInput(value){
-  const hintEl = document.getElementById('gcModelSuggestHint');
-  if(!hintEl) return;
-  hintEl.innerHTML = gcModelSuggestHtml(gcModelSuggestions(value), '예전에 등록된 같은 모델');
+function handleModelAutocompleteInput(inputId, hintId){
+  const input = document.getElementById(inputId);
+  const hintEl = document.getElementById(hintId);
+  if(!input || !hintEl) return;
+  const parts = input.value.split('/');
+  const current = parts[parts.length-1].trim();
+  hintEl.innerHTML = gcModelSuggestHtml(gcModelSuggestions(current), inputId, hintId);
 }
-function applyGcModelSuggestion(model){
-  const input = document.getElementById('gcModel');
-  if(input) input.value = model;
-  const hintEl = document.getElementById('gcModelSuggestHint');
+function applyModelAutocomplete(inputId, hintId, model){
+  const input = document.getElementById(inputId);
+  if(input){
+    const parts = input.value.split('/');
+    parts[parts.length-1] = model;
+    input.value = parts.map(p=>p.trim()).join(parts.length>1 ? ' / ' : '');
+  }
+  const hintEl = document.getElementById(hintId);
   if(hintEl) hintEl.innerHTML = '';
-}
-// 영수증 OCR 텍스트에서 모델코드처럼 보이는 토큰을 찾는다 - 문자로 시작해 숫자가 섞인
-// 영숫자 조합(모델명 텍스트가 찍힌 경우)과, 4~13자리 숫자만으로 된 토큰(상품코드/바코드가
-// 찍힌 경우) 둘 다 후보로 잡는다.
-function guessModelTokensFromOcrText(text){
-  const raw = String(text||'').toUpperCase();
-  const alnumTokens = raw.match(/\b[A-Z]{1,4}[0-9][A-Z0-9]{3,12}\b/g) || [];
-  const numTokens = raw.match(/\b[0-9]{4,13}\b/g) || [];
-  return { alnumTokens: Array.from(new Set(alnumTokens)), numTokens: Array.from(new Set(numTokens)) };
-}
-function gcModelSuggestionsFromOcrText(text){
-  const { alnumTokens, numTokens } = guessModelTokensFromOcrText(text);
-  if(alnumTokens.length===0 && numTokens.length===0) return [];
-  const known = knownGiftcardModels();
-  const codeMap = inventoryCodeToModelMap();
-  const matches = [];
-  alnumTokens.forEach(tok=>{
-    known.forEach(m=>{ if(m.split('.')[0]===tok && !matches.includes(m)) matches.push(m); });
-  });
-  numTokens.forEach(tok=>{
-    const m = codeMap[tok];
-    if(m && !matches.includes(m)) matches.push(m);
-  });
-  return matches;
-}
-// ---- 영수증 사진에서 금액 자동 인식 (브라우저 내장 OCR, Tesseract.js - 외부 API 키/비용 없음) ----
-// 인터넷에서 한 번 언어팩을 내려받아 브라우저 안에서만 처리하므로 사진이 서버로 전송되지 않는다.
-// 다품목 영수증(여러 모델이 한 영수증에 같이 찍힌 경우)에는 "합계" 하나만 골라주는 게 아니라,
-// 영수증에서 찾은 금액을 전부 체크박스 후보로 보여주고 필요한 것만 골라 체크하면 그 합계가
-// 자동으로 계산된다 - 모델 1개만 등록해야 하면 그 줄 하나만, 여러 개 등록해야 하면 해당하는
-// 몇 개를 함께 체크하면 된다. 아무것도 자동으로 미리 체크해두지 않아서(다품목일 때 "합계"가
-// 잘못 미리 선택된 채 낱개 금액을 추가로 체크해 중복 합산되는 사고를 막기 위함), 항상 사람이
-// 직접 확인하고 골라야 입력칸이 채워진다.
-function extractAmountCandidatesFromOcrText(text){
-  const lines = String(text||'').split(/\n/);
-  const candidates = [];
-  const valueSeen = new Set();
-  lines.forEach(line=>{
-    const nums = line.match(/[0-9]{1,3}(,[0-9]{3})+|[0-9]{4,}/g) || [];
-    nums.forEach(n=>{
-      const val = Number(n.replace(/,/g,''));
-      if(val < 1000 || val > 50000000) return;
-      if(valueSeen.has(val)) return; // 같은 금액이 여러 줄에 반복되면 처음 나온 줄만 후보로 남긴다
-      valueSeen.add(val);
-      let label = line.trim();
-      if(label.length > 30) label = label.slice(0, 30) + '…';
-      candidates.push({ value: val, label: label || String(val) });
-    });
-  });
-  return candidates; // 영수증에 적힌 순서 그대로(사람이 읽는 순서와 같아야 고르기 쉽다)
-}
-// Tesseract.js도 PptxGenJS와 동일하게, 정적 스크립트 태그 로드가 실패했을 경우를 대비해
-// 실제 사용 시점에 전역을 확인하고 없으면 다른 CDN 미러로 재시도한다.
-async function ensureTesseractLoaded(){
-  if(typeof Tesseract !== 'undefined') return Tesseract;
-  const mirrors = [
-    'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js',
-    'https://unpkg.com/tesseract.js@5/dist/tesseract.min.js'
-  ];
-  for(const url of mirrors){
-    try{
-      await loadScriptOnce(url);
-      if(typeof Tesseract !== 'undefined') return Tesseract;
-    }catch(e){ console.warn('OCR 모듈 로드 실패, 다음 경로 시도:', url, e); }
-  }
-  return null;
-}
-async function handleGiftcardReceiptOcr(evt){
-  const hintEl = document.getElementById('gcAmountOcrHint');
-  if(!hintEl) return;
-  const files = evt.target.files ? Array.from(evt.target.files) : [];
-  const imgFile = files.find(f=> f.type && f.type.startsWith('image/'));
-  if(!imgFile){ hintEl.innerHTML = ''; return; }
-  hintEl.innerHTML = '<span class="muted">영수증에서 금액 인식 중...</span>';
-  const TCtor = await ensureTesseractLoaded();
-  if(!TCtor){ hintEl.innerHTML = '<span class="muted">OCR 모듈을 불러오지 못했습니다. 직접 입력해 주세요.</span>'; return; }
-  try{
-    const { data: { text } } = await TCtor.recognize(imgFile, 'kor+eng');
-
-    // 영수증에서 금액 후보 인식
-    const candidates = extractAmountCandidatesFromOcrText(text);
-    state.gcOcrCandidates = candidates;
-    if(candidates.length===0){
-      hintEl.innerHTML = '<span class="muted">금액을 인식하지 못했습니다. 직접 입력해 주세요.</span>';
-    } else {
-      const rowsHtml = candidates.map((c,idx)=>`
-        <label style="display:flex;align-items:center;gap:6px;font-size:11.5px;padding:2px 0;cursor:pointer;">
-          <input type="checkbox" class="gc-ocr-check" data-idx="${idx}" onchange="updateGcOcrSum()">
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.label)}</span>
-          <b>${c.value.toLocaleString()}원</b>
-        </label>`).join('');
-      hintEl.innerHTML = `
-        <div class="muted" style="margin-bottom:2px;">영수증에서 인식된 금액입니다. 등록할 항목만 체크하세요(다품목이면 여러 개 선택 가능):</div>
-        ${rowsHtml}
-        <div style="margin-top:4px;">선택 합계: <b id="gcOcrSumLabel">0원</b> <span style="color:var(--primary);font-weight:600;cursor:pointer;text-decoration:underline;" onclick="applyGcOcrSum()">적용</span></div>
-      `;
-    }
-
-    // 영수증에 찍힌 기본 모델코드로 - 예전에 정확한 접미사(.AKOR 등)와 함께 등록된 적이
-    // 있으면 그 전체 모델명을 모델명 입력칸 아래에 제안한다(접미사는 영수증에 안 찍히므로,
-    // OCR이 직접 알아낼 수 없고 과거 등록 기록에서 찾아주는 방식).
-    const modelHintEl = document.getElementById('gcModelSuggestHint');
-    if(modelHintEl){
-      const modelMatches = gcModelSuggestionsFromOcrText(text);
-      modelHintEl.innerHTML = gcModelSuggestHtml(modelMatches, '영수증에서 인식된 모델(기존 등록 기록 기준)');
-    }
-  }catch(e){
-    hintEl.innerHTML = '<span class="muted">OCR 인식에 실패했습니다. 직접 입력해 주세요.</span>';
-  }
-}
-function gcOcrCheckedSum(){
-  let sum = 0;
-  document.querySelectorAll('.gc-ocr-check').forEach(box=>{
-    if(!box.checked) return;
-    const c = (state.gcOcrCandidates||[])[Number(box.dataset.idx)];
-    if(c) sum += c.value;
-  });
-  return sum;
-}
-function updateGcOcrSum(){
-  const label = document.getElementById('gcOcrSumLabel');
-  if(label) label.textContent = gcOcrCheckedSum().toLocaleString() + '원';
-}
-function applyGcOcrSum(){
-  const sum = gcOcrCheckedSum();
-  const input = document.getElementById('gcAmount');
-  if(input) input.value = sum;
-  const label = document.getElementById('gcOcrSumLabel');
-  if(label) label.innerHTML = `${sum.toLocaleString()}원 <span style="color:var(--good);">- 적용되었습니다. 값을 다시 확인해 주세요.</span>`;
 }
 function submitGiftcardRequest(){
   const branchId = document.getElementById('gcBranch').value;
@@ -8450,7 +8472,9 @@ function renderCollectContest(){
       <div class="form-row">
         <div class="field">
           <label>모델명</label>
-          <input id="cgModel" placeholder="예: SC5GMR81S.AKOR" style="width:170px">
+          <input id="cgModel" list="cgModelDatalist" placeholder="예: SC5GMR81S.AKOR" style="width:170px" oninput="handleModelAutocompleteInput('cgModel','cgModelSuggestHint')">
+          <datalist id="cgModelDatalist">${knownGiftcardModels().map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist>
+          <div id="cgModelSuggestHint" class="small-note" style="margin-top:4px;"></div>
         </div>
         <div class="field">
           <label>판매 건수</label>
