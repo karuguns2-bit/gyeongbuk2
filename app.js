@@ -1198,8 +1198,29 @@ function saveDB(silent){
   if(SESSION && SESSION.role==='exec') return;
   const p = pushDBToServer();
   if(!silent){
-    p.then(ok=>{ if(ok) showToast('저장되었습니다.', true); }).catch(()=>{});
+    p.then(ok=>{ if(ok) showSaveBanner('저장되었습니다.'); }).catch(()=>{});
   }
+}
+// "저장되었습니다" 확인은 화면 우측 구석의 작은 토스트로는 잘 안 보인다는 의견이 있어,
+// 등록/수정/삭제할 때마다 뜨는 이 저장 확인만은 화면 중앙 상단에 크게 표시하고 확인 버튼
+// 없이 잠깐 후 자동으로 사라지게 한다(업로드 결과 등 다른 안내는 기존 showToast를 그대로 쓴다).
+function showSaveBanner(message){
+  let container = document.getElementById('saveBannerContainer');
+  if(!container){
+    container = document.createElement('div');
+    container.id = 'saveBannerContainer';
+    container.className = 'save-banner-container';
+    document.body.appendChild(container);
+  }
+  container.querySelectorAll('.save-banner').forEach(el=> el.remove()); // 연속 저장 시 이전 배너가 겹치지 않게 정리
+  const banner = document.createElement('div');
+  banner.className = 'save-banner';
+  banner.innerHTML = `<span class="sb-icon">✅</span><span>${message}</span>`;
+  container.appendChild(banner);
+  setTimeout(()=>{
+    banner.classList.add('sb-out');
+    setTimeout(()=> banner.remove(), 250);
+  }, 1800);
 }
 
 /* =========================================================================
