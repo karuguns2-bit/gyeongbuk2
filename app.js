@@ -748,12 +748,47 @@ async function loadDB(){
   DB_BASELINE = cloneDBSnapshot(DB);
 }
 
+// 저장 충돌(다른 사용자가 그 사이 먼저 저장함)이 실제로 병합을 유발했을 때 관리자가
+// 나중에 확인할 수 있도록 가벼운 로그를 남긴다 - kpi_db 저장 자체와는 분리된 activity_log
+// 테이블에 kind='conflict'로 기록하며, 실패해도 저장 흐름에는 영향을 주지 않는다.
+function logSaveConflict(mergedDB, beforeDB){
+  const changedKeys = Object.keys(mergedDB||{}).filter(k=> JSON.stringify(mergedDB[k]) !== JSON.stringify(beforeDB ? beforeDB[k] : undefined));
+  logActivity('conflict', `저장 충돌 병합: ${changedKeys.join(', ') || '(변경 없음)'}`);
+}
+// 관리자가 [시스템관리]에서 최근 저장 충돌 이력을 확인할 수 있도록 조회한다.
+async function fetchRecentConflicts(limit){
+  if(!sbClient) return [];
+  try{
+    const { data, error } = await sbClient.from('activity_log').select('*').eq('kind','conflict').order('created_at',{ascending:false}).limit(limit||10);
+    if(error) throw error;
+    return data || [];
+  }catch(e){ return []; }
+}
+async function refreshConflictLog(){
+  const el = document.getElementById('conflictLogList');
+  if(!el) return;
+  const items = await fetchRecentConflicts(10);
+  el.innerHTML = conflictLogHtml(items);
+}
+function conflictLogHtml(items){
+  if(!items || items.length===0) return '최근 저장 충돌 병합 기록이 없습니다.';
+  return items.map(it=>{
+    const time = (it.created_at||'').slice(0,16).replace('T',' ');
+    return `<div style="padding:5px 0;border-bottom:1px solid var(--border);">
+      <span class="badge warn" style="margin-right:6px;">병합</span>
+      ${escapeHtml(it.name||it.emp_id||'')} · ${time}
+      <div class="muted" style="font-size:11.5px;margin-top:2px;">${escapeHtml(it.message||'')}</div>
+    </div>`;
+  }).join('');
+}
+
 // 여러 매니저가 거의 동시에 저장하면(예: 게시글 등록) 버전이 어긋나는 경우가 잦다.
 // 버전이 어긋나면 서버의 최신 전체 데이터를 받아와 mergeRemoteDB()로 항목 단위 병합한 뒤
 // (내가 새로 등록한 것 + 상대가 새로 등록한 것 모두 보존) 다시 저장을 시도한다.
+// 반환값: 실제로 서버에 반영됐으면 true, 아니면 false(호출부에서 저장 완료 토스트 여부 판단에 사용).
 async function pushDBToServer(retryCount){
   retryCount = retryCount || 0;
-  if(!sbClient){ cacheDBLocally(); return; }
+  if(!sbClient){ cacheDBLocally(); return true; }
   const expectedVersion = DB_VERSION;
   const newVersion = expectedVersion + 1;
   try{
@@ -770,24 +805,27 @@ async function pushDBToServer(retryCount){
         try{
           const { data: latest, error: verErr } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
           if(!verErr && latest){
-            DB = mergeRemoteDB(DB_BASELINE, DB, latest.data);
+            const before = DB;
+            const merged = mergeRemoteDB(DB_BASELINE, DB, latest.data);
+            if(JSON.stringify(merged) !== JSON.stringify(latest.data)) logSaveConflict(merged, latest.data);
+            DB = merged;
             DB_VERSION = latest.version;
             DB_BASELINE = cloneDBSnapshot(latest.data);
-            await pushDBToServer(retryCount + 1);
-            return;
+            return await pushDBToServer(retryCount + 1);
           }
         }catch(e2){ /* 최신 데이터 확인 자체가 실패하면 아래 최종 안내로 넘어감 */ }
       }
       // 여러 번 재시도해도 계속 충돌하면(매우 드묾) 그제서야 최신 데이터와 병합 후 안내한다.
-      await handleSaveConflict();
-      return;
+      return await handleSaveConflict();
     }
     DB_VERSION = newVersion;
     DB_BASELINE = cloneDBSnapshot(DB);
     cacheDBLocally();
+    return true;
   }catch(e){
     console.error('DB 저장 실패:', e);
     alert('저장 중 오류가 발생했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
+    return false;
   }
 }
 
@@ -796,20 +834,41 @@ async function handleSaveConflict(){
     const { data, error } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
     if(error) throw error;
     // 여기서도 무조건 서버 값으로 통째로 덮어쓰지 않고, 가능한 한 방금 입력한 내용을 병합해 살린다.
-    DB = mergeRemoteDB(DB_BASELINE, DB, data.data);
-    DB_VERSION = data.version || 0;
+    const merged = mergeRemoteDB(DB_BASELINE, DB, data.data);
+    if(JSON.stringify(merged) !== JSON.stringify(data.data)) logSaveConflict(merged, data.data);
+    DB = merged;
+    const mergedVersion = data.version || 0;
+    DB_VERSION = mergedVersion;
     DB_BASELINE = cloneDBSnapshot(DB);
     cacheDBLocally();
-    alert('다른 사용자와 저장이 겹쳐 최신 데이터와 병합했습니다. 방금 입력/변경하신 내용이 잘 반영됐는지 확인해 주세요.');
     if(SESSION) renderTab(state.tab);
+    // 병합한 결과를 실제로 서버에 한 번 더 저장 시도한다 - 여기까지 왔다는 건 이미 여러 번
+    // 재시도했다는 뜻이라, 이 마지막 시도가 성공하면 조용히 끝나고 실패할 때만 안내한다.
+    try{
+      const { data: upd, error: updErr } = await sbClient
+        .from('kpi_db')
+        .update({ data: DB, version: mergedVersion + 1, updated_at: new Date().toISOString() })
+        .eq('id', 1)
+        .eq('version', mergedVersion)
+        .select('version');
+      if(!updErr && upd && upd.length > 0){
+        DB_VERSION = mergedVersion + 1;
+        DB_BASELINE = cloneDBSnapshot(DB);
+        cacheDBLocally();
+        return true;
+      }
+    }catch(e3){ /* 아래 최종 안내로 진행 */ }
+    alert('다른 사용자와 저장이 겹쳐 최신 데이터와 병합했습니다. 방금 입력/변경하신 내용이 잘 반영됐는지 확인해 주세요.');
+    return false;
   }catch(e){
     console.error('충돌 처리 중 데이터 갱신 실패:', e);
+    return false;
   }
 }
 
 function startDbPolling(){
   stopDbPolling();
-  dbPollTimer = setInterval(pollDbForRemoteChanges, 20000);
+  dbPollTimer = setInterval(()=>{ pollDbForRemoteChanges(); checkForNewActivityNotifications(); }, 20000);
 }
 function stopDbPolling(){
   if(dbPollTimer){ clearInterval(dbPollTimer); dbPollTimer = null; }
@@ -1128,13 +1187,19 @@ function migrateDB(){
   // (권한 로직은 이미 staff 기준 체크가 대부분이었으므로, manager로 등록돼 있던 계정만
   // staff로 이관하면 직책 표시도 자연히 "매니저"로 통일된다).
   (DB.users||[]).forEach(u=>{ if(u.role==='manager') u.role = 'staff'; });
-  if(JSON.stringify(DB) !== __migrateBefore) saveDB();
+  if(JSON.stringify(DB) !== __migrateBefore) saveDB(true);
 }
-function saveDB(){
+// silent=true면 저장은 그대로 하되 "저장되었습니다" 토스트를 띄우지 않는다 - 사용자가 직접
+// 누른 등록/수정/삭제가 아니라 백그라운드 마이그레이션, 공지 읽음 처리, 마지막 조회 시각
+// 기록처럼 사용자 눈에 "내가 뭔가 저장했다"고 느껴지면 안 되는 자동 저장에 사용한다.
+function saveDB(silent){
   // 임원(조회 전용) 계정은 어떤 경로로 saveDB()가 호출되더라도 서버에 절대 반영되지 않는다 —
   // 등록/수정/삭제 버튼을 개별적으로 다 찾아 막는 것보다 이 한 곳을 막는 게 가장 확실하다.
   if(SESSION && SESSION.role==='exec') return;
-  pushDBToServer();
+  const p = pushDBToServer();
+  if(!silent){
+    p.then(ok=>{ if(ok) showToast('저장되었습니다.', true); }).catch(()=>{});
+  }
 }
 
 /* =========================================================================
@@ -1399,7 +1464,7 @@ function markTabViewed(tabKey){
   if(!DB.lastViewed[SESSION.empId]) DB.lastViewed[SESSION.empId] = {};
   const updated = DB.contentUpdatedAt && DB.contentUpdatedAt[tabKey];
   DB.lastViewed[SESSION.empId][tabKey] = updated || 0;
-  if(wasNew){ saveDB(); }
+  if(wasNew){ saveDB(true); }
   refreshNavBadges();
 }
 function refreshNavBadges(){
@@ -2026,13 +2091,79 @@ function renderHome(){
           <span id="homeNotifToggleIcon" class="muted">▾</span>
         </div>
         <div id="homeNotifList" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto;">${homeNotifListHtml(cachedNotifItems)}</div>
+        ${browserNotifPromptHtml()}
       </div>
     </div>
   `;
 }
+// 알림 API를 지원하고 아직 허용/거부 여부를 묻지 않은 브라우저에서만 "알림 받기" 안내를
+// 보여준다 - 이미 허용했거나 거부한 경우, 혹은 지원하지 않는 브라우저(구형 iOS Safari 등)에서는
+// 표시하지 않는다.
+function browserNotifPromptHtml(){
+  if(typeof Notification === 'undefined') return '';
+  if(Notification.permission !== 'default') return '';
+  return `<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11.5px;">
+    <span class="muted">앱을 다른 탭에 두고 있어도 새 글 알림을 받을 수 있어요.</span>
+    <span style="color:var(--primary);font-weight:600;cursor:pointer;margin-left:4px;" onclick="event.stopPropagation(); enableBrowserNotifications();">알림 받기</span>
+  </div>`;
+}
+async function enableBrowserNotifications(){
+  if(typeof Notification === 'undefined') return;
+  try{
+    const perm = await Notification.requestPermission();
+    if(perm === 'granted'){
+      setNotifCursor(new Date().toISOString()); // 지금 이후의 새 글부터만 알림 (과거 것 한꺼번에 뜨지 않도록)
+      showToast('알림이 설정되었습니다.', true);
+    }
+    if(SESSION) renderTab(state.tab);
+  }catch(e){ /* 무시 */ }
+}
+// ---- 새 게시글/자료 갱신을 시스템 알림(Notification API)으로 띄운다 ----
+// 앱 탭이 열려 있는 동안(다른 탭으로 이동했거나 최소화된 상태 포함) 새 글이 등록되면 알려준다.
+// 단, 브라우저/OS 알림은 "탭이 살아있는 동안"만 동작한다 - 앱을 완전히 종료한 뒤에도 알림을
+// 받으려면 별도의 푸시 서버 인프라(VAPID+구독 저장+발송)가 필요해 이번 범위에는 포함하지 않았다.
+let lastNotifiedActivityAt = null;
+function notifCursorKey(){ return 'lg_kpi_notif_pushed_at'; }
+function getNotifCursor(){
+  if(lastNotifiedActivityAt) return lastNotifiedActivityAt;
+  try{ lastNotifiedActivityAt = localStorage.getItem(notifCursorKey()) || new Date().toISOString(); }
+  catch(e){ lastNotifiedActivityAt = new Date().toISOString(); }
+  return lastNotifiedActivityAt;
+}
+function setNotifCursor(iso){
+  lastNotifiedActivityAt = iso;
+  try{ localStorage.setItem(notifCursorKey(), iso); }catch(e){ /* 무시 */ }
+}
+async function checkForNewActivityNotifications(){
+  if(typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  if(!SESSION || !sbClient) return;
+  try{
+    const items = await fetchRecentActivity(5);
+    if(!items || items.length===0) return;
+    const cursor = getNotifCursor();
+    const fresh = items.filter(it=> it.created_at > cursor && it.emp_id !== SESSION.empId)
+      .sort((a,b)=> a.created_at.localeCompare(b.created_at));
+    if(fresh.length===0) return;
+    // 지금 마침 홈 화면을 보고 있는 중이면 알림 배너가 이미 눈에 보이므로 중복으로 띄우지 않는다.
+    const alreadyOnHome = document.visibilityState==='visible' && state && state.tab==='home';
+    if(!alreadyOnHome){
+      fresh.slice(-3).forEach(it=>{
+        try{
+          const n = new Notification('혼매경북팀 업무 지원 시스템', {
+            body: `${it.name||''}: ${it.message||'새 소식이 있습니다.'}`,
+            icon: './icon-192.png',
+            tag: 'lg-kpi-' + (it.id!=null ? it.id : it.created_at)
+          });
+          n.onclick = function(){ window.focus(); this.close(); };
+        }catch(e){ /* 알림 생성 실패는 조용히 무시 */ }
+      });
+    }
+    setNotifCursor(fresh[fresh.length-1].created_at);
+  }catch(e){ /* 조용히 무시 */ }
+}
 // ---- 매니저 홈 대시보드: 소속 지점의 교육참석일자(예정 일정)/교육별 이수현황 요약 배너 ----
 function renderHomeEduSummaryBanner(){
-  if(!SESSION || SESSION.role!=='manager') return '';
+  if(!SESSION || SESSION.role!=='staff') return ''; // '매니저'/'사원' 역할이 'staff'로 통일되면서 예전 'manager' 문자열 체크가 남아있어 이 배너가 항상 숨겨지던 버그를 수정
   const branchId = SESSION.branchId;
   const staffList = DB.users.filter(u=>u.role==='staff' && u.branchId===branchId);
   const totalStaff = staffList.length;
@@ -2317,6 +2448,12 @@ function renderSystemAdmin(){
         </span>
         <span style="font-size:13.5px;">${DB.screensaverEnabled ? '사용 중' : '사용 안 함'}</span>
       </label>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>저장 충돌 이력 <small>(여러 매니저가 거의 동시에 저장할 때 자동 병합된 기록)</small></h3>
+      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">두 사람이 비슷한 시간에 각자 다른 내용을 저장하면, 서버가 자동으로 두 내용을 모두 살려 병합합니다. 최근에 이런 병합이 있었다면 아래에 표시됩니다 - 등록한 내용이 잘 반영됐는지 궁금할 때 참고하세요.</div>
+      <div id="conflictLogList" class="muted" style="font-size:12.5px;">불러오는 중...</div>
     </div>
 
     <div class="card" style="margin-bottom:16px;">
@@ -2999,7 +3136,7 @@ function markNoticeRead(noticeId, empId){
   if(!DB.noticeReads[noticeId]) DB.noticeReads[noticeId] = {};
   if(DB.noticeReads[noticeId][empId]) return; // 이미 읽음 처리됨 - 중복 저장 방지
   DB.noticeReads[noticeId][empId] = new Date().toISOString();
-  saveDB();
+  saveDB(true);
 }
 function isNoticeReadBy(noticeId, empId){
   return !!(DB.noticeReads && DB.noticeReads[noticeId] && DB.noticeReads[noticeId][empId]);
@@ -6617,7 +6754,7 @@ function mapSalesRows(json){
     };
   }).filter(r=>r.product);
 
-  if(newBranches.length>0 || newUsers.length>0) saveDB();
+  if(newBranches.length>0 || newUsers.length>0) saveDB(true);
   return {rows, newBranches:[...new Set(newBranches)], newUsers};
 }
 
@@ -11730,6 +11867,7 @@ function afterRenderHooks(tab){
   if(tab==='home') startNoticeRotation();
   if(tab==='home') startHomeStatusWidget(); else stopHomeStatusWidget();
   if(tab==='accountManagement') loadLoginStatsIfNeeded();
+  if(tab==='systemAdmin') refreshConflictLog();
   updateInventoryNavLabel();
   enableDragDropForFileInputs();
   updateExportToolbarVisibility(tab);
@@ -11779,6 +11917,115 @@ function updateInventoryNavLabel(){
   const el = document.getElementById('navInventoryDate');
   if(el) el.textContent = todayStr() + ' 기준';
 }
+
+/* =========================================================================
+   9k. 전체 검색 (사이드바/모바일 상단) - 공지사항/정보보고/오답노트/우수 활동 사례/
+   이슈제품 성공사례/가망고객/지점/계정을 한 번에 검색해 해당 화면으로 바로 이동한다.
+   각 게시판은 이미 자체 검색(applyBoardSearchAndPaging)이 있으므로, 게시판 결과를 클릭하면
+   그 화면으로 이동하면서 같은 검색어로 자동 필터링까지 해준다(setBoardSearch 재사용).
+   ========================================================================= */
+function globalSearchResults(query){
+  const q = String(query||'').trim();
+  if(!q || !SESSION) return [];
+  const qLower = q.toLowerCase();
+  const includes = (text)=> String(text||'').toLowerCase().includes(qLower);
+  const results = [];
+
+  (DB.notices||[]).forEach(n=>{
+    const text = `${n.title||''} ${richStripTags(n.content)} ${n.author||''}`;
+    if(includes(text)) results.push({type:'notice', id:n.id, icon:'📢', cat:'공지사항', title:n.title||'(제목 없음)', sub:(n.createdAt||'').slice(0,10)});
+  });
+  (DB.infoReports||[]).forEach(r=>{
+    const text = `${r.title||''} ${richStripTags(r.content)} ${r.authorName||''} ${branchName(r.branchId)||''}`;
+    if(includes(text)) results.push({type:'infoReport', id:r.id, icon:'📄', cat:'정보보고', title:r.title||'(제목 없음)', sub:branchName(r.branchId)||''});
+  });
+  if(SESSION.role==='admin' || SESSION.role==='exec'){
+    (DB.mistakeNotes||[]).forEach(n=>{
+      const text = `${branchName(n.branchId)||''} ${n.authorName||''} ${n.category||''} ${n.model||''} ${n.content||''}`;
+      if(includes(text)) results.push({type:'mistakeNote', id:n.id, icon:'📝', cat:'오답노트', title:n.model||n.category||'오답노트', sub:branchName(n.branchId)||''});
+    });
+  }
+  (DB.bestPractices||[]).forEach(p=>{
+    const text = `${p.title||''} ${richStripTags(p.content)} ${p.activityResult||''} ${p.managerName||''} ${bpBranchDisplayName(p.branchId)||''} ${p.authorName||''}`;
+    if(includes(text)) results.push({type:'bestPractice', id:p.id, icon:'🏆', cat:'우수 활동 사례', title:p.title||'(제목 없음)', sub:bpBranchDisplayName(p.branchId)||''});
+  });
+  (DB.issueCases||[]).forEach(p=>{
+    const text = `${p.title||''} ${richStripTags(p.content)} ${p.activityResult||''} ${p.managerName||''} ${bpBranchDisplayName(p.branchId)||''} ${p.authorName||''}`;
+    if(includes(text)) results.push({type:'issueCase', id:p.id, icon:'💡', cat:'이슈제품 성공사례', title:p.title||'(제목 없음)', sub:bpBranchDisplayName(p.branchId)||''});
+  });
+  (visibleProspects()||[]).forEach(p=>{
+    const text = `${p.name||''} ${p.phone||''}`;
+    if(includes(text)) results.push({type:'prospect', id:p.id, icon:'🧑', cat:'가망고객', title:p.name||'(이름 없음)', sub:p.phone||''});
+  });
+  if(canSwitchBranch()){
+    (DB.branches||[]).forEach(b=>{
+      if(includes(b.name)) results.push({type:'branch', id:b.id, icon:'🏬', cat:'지점', title:b.name, sub:'목표관리로 이동'});
+    });
+  }
+  if(SESSION.role==='admin'){
+    (DB.users||[]).forEach(u=>{
+      const text = `${u.name||''} ${u.empId||''}`;
+      if(includes(text)) results.push({type:'user', id:u.empId, icon:'👤', cat:'계정', title:u.name||u.empId, sub:`${u.empId} · ${ROLE_LABELS[u.role]||u.role}`});
+    });
+  }
+  return results.slice(0, 25);
+}
+function globalSearchResultsHtml(query){
+  const q = String(query||'').trim();
+  if(!q) return '';
+  const results = globalSearchResults(q);
+  if(results.length===0) return `<div class="muted" style="padding:14px;font-size:12px;">"${escapeHtml(q)}"에 대한 검색 결과가 없습니다.</div>`;
+  return results.map(r=>`
+    <div class="gs-result-item" onclick="goToGlobalSearchResult('${r.type}','${String(r.id).replace(/'/g,"")}')">
+      <span class="gs-result-icon">${r.icon}</span>
+      <div class="gs-result-text">
+        <div class="gs-result-title">${escapeHtml(r.title)}</div>
+        <div class="gs-result-sub">${escapeHtml(r.cat)}${r.sub ? ' · ' + escapeHtml(r.sub) : ''}</div>
+      </div>
+    </div>`).join('');
+}
+function handleGlobalSearchInput(value){
+  document.querySelectorAll('.gs-dropdown').forEach(d=>{
+    d.style.display = value.trim() ? 'block' : 'none';
+    d.innerHTML = globalSearchResultsHtml(value);
+  });
+}
+function closeGlobalSearch(){
+  document.querySelectorAll('.gs-dropdown').forEach(d=>{ d.style.display = 'none'; });
+}
+function goToGlobalSearchResult(type, id){
+  const input = document.getElementById('globalSearchInput');
+  const q = input ? input.value : '';
+  closeGlobalSearch();
+  if(type==='notice') setBoardSearch('notice', 'notices', q);
+  else if(type==='infoReport') setBoardSearch('infoReport', 'infoReports', q);
+  else if(type==='mistakeNote') setBoardSearch('mistakeNote', 'mistakeNote', q);
+  else if(type==='bestPractice') setBoardSearch('bestPractice', 'bestPractice', q);
+  else if(type==='issueCase') setBoardSearch('issueCase', 'issueCase', q);
+  else if(type==='prospect'){ state.prospectFilterBranchId = null; state.prospectFilterEmpId = null; renderTab('prospects'); }
+  else if(type==='branch'){ state.viewBranchId = id; state.homeAttBranchId = null; renderTab('goals'); }
+  else if(type==='user') renderTab('accountManagement');
+  const mobileBar = document.getElementById('mobileSearchBar');
+  if(mobileBar) mobileBar.style.display = 'none';
+}
+function toggleMobileGlobalSearch(){
+  const bar = document.getElementById('mobileSearchBar');
+  if(!bar) return;
+  const showing = bar.style.display === 'block';
+  bar.style.display = showing ? 'none' : 'block';
+  if(!showing){
+    const input = document.getElementById('globalSearchInput');
+    if(input){ input.value=''; input.focus(); }
+    const dd = document.getElementById('globalSearchDropdown');
+    if(dd){ dd.style.display='none'; dd.innerHTML=''; }
+  }
+}
+document.addEventListener('click', function(e){
+  if(!e.target.closest('.gs-wrap') && !e.target.closest('.mt-search-toggle')) closeGlobalSearch();
+});
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape') closeGlobalSearch();
+});
 
 (async function initApp(){
   await loadDB();
