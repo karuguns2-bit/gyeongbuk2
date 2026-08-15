@@ -7889,8 +7889,7 @@ function renderCollectGiftcard(){
         </div>
         <div class="field">
           <label>모델명</label>
-          <input id="gcModel" list="gcModelDatalist" placeholder="예: SC5GMR81S.AKOR / FQ18GC1EB2.CKOR" style="width:190px" oninput="handleModelAutocompleteInput('gcModel','gcModelSuggestHint')">
-          <datalist id="gcModelDatalist">${knownGiftcardModels().map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist>
+          <input id="gcModel" placeholder="예: SC5GMR81S.AKOR / FQ18GC1EB2.CKOR" style="width:190px" oninput="handleModelAutocompleteInput('gcModel','gcModelSuggestHint')">
           <div id="gcModelSuggestHint" class="small-note" style="margin-top:4px;"></div>
         </div>
         <div class="field">
@@ -8472,8 +8471,7 @@ function renderCollectContest(){
       <div class="form-row">
         <div class="field">
           <label>모델명</label>
-          <input id="cgModel" list="cgModelDatalist" placeholder="예: SC5GMR81S.AKOR" style="width:170px" oninput="handleModelAutocompleteInput('cgModel','cgModelSuggestHint')">
-          <datalist id="cgModelDatalist">${knownGiftcardModels().map(m=>`<option value="${escapeHtml(m)}">`).join('')}</datalist>
+          <input id="cgModel" placeholder="예: SC5GMR81S.AKOR" style="width:170px" oninput="handleModelAutocompleteInput('cgModel','cgModelSuggestHint')">
           <div id="cgModelSuggestHint" class="small-note" style="margin-top:4px;"></div>
         </div>
         <div class="field">
