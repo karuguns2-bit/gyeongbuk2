@@ -360,6 +360,7 @@ function buildSeedDataFromReal(){
   return { branches, users, goals, progress, attendance, salesData, schedule,
     competitiveness, competitivenessSummary, competitivenessAsOf, competitivenessHistory, inventory,
     notices, execPhotos: [], giftcardRequests: [], contestGifts: [], giftcardBudgetWon: 1500000,
+    giftcardRegistrationLocked: false,
     screensaverEnabled: true,
     mistakeNotes: [], bestPractices: [], issueCases: [], suggestions: [],
     eduSchedules: { hq: eduSchedulesHq, inhouse: [], etc: eduSchedulesEtc },
@@ -1044,6 +1045,8 @@ function migrateDB(){
   if(!DB.metricsOverview) DB.metricsOverview = { asOfDate:null, rows:[], uploadedAt:null, uploadedBy:null, fileName:null };
   // 장기 미사용 시 자동 전환되는 스크린세이버 사용 여부 (관리자가 시스템 관리에서 설정, 기본값 사용함)
   if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
+  // 모바일 상품권 취합 등록 일시 정지 여부 (관리자가 필요 시 켜고 끔, 기본값은 등록 가능)
+  if(DB.giftcardRegistrationLocked===undefined || DB.giftcardRegistrationLocked===null) DB.giftcardRegistrationLocked = false;
   if(!DB.eduSchedules) DB.eduSchedules = { hq: [], inhouse: [], etc: [] };
   if(!DB.eduSchedules.hq) DB.eduSchedules.hq = [];
   if(!DB.eduSchedules.inhouse) DB.eduSchedules.inhouse = [];
@@ -1400,6 +1403,15 @@ function toggleScreensaverSetting(checked){
   else stopScreensaverWatch();
   // 스위치 상태는 그대로 두고(재렌더링 없이) 안내 문구만 갱신되도록 다시 그린다.
   renderTab('systemAdmin');
+}
+// 모바일 상품권 취합 등록 일시 정지 스위치 - 관리자가 켜두면 지점 매니저 누구도 새 건을
+// 등록할 수 없고, 등록 시도 시 안내 알림만 뜬다(페이지 자체는 그대로 유지, 등록만 막는다).
+function toggleGiftcardLockSetting(checked){
+  if(!SESSION || SESSION.role!=='admin') return;
+  DB.giftcardRegistrationLocked = !!checked;
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [모바일 상품권] 등록 ${DB.giftcardRegistrationLocked ? '일시 정지를 설정' : '정지를 해제'}했습니다`);
+  renderTab('collectGiftcard');
 }
 function branchName(id){ const b=DB.branches.find(x=>x.id===id); return b?b.name:'-'; }
 function updateNavVisibilityForRole(){
@@ -7613,6 +7625,15 @@ function renderCollectGiftcard(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>새 건 등록</h3>
+      ${SESSION.role==='admin' ? `
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
+        <span class="toggle-switch">
+          <input type="checkbox" ${DB.giftcardRegistrationLocked ? 'checked' : ''} onchange="toggleGiftcardLockSetting(this.checked)">
+          <span class="slider"></span>
+        </span>
+        <span style="font-size:13.5px;">등록 일시 정지 ${DB.giftcardRegistrationLocked ? '(사용 중 - 매니저 등록이 막혀 있습니다)' : '(사용 안 함)'}</span>
+      </label>` : ''}
+      ${DB.giftcardRegistrationLocked ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-weight:600;">⛔ 8월 모바일상품권 사용기간 종료로 인해 등록이 일시 정지됩니다.</div>` : ''}
       <div class="form-row">
         <div class="field">
           <label>지점명</label>
@@ -7665,7 +7686,7 @@ function renderCollectGiftcard(){
           <label>영수증 증빙 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
           <input id="gcReceipt" type="file" multiple>
         </div>
-        <button class="btn btn-primary" onclick="submitGiftcardRequest()">등록</button>
+        <button class="btn btn-primary" onclick="submitGiftcardRequest()" ${DB.giftcardRegistrationLocked ? 'disabled title="등록이 일시 정지되었습니다"' : ''}>등록</button>
       </div>
     </div>
 
@@ -7753,6 +7774,7 @@ function applyModelAutocomplete(inputId, hintId, model){
   closeModelHint(hintId);
 }
 function submitGiftcardRequest(){
+  if(DB.giftcardRegistrationLocked){ alert('8월 모바일상품권 사용기간 종료로 인해 등록이 일시 정지됩니다'); return; }
   const branchId = document.getElementById('gcBranch').value;
   const transferBranchId = document.getElementById('gcTransferBranch').value;
   const orderNo = document.getElementById('gcOrderNo').value.trim();
@@ -7887,8 +7909,14 @@ const CONTEST_GIFT_TYPE_OPTIONS = [
   { value:'26년 8월 에어컨 구독 특별사은품', gift:'[셰퍼]에어브리즈 14인치 선풍기' },
   // 매장에서 직접 수령하는 항목이라 실제 배송 주소가 없으므로, 선택 시 주소칸에 안내 문구를 자동으로 채워준다.
   // 선착순 24개 한정 사은품이므로 limit을 지정해 등록 시마다 잔여수량 안내/소진 시 등록 차단에 사용한다.
-  { value:'26년 8월 로니 런칭 기념 사은품(24건 선착순 한정)', gift:'[아티] 내열용기 직사각 5종세트', address:'매장으로 배송', limit:24 }
+  { value:'26년 8월 로니 런칭 기념 사은품(24건 선착순 한정)', gift:'[아티] 내열용기 직사각 5종세트', address:'매장으로 배송', limit:24, closed:true } // 2026-08-18 신청 종료
 ];
+// "새 건 등록" 드롭다운에는 관리자가 종료 처리한(closed:true) 항목은 노출하지 않는다(과거 항목
+// 선택 자체를 원천 차단). 기존에 이미 등록된 건을 수정하는 화면(edit-row select)은 과거 값을
+// 그대로 보여줘야 하므로 영향받지 않는다 - subTierContestOptionsForNewEntry()와 동일한 패턴.
+function contestGiftOptionsForNewEntry(){
+  return CONTEST_GIFT_TYPE_OPTIONS.filter(o=>!o.closed);
+}
 // 선착순 한정수량 항목의 누적 지급 수량(판매 건수 qty 합산)을 계산한다. 전 지점 취합 기준(각 지점별이 아니라 전체 합계).
 // excludeId를 넘기면 해당 레코드는 집계에서 제외한다(수정 화면에서 자기 자신의 기존 qty를 이중 차감하지 않기 위함).
 function contestGiftIssuedQty(contestTypeValue, excludeId){
@@ -7913,12 +7941,12 @@ const SUB_TIER_CONTEST_OPTIONS = [
   // 다른 항목들과 달리 실제 배송 주소가 필요한 항목이라 needsAddress로 표시해 둔다.
   // 이 항목을 선택했을 때만 주소 검색 버튼이 활성화되고, 그 외 항목은 "매장으로 입고"로
   // 자동 고정된다(구독연동사은품 취합 페이지의 로니 항목과 반대 방향의 동일한 패턴).
-  { value:'에어컨 진열 판매', gift:'셰퍼 에어브리즈 14인치 선풍기', needsAddress:true },
+  { value:'에어컨 진열 판매', gift:'셰퍼 에어브리즈 14인치 선풍기', needsAddress:true, closed:true }, // 2026-08-18 신청 종료
   // ---- 2026-08-14 추가: 식기세척기/스타일러 연동사은품 + 워시타워·콤보/냉장고 구재고 판매 사은품 ----
   // 식기세척기/스타일러 연동사은품: 고객 댁으로 실제 배송되는 항목이라 needsAddress로 표시하고,
   // windowStart~windowEnd 기간(8/14~8/18)에만 신청 가능하도록 제한한다.
-  { value:'식기세척기 연동사은품', gift:'[프로쉬]식기세척기 그린 레몬 세제 2EA', needsAddress:true, windowStart:'2026-08-14', windowEnd:'2026-08-18' },
-  { value:'스타일러 연동사은품', gift:'스타일러 전용옷걸이 1EA', needsAddress:true, windowStart:'2026-08-14', windowEnd:'2026-08-18' },
+  { value:'식기세척기 연동사은품', gift:'[프로쉬]식기세척기 그린 레몬 세제 2EA', needsAddress:true, windowStart:'2026-08-14', windowEnd:'2026-08-18', closed:true }, // 2026-08-18 신청 종료(윈도우 만료 전 조기 종료)
+  { value:'스타일러 연동사은품', gift:'스타일러 전용옷걸이 1EA', needsAddress:true, windowStart:'2026-08-14', windowEnd:'2026-08-18', closed:true }, // 2026-08-18 신청 종료(윈도우 만료 전 조기 종료)
   // 워시타워/콤보·냉장고 구재고 판매 사은품: 매장으로 배송되는 항목이라 fixedAddress로 주소를 자동
   // 고정하고("매장으로 입고"가 아니라 "매장으로 배송"), 8/14~8/17 기간 + 선착순 5건 한정으로 제한한다.
   { value:'워시타워/콤보 구재고 판매시', gift:'[LG생활건강]피지 캡슐세제+아우리 드라이시트 2종세트', fixedAddress:'매장으로 배송', windowStart:'2026-08-14', windowEnd:'2026-08-17', limit:5 },
@@ -7927,7 +7955,9 @@ const SUB_TIER_CONTEST_OPTIONS = [
 // 신청기간이 정해진 항목(windowStart/windowEnd)이면 오늘 날짜가 그 범위(포함) 안에 있는지 확인한다.
 // 기간이 지정되지 않은 기존 항목들은 항상 true(기존 동작 그대로 상시 신청 가능).
 function subTierContestOptionWithinWindow(opt){
-  if(!opt || (!opt.windowStart && !opt.windowEnd)) return true;
+  if(!opt) return true;
+  if(opt.closed) return false; // 관리자가 신청기간과 무관하게 조기 종료 처리한 항목
+  if(!opt.windowStart && !opt.windowEnd) return true;
   const today = todayStr();
   if(opt.windowStart && today < opt.windowStart) return false;
   if(opt.windowEnd && today > opt.windowEnd) return false;
@@ -7981,7 +8011,12 @@ function syncContestGiftNameFor(selectId, giftId, addressId, recordId){
 // 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
 // canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
 function canEditContestGift(r){
-  return !!(r && (SESSION.role==='admin' || r.requesterEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
+  if(!r) return false;
+  // 신청이 종료 처리된(closed:true) 항목은 관리자 포함 누구도 기존 등록건을 수정/삭제할 수 없다
+  // (종료 시점 기준 최종 집계가 이후에 바뀌지 않도록 기록을 그대로 보존).
+  const opt = CONTEST_GIFT_TYPE_OPTIONS.find(o=>o.value===r.contestType);
+  if(opt && opt.closed) return false;
+  return !!(SESSION.role==='admin' || r.requesterEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId));
 }
 // ---- 취합 페이지 공통 공지배너 (문구 + 사진 여러 장, 관리자만 등록·수정·삭제, 전 직원 열람) ----
 // 여러 취합 페이지(구독연동사은품 취합·구독4품목↑/금액대별 사은품 취합·모바일 상품권 취합 등)에서
@@ -8198,7 +8233,7 @@ function renderCollectContest(){
           <label>컨테스트 구분</label>
           <select id="cgContestType" style="width:220px" onchange="syncContestGiftName()">
             <option value="">선택하세요</option>
-            ${CONTEST_GIFT_TYPE_OPTIONS.map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(o.value)}</option>`).join('')}
+            ${contestGiftOptionsForNewEntry().map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(o.value)}</option>`).join('')}
           </select>
         </div>
         <div class="field">
@@ -8394,8 +8429,14 @@ function submitContestGift(){
   if(!isValidGiftcardModelList(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR) · 여러 모델은 "/"로 구분해 주세요.'); return; }
   const oversized = evidenceFiles.find(f=>f.size > 3*1024*1024);
   if(oversized){ alert(`"${oversized.name}" 파일이 3MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
-  // 선착순 한정수량 항목은 전 지점 합산 지급 수량이 한도에 도달하면 신규 등록을 막는다.
+  // 신청기간과 무관하게 관리자가 종료 처리한 항목은(드롭다운에서 미리 걸러지지만, 화면을 오래
+  // 띄워둔 채 등록을 시도하는 경우까지 대비해) 최종 등록 시점에도 한 번 더 확인한다.
   const contestOpt = CONTEST_GIFT_TYPE_OPTIONS.find(o=>o.value===contestType);
+  if(contestOpt && contestOpt.closed){
+    alert(`"${contestType}" 신청이 종료되어 더 이상 등록할 수 없습니다.`);
+    return;
+  }
+  // 선착순 한정수량 항목은 전 지점 합산 지급 수량이 한도에 도달하면 신규 등록을 막는다.
   if(contestOpt && contestOpt.limit!=null && contestGiftIssuedQty(contestOpt.value) >= contestOpt.limit){
     alert(`선착순 한정수량 ${contestOpt.limit}개 소진 완료로 더 이상 신청 할 수 없습니다.`);
     return;
@@ -8543,7 +8584,12 @@ function syncSubTierGiftNameFor(selectId, giftId, addressId, addressBtnId){
 // 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
 // canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
 function canEditSubTierContest(r){
-  return !!(r && (SESSION.role==='admin' || r.requesterEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
+  if(!r) return false;
+  // 신청이 종료 처리된(closed:true) 항목은 관리자 포함 누구도 기존 등록건을 수정/삭제할 수 없다
+  // (종료 시점 기준 최종 집계가 이후에 바뀌지 않도록 기록을 그대로 보존).
+  const opt = SUB_TIER_CONTEST_OPTIONS.find(o=>o.value===r.contestType);
+  if(opt && opt.closed) return false;
+  return !!(SESSION.role==='admin' || r.requesterEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId));
 }
 function subTierContestBannerHtml(){
   return `
@@ -8716,7 +8762,11 @@ function submitSubTierContest(){
   // 신청기간이 지정된 항목은(드롭다운에서 미리 걸러지지만, 화면을 오래 띄워둔 채 마감일을 넘겨 등록을
   // 시도하는 경우까지 대비해) 최종 등록 시점에도 한 번 더 기간을 확인한다.
   if(contestOpt && !subTierContestOptionWithinWindow(contestOpt)){
-    if(msgEl) msgEl.textContent = `"${contestType}" 항목은 신청 기간(${contestOpt.windowStart||''}~${contestOpt.windowEnd||''})이 지나 더 이상 등록할 수 없습니다.`;
+    if(msgEl){
+      msgEl.textContent = contestOpt.closed
+        ? `"${contestType}" 항목은 신청이 종료되어 더 이상 등록할 수 없습니다.`
+        : `"${contestType}" 항목은 신청 기간(${contestOpt.windowStart||''}~${contestOpt.windowEnd||''})이 지나 더 이상 등록할 수 없습니다.`;
+    }
     return;
   }
   // 선착순 한정수량 항목은 최종 등록 시점에도 소진 여부를 한 번 더 확인해 한도를 초과하지 않게 한다.
