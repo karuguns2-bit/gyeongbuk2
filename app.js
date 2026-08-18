@@ -359,7 +359,7 @@ function buildSeedDataFromReal(){
 
   return { branches, users, goals, progress, attendance, salesData, schedule,
     competitiveness, competitivenessSummary, competitivenessAsOf, competitivenessHistory, inventory,
-    notices, execPhotos: [], giftcardRequests: [], contestGifts: [], giftcardBudgetWon: 1500000,
+    notices, materials: [], execPhotos: [], giftcardRequests: [], contestGifts: [], giftcardBudgetWon: 1500000,
     giftcardRegistrationLocked: false,
     screensaverEnabled: true,
     mistakeNotes: [], bestPractices: [], issueCases: [], suggestions: [],
@@ -1016,6 +1016,8 @@ function migrateDB(){
   if(!DB.notices) DB.notices = [];
   DB.notices.forEach(n=>{ if(!n.attachments) n.attachments = []; });
   if(!DB.noticeReads) DB.noticeReads = {};
+  if(!DB.materials) DB.materials = [];
+  DB.materials.forEach(n=>{ if(!n.attachments) n.attachments = []; });
   if(!DB.infoReports) DB.infoReports = [];
   DB.infoReports.forEach(r=>{ if(!r.attachments) r.attachments = []; });
   if(!DB.execPhotos) DB.execPhotos = [];
@@ -1468,7 +1470,7 @@ const state = { tab:'home', viewBranchId:null };
 // 두 값을 비교해서 "마지막으로 본 이후 새 글"이 있으면 뱃지를 띄운다.
 // =========================================================================
 const NEW_BADGE_TABS = [
-  'notices','infoReports','kakaoFriends',
+  'notices','materials','infoReports','kakaoFriends',
   'eduHq','eduInhouse','eduEtc','eduVideo','eduTest','eduAiRp',
   'collectPhoto','collectGiftcard','collectContest','subTierContest',
   'mistakeNote','issueCase','bestPractice','policyQuiz',
@@ -1601,6 +1603,7 @@ function renderTab(tab){
   if(tab==='metricsOverview') main.innerHTML = renderMetricsOverview();
   if(tab==='goals') main.innerHTML = renderGoals();
   if(tab==='notices') main.innerHTML = renderNoticesBoard();
+  if(tab==='materials') main.innerHTML = renderMaterialsBoard();
   if(tab==='infoReports') main.innerHTML = renderInfoReports();
   if(tab==='subscription') main.innerHTML = renderSubscription();
   if(tab==='subB2bSales') main.innerHTML = renderSubB2bSales();
@@ -1637,6 +1640,7 @@ function renderTab(tab){
   if(tab!=='systemAdmin' && tab!=='accountManagement') loginStatsCache = null;
   if(tab!=='accountManagement') state.sysUserEditId = null;
   if(tab!=='notices') state.noticeBoardEditId = null;
+  if(tab!=='materials') state.materialEditId = null;
   if(tab!=='infoReports') state.infoReportEditId = null;
   if(tab!=='subB2bSales') state.b2bEditId = null;
   if(isSameTab && main){
@@ -3625,6 +3629,180 @@ function saveEditNoticeBoard(id){
     state.noticeBoardEditId = null;
     saveDB();
     renderTab('notices');
+  }
+  if(files.length===0){ finalize([]); return; }
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+}
+
+/* =========================================================================
+   6a2b. 각종 자료 게시판 (운영 관리 하위 — 공지사항과 정보보고 사이)
+   공지사항 게시판과 동일한 구성(제목/리치 에디터 본문/파일 여러 개 첨부/목록 펼치기)이지만,
+   홈 배너 연동·매니저별 읽음 추적은 없는 순수 자료실이다. 작성·수정·삭제는 관리자만 가능하고,
+   조회·검색은 전 직원 가능하다.
+   ========================================================================= */
+function canEditMaterial(){ return !!(SESSION && SESSION.role==='admin'); }
+function sortedMaterials(){
+  return [...(DB.materials||[])].sort((a,b)=> b.createdAt.localeCompare(a.createdAt));
+}
+function renderMaterialsBoard(){
+  const isAdmin = canEditMaterial();
+  const editId = state.materialEditId || null;
+  const allMaterials = sortedMaterials();
+  const { items: materials, barHtml: materialBarHtml, pagerHtml: materialPagerHtml } = applyBoardSearchAndPaging(
+    'material', 'materials', allMaterials,
+    n => `${n.title||''} ${richStripTags(n.content)} ${n.author||''}`,
+    '제목·내용·작성자로 검색'
+  );
+
+  const createFormHtml = isAdmin ? `
+    <div class="card" style="margin-bottom:16px;">
+      <h3>새 자료 작성</h3>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="mtTitle" style="width:100%" placeholder="자료 제목"></div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;"><label>내용</label>${richEditorHtml('mtContent','','자료 내용을 입력하세요',110)}</div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;">
+          <label>파일 첨부 (선택, 사진·문서 등 다중 선택 가능)</label>
+          <input type="file" id="mtFiles" multiple>
+        </div>
+      </div>
+      <div class="small-note">※ 사진, PDF, 워드/엑셀 등 어떤 파일이든 첨부할 수 있습니다. 대용량 파일은 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
+      <button class="btn btn-primary" style="margin-top:8px;" onclick="submitMaterial()">등록</button>
+      <div id="mtMsg" class="small-note"></div>
+    </div>` : '';
+
+  const listHtml = materials.map(n=>{
+    if(editId === n.id && isAdmin){
+      const existingPhotosHtml = (n.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 44, `removeMaterialAttachment('${n.id}', ${idx})`)).join('');
+      return `
+        <div class="card" style="margin-bottom:12px;">
+          <div class="form-row">
+            <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="mte_${n.id}_title" style="width:100%" value="${escapeHtml(n.title)}"></div>
+          </div>
+          <div class="form-row">
+            <div class="field" style="flex:1;"><label>내용</label>${richEditorHtml('mte_'+n.id+'_content', richContentHtml(n.content), '', 110)}</div>
+          </div>
+          <div class="form-row">
+            <div class="field" style="flex:1;">
+              <label>기존 첨부 파일 (× 클릭 시 즉시 삭제)</label>
+              <div>${existingPhotosHtml || '<span class="muted">첨부된 파일이 없습니다.</span>'}</div>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field" style="flex:1;">
+              <label>새 파일 추가 (선택, 기존 첨부에 이어서 추가됨)</label>
+              <input type="file" id="mte_${n.id}_files" multiple>
+            </div>
+          </div>
+          <div class="form-row">
+            <button class="btn btn-primary" onclick="saveEditMaterial('${n.id}')">저장</button>
+            <button class="btn" onclick="cancelEditMaterial()">취소</button>
+          </div>
+        </div>`;
+    }
+    const dt = new Date(n.createdAt);
+    const dtStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    const photosHtml = (n.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 108, isAdmin ? `removeMaterialAttachment('${n.id}', ${idx})` : null)).join('');
+    const hasAttachment = (n.attachments||[]).length>0;
+    const expanded = isPostExpanded(n.id);
+    return `
+      <div class="card" style="margin-bottom:12px;">
+        <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${n.id}','materials')">
+          <div class="nb-title">${escapeHtml(n.title)}</div>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
+          </div>
+        </div>
+        ${expanded ? `
+        <div class="nb-content" style="margin:10px 0 0;">${richContentHtml(n.content)}</div>
+        ${photosHtml ? `<div class="attach-gallery">${photosHtml}</div>` : ''}
+        <div class="flex-between" style="align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;">
+          <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
+          ${isAdmin ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditMaterial('${n.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteMaterial('${n.id}')">삭제</button></div>` : ''}
+        </div>
+        ` : ''}
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="page-title">각종 자료</div>
+    <div class="page-desc">서식·안내문·참고자료 등을 게시판 형태로 관리합니다.</div>
+    ${createFormHtml}
+    ${allMaterials.length>0 ? materialBarHtml : ''}
+    ${listHtml || `<div class="card muted">${allMaterials.length===0 ? '등록된 자료가 없습니다.' : '검색 결과가 없습니다.'}</div>`}
+    ${materialPagerHtml}
+  `;
+}
+function startEditMaterial(id){
+  if(!canEditMaterial()) return;
+  state.materialEditId = id;
+  renderTab('materials');
+}
+function cancelEditMaterial(){
+  state.materialEditId = null;
+  renderTab('materials');
+}
+function deleteMaterial(id){
+  if(!canEditMaterial()) return;
+  if(!confirm('이 자료를 삭제하시겠습니까?')) return;
+  const target = DB.materials.find(x=>x.id===id);
+  DB.materials = DB.materials.filter(x=>x.id!==id);
+  if(target) (target.attachments||[]).forEach(f=>deleteFromStorage(f.dataUrl));
+  saveDB();
+  renderTab('materials');
+}
+function removeMaterialAttachment(id, idx){
+  if(!canEditMaterial()) return;
+  const n = DB.materials.find(x=>x.id===id);
+  if(!n || !n.attachments) return;
+  const removed = n.attachments[idx];
+  n.attachments.splice(idx, 1);
+  if(removed) deleteFromStorage(removed.dataUrl);
+  saveDB();
+  renderTab('materials');
+}
+function submitMaterial(){
+  if(!canEditMaterial()) return;
+  const title = document.getElementById('mtTitle').value.trim();
+  const content = richEditorValue('mtContent');
+  const msgEl = document.getElementById('mtMsg');
+  if(!title){ if(msgEl) msgEl.textContent = '제목을 입력해 주세요.'; return; }
+  const fileInput = document.getElementById('mtFiles');
+  const files = (fileInput && fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ if(msgEl) msgEl.textContent = `"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`; return; }
+  function finalize(attachments){
+    DB.materials.push({id:'material_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), title, content, author: SESSION.name, createdAt: new Date().toISOString(), attachments});
+    touchTabContent('materials');
+    saveDB();
+    logActivity('update', `${SESSION.name}님(관리자)이 [각종 자료]를 등록했습니다: ${title}`);
+    renderTab('materials');
+  }
+  if(files.length===0){ finalize([]); return; }
+  Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>{ if(msgEl) msgEl.textContent = '파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'; });
+}
+function saveEditMaterial(id){
+  if(!canEditMaterial()) return;
+  const n = DB.materials.find(x=>x.id===id);
+  if(!n) return;
+  const title = document.getElementById(`mte_${id}_title`).value.trim();
+  const content = richEditorValue(`mte_${id}_content`);
+  if(!title){ alert('제목을 입력해 주세요.'); return; }
+  const fileInput = document.getElementById(`mte_${id}_files`);
+  const files = (fileInput && fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
+  const oversized = files.find(f=>f.size > 5*1024*1024);
+  if(oversized){ alert(`"${oversized.name}" 파일이 5MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
+  function finalize(newAttachments){
+    n.title = title;
+    n.content = content;
+    if(newAttachments && newAttachments.length>0) n.attachments = (n.attachments||[]).concat(newAttachments);
+    state.materialEditId = null;
+    saveDB();
+    renderTab('materials');
   }
   if(files.length===0){ finalize([]); return; }
   Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
@@ -12195,6 +12373,10 @@ function globalSearchResults(query){
     const text = `${n.title||''} ${richStripTags(n.content)} ${n.author||''}`;
     if(includes(text)) results.push({type:'notice', id:n.id, icon:'📢', cat:'공지사항', title:n.title||'(제목 없음)', sub:(n.createdAt||'').slice(0,10)});
   });
+  (DB.materials||[]).forEach(n=>{
+    const text = `${n.title||''} ${richStripTags(n.content)} ${n.author||''}`;
+    if(includes(text)) results.push({type:'material', id:n.id, icon:'📁', cat:'각종 자료', title:n.title||'(제목 없음)', sub:(n.createdAt||'').slice(0,10)});
+  });
   (DB.infoReports||[]).forEach(r=>{
     const text = `${r.title||''} ${richStripTags(r.content)} ${r.authorName||''} ${branchName(r.branchId)||''}`;
     if(includes(text)) results.push({type:'infoReport', id:r.id, icon:'📄', cat:'정보보고', title:r.title||'(제목 없음)', sub:branchName(r.branchId)||''});
@@ -12258,6 +12440,7 @@ function goToGlobalSearchResult(type, id){
   const q = input ? input.value : '';
   closeGlobalSearch();
   if(type==='notice') setBoardSearch('notice', 'notices', q);
+  else if(type==='material') setBoardSearch('material', 'materials', q);
   else if(type==='infoReport') setBoardSearch('infoReport', 'infoReports', q);
   else if(type==='mistakeNote') setBoardSearch('mistakeNote', 'mistakeNote', q);
   else if(type==='bestPractice') setBoardSearch('bestPractice', 'bestPractice', q);
