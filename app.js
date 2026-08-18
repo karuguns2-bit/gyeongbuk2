@@ -7905,8 +7905,8 @@ function handlePhoneInput(evt){
 }
 // ---- 3) 컨테스트 사은품 취합 ----
 const CONTEST_GIFT_TYPE_OPTIONS = [
-  { value:'26년 8월 구독특별 사은품', gift:'[가이타이너]슈라우프 와이드 그릴' },
-  { value:'26년 8월 에어컨 구독 특별사은품', gift:'[셰퍼]에어브리즈 14인치 선풍기' },
+  { value:'26년 8월 구독특별 사은품', gift:'[가이타이너]슈라우프 와이드 그릴', closed:true }, // 2026-08-18 운영 종료
+  { value:'26년 8월 에어컨 구독 특별사은품', gift:'[셰퍼]에어브리즈 14인치 선풍기', closed:true }, // 2026-08-18 운영 종료
   // 매장에서 직접 수령하는 항목이라 실제 배송 주소가 없으므로, 선택 시 주소칸에 안내 문구를 자동으로 채워준다.
   // 선착순 24개 한정 사은품이므로 limit을 지정해 등록 시마다 잔여수량 안내/소진 시 등록 차단에 사용한다.
   { value:'26년 8월 로니 런칭 기념 사은품(24건 선착순 한정)', gift:'[아티] 내열용기 직사각 5종세트', address:'매장으로 배송', limit:24, closed:true } // 2026-08-18 신청 종료
@@ -8012,10 +8012,10 @@ function syncContestGiftNameFor(selectId, giftId, addressId, recordId){
 // canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
 function canEditContestGift(r){
   if(!r) return false;
-  // 신청이 종료 처리된(closed:true) 항목은 관리자 포함 누구도 기존 등록건을 수정/삭제할 수 없다
-  // (종료 시점 기준 최종 집계가 이후에 바뀌지 않도록 기록을 그대로 보존).
+  // 신청이 종료 처리된(closed:true) 항목은 매니저(등록자 본인/같은 지점)는 더 이상 수정/삭제할 수
+  // 없고, 관리자만 최종 집계 보정을 위해 수정/삭제할 수 있다(구독연동사은품 취합 전체 종료 - 2026-08-18).
   const opt = CONTEST_GIFT_TYPE_OPTIONS.find(o=>o.value===r.contestType);
-  if(opt && opt.closed) return false;
+  if(opt && opt.closed) return SESSION.role==='admin';
   return !!(SESSION.role==='admin' || r.requesterEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId));
 }
 // ---- 취합 페이지 공통 공지배너 (문구 + 사진 여러 장, 관리자만 등록·수정·삭제, 전 직원 열람) ----
@@ -8228,6 +8228,7 @@ function renderCollectContest(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>새 건 등록</h3>
+      ${contestGiftOptionsForNewEntry().length===0 ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-weight:600;">⛔ 26년 8월 18일 기준 구독연동사은품 운영건 없음</div>` : ''}
       <div class="form-row">
         <div class="field">
           <label>컨테스트 구분</label>
@@ -8292,7 +8293,7 @@ function renderCollectContest(){
           <label>증빙자료 첨부 (사진/PPT/엑셀 등 여러 개 가능)</label>
           <input id="cgEvidenceFiles" type="file" multiple>
         </div>
-        <button class="btn btn-primary" onclick="submitContestGift()">등록</button>
+        <button class="btn btn-primary" onclick="submitContestGift()" ${contestGiftOptionsForNewEntry().length===0 ? 'disabled title="운영이 종료되어 등록할 수 없습니다"' : ''}>등록</button>
       </div>
       <div class="small-note" style="margin-top:-8px;">※ 촬영한 사진을 첨부 할 시 대용량 이슈로 인하여 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
     </div>
@@ -8410,6 +8411,7 @@ function readFileAsDataUrl(file){
   });
 }
 function submitContestGift(){
+  if(contestGiftOptionsForNewEntry().length===0){ alert('26년 8월 18일 기준 구독연동사은품 운영건 없음'); return; }
   const contestType = document.getElementById('cgContestType').value.trim();
   const giftName = document.getElementById('cgGiftName').value.trim();
   const branchId = document.getElementById('cgBranch').value;
