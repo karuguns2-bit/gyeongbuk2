@@ -343,6 +343,23 @@
      고정되도록 만든다 - 결과적으로 등록폼 등 위쪽 내용은 그대로 보이면서 표만 자체
      스크롤되는, 엑셀 틀고정과 더 비슷한 형태가 된다. (2026.08) */
   .table-scroll{overflow-x:auto;overflow-y:auto;max-height:65vh;}
+  /* 교육일정안내: 좌측 목록 / 우측 달력 2단 레이아웃 — min-width:0으로 flex item이 내용
+     크기만큼 억지로 넓어지지 않게(=가로 스크롤 안 생기게) 막고, 좁은 화면에서는 세로로
+     쌓이도록 명시적 breakpoint를 둔다. */
+  .edu-cal-layout{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;}
+  .edu-cal-list{flex:1 1 420px;min-width:0;}
+  .edu-cal-side{flex:1 1 440px;min-width:0;}
+  @media(max-width:860px){
+    .edu-cal-list, .edu-cal-side{flex:1 1 100%;width:100%;}
+  }
+  .edu-cal-daycell{min-height:64px;border-radius:8px;padding:4px 3px;display:flex;flex-direction:column;align-items:center;box-sizing:border-box;}
+  .edu-cal-daynum{font-size:12px;margin-bottom:2px;}
+  .edu-cal-event{width:100%;font-size:10px;line-height:1.35;padding:1px 4px;border-radius:4px;background:#fdecec;color:var(--primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;box-sizing:border-box;}
+  .edu-cal-more{font-size:9.5px;color:var(--text-sub);}
+  @media(max-width:640px){
+    .edu-cal-daycell{min-height:50px;padding:3px 2px;}
+    .edu-cal-event{font-size:8.5px;padding:0 3px;}
+  }
   /* 홈 대시보드 근무 일정 카드의 날짜 이동(달력+좌우 버튼) — 가운데 정렬, 짧고 둥근 디자인 */
   .home-att-date-nav{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:10px;}
   .home-att-date-arrow{

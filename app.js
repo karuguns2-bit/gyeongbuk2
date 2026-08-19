@@ -10989,21 +10989,28 @@ function eduScheduleCalendarHtml(cat){
   const startWeekday = first.getDay();
   const daysInMonth = new Date(y, m, 0).getDate();
   const list = DB.eduSchedules[cat] || [];
-  const countByDate = {};
-  list.forEach(s=>{ countByDate[s.date] = (countByDate[s.date]||0)+1; });
+  const byDate = {};
+  list.forEach(s=>{ if(!byDate[s.date]) byDate[s.date] = []; byDate[s.date].push(s); });
   const today = todayStr();
   const filterDate = eduCalFilterDate(cat);
   const cells = [];
   for(let i=0;i<startWeekday;i++) cells.push('<div></div>');
   for(let d=1; d<=daysInMonth; d++){
     const dateStr = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const cnt = countByDate[dateStr]||0;
+    const dayEvents = byDate[dateStr] || [];
+    const cnt = dayEvents.length;
     const isToday = dateStr===today;
     const isSel = dateStr===filterDate;
+    const shown = dayEvents.slice(0,2);
+    const extra = cnt - shown.length;
+    // 선택된 날짜는 진한 배경 위에 흰 글씨로, 그 외에는 옅은 배지 형태로 교육명을 셀 안에 그대로 보여준다
+    // (예전엔 점 하나만 찍혀 있어 어떤 교육인지 알려면 클릭까지 해야 했다).
+    const eventsHtml = shown.map(s=>`<div class="edu-cal-event" title="${escapeHtml(s.title)}" style="${isSel?'background:rgba(255,255,255,.28);color:#fff;':''}">${escapeHtml(s.title)}</div>`).join('')
+      + (extra>0 ? `<div class="edu-cal-more" style="${isSel?'color:#fff;opacity:.85;':''}">+${extra}건 더</div>` : '');
     cells.push(`
-      <div ${cnt>0?`onclick="toggleEduCalFilterDate('${cat}','${dateStr}')"`:''} title="${cnt>0?cnt+'건':''}" style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:12px;cursor:${cnt>0?'pointer':'default'};${isSel?'background:var(--primary);color:#fff;':(isToday?'background:#fdecec;color:var(--primary);font-weight:700;':'color:var(--text);')}">
-        <span>${d}</span>
-        ${cnt>0?`<span style="width:5px;height:5px;border-radius:50%;background:${isSel?'#fff':'var(--primary)'};margin-top:2px;"></span>`:''}
+      <div class="edu-cal-daycell" ${cnt>0?`onclick="toggleEduCalFilterDate('${cat}','${dateStr}')"`:''} title="${cnt>0?cnt+'건':''}" style="cursor:${cnt>0?'pointer':'default'};${isSel?'background:var(--primary);':(isToday?'background:#fdecec;':'')}">
+        <div class="edu-cal-daynum" style="${isSel?'color:#fff;font-weight:700;':(isToday?'color:var(--primary);font-weight:700;':'')}">${d}</div>
+        ${eventsHtml}
       </div>`);
   }
   const weekDayHeaders = ['일','월','화','수','목','금','토'].map(w=>`<div class="muted" style="text-align:center;font-size:11px;font-weight:700;">${w}</div>`).join('');
@@ -11014,9 +11021,9 @@ function eduScheduleCalendarHtml(cat){
         <div style="font-weight:700;font-size:14px;">${y}년 ${m}월</div>
         <button type="button" class="btn btn-sm" onclick="shiftEduCalMonth('${cat}',1)">▶</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px;">${weekDayHeaders}</div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">${cells.join('')}</div>
-      ${filterDate ? `<div class="small-note" style="margin-top:10px;">📌 <b>${filterDate}</b> 일정만 보는 중 · <span style="color:var(--primary);cursor:pointer;text-decoration:underline;" onclick="toggleEduCalFilterDate('${cat}','${filterDate}')">전체 보기</span></div>` : `<div class="small-note" style="margin-top:10px;">점이 있는 날짜를 클릭하면 해당 날짜 일정만 볼 수 있습니다.</div>`}
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;">${weekDayHeaders}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">${cells.join('')}</div>
+      ${filterDate ? `<div class="small-note" style="margin-top:10px;">📌 <b>${filterDate}</b> 일정만 보는 중 · <span style="color:var(--primary);cursor:pointer;text-decoration:underline;" onclick="toggleEduCalFilterDate('${cat}','${filterDate}')">전체 보기</span></div>` : `<div class="small-note" style="margin-top:10px;">날짜를 클릭하면 해당 날짜 일정만 볼 수 있습니다.</div>`}
     </div>`;
 }
 // 교육 일정(본부/사내/기타)과 교육 이수율(화상교육/월간test/AI R-P)은 사이드바에 각각
@@ -11131,8 +11138,8 @@ function renderEduSchedule(cat){
     ${eduScheduleCatPills(cat)}
     <div class="page-title">${eduCategoryLabel(cat)} 안내</div>
     <div class="page-desc">${cat==='hq' ? '본부(평택)에서 진행되는 교육 일정을 안내합니다.' : (cat==='inhouse' ? '사내(지점/본부)에서 진행되는 교육 일정을 안내합니다.' : '위 항목에 속하지 않는 기타 교육 일정을 안내합니다.')} 대상자로 지정된 경우 참석일 기준 알람일(D-N) 전부터 로그인 시 안내됩니다 (대상자 미지정 시 대상 지점 전체, 기본 D-2).</div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-      <div style="flex:1;min-width:360px;max-width:560px;">
+    <div class="edu-cal-layout">
+      <div class="edu-cal-list">
         ${formHtml}
         <div class="card">
           <div class="table-scroll">
@@ -11143,7 +11150,7 @@ function renderEduSchedule(cat){
           </div>
         </div>
       </div>
-      <div style="flex:0 0 300px;min-width:260px;">
+      <div class="edu-cal-side">
         ${eduScheduleCalendarHtml(cat)}
       </div>
     </div>
