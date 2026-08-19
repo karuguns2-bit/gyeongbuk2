@@ -2208,8 +2208,6 @@ function renderHome(){
       </div>
     </div>`}
 
-    ${renderHomeEduSummaryBanner()}
-
     <div id="homeStatusWidget" style="position:fixed;bottom:20px;right:20px;z-index:60;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:14px 16px;width:230px;">
       <div style="font-weight:700;font-size:12.5px;color:var(--text-sub);" id="homeClockDate">-</div>
       <div style="font-size:21px;font-weight:800;color:var(--primary);margin-bottom:10px;letter-spacing:.5px;" id="homeClockTime">-</div>
@@ -2292,96 +2290,6 @@ async function checkForNewActivityNotifications(){
     }
     setNotifCursor(fresh[fresh.length-1].created_at);
   }catch(e){ /* 조용히 무시 */ }
-}
-// ---- 매니저 홈 대시보드: 소속 지점의 교육참석일자(예정 일정)/교육별 이수현황 요약 배너 ----
-function renderHomeEduSummaryBanner(){
-  if(!SESSION || SESSION.role!=='staff') return ''; // '매니저'/'사원' 역할이 'staff'로 통일되면서 예전 'manager' 문자열 체크가 남아있어 이 배너가 항상 숨겨지던 버그를 수정
-  const branchId = SESSION.branchId;
-  const staffList = DB.users.filter(u=>u.role==='staff' && u.branchId===branchId);
-  const totalStaff = staffList.length;
-  const today = todayStr();
-
-  // ---- 교육참석일자: 이 지점 대상으로 예정된 교육 일정(본부/사내/기타) 중 가까운 순으로 최대 5개 ----
-  const upcoming = [];
-  [['hq','본부(평택)교육'], ['inhouse','사내교육'], ['etc','기타교육']].forEach(([cat,label])=>{
-    (DB.eduSchedules[cat]||[]).forEach(s=>{
-      if(s.date < today) return;
-      const hasTargets = s.targetEmpIds && s.targetEmpIds.length>0;
-      const targetMatch = hasTargets
-        ? s.targetEmpIds.some(id=>staffList.some(u=>u.empId===id))
-        : (!s.branchId || s.branchId===branchId);
-      if(!targetMatch) return;
-      upcoming.push({ label, title:s.title, date:s.date });
-    });
-  });
-  upcoming.sort((a,b)=>a.date.localeCompare(b.date));
-  const upcomingTop = upcoming.slice(0,5);
-
-  const scheduleHtml = upcomingTop.length>0
-    ? `<table style="margin-top:6px;">
-        <thead><tr><th>구분</th><th>교육명</th><th>일자</th><th>D-DAY</th></tr></thead>
-        <tbody>${upcomingTop.map(s=>{
-          const dday = Math.round((toDateObj(s.date) - toDateObj(today)) / 86400000);
-          const ddayLabel = dday===0 ? 'D-DAY' : `D-${dday}`;
-          const badgeClass = dday<=2 ? 'bad' : (dday<=7 ? 'warn' : 'good');
-          return `<tr><td class="muted">${escapeHtml(s.label)}</td><td>${escapeHtml(s.title)}</td><td>${s.date}</td><td><span class="badge ${badgeClass}">${ddayLabel}</span></td></tr>`;
-        }).join('')}</tbody>
-      </table>`
-    : `<div class="muted" style="margin-top:6px;font-size:12.5px;">예정된 교육 일정이 없습니다.</div>`;
-
-  // ---- 교육별 이수현황: 화상교육/월간test/AI R/P 3종 요약(소속 지점 인원 기준) ----
-  function simpleRate(cat){
-    const recs = staffList.map(u=>{
-      const r = (DB.eduCompletion[cat]||[]).find(x=>x.empId===u.empId);
-      return r ? !!r.completed : false;
-    });
-    const done = recs.filter(Boolean).length;
-    return { done, total: recs.length };
-  }
-  const videoStat = simpleRate('video');
-  const testStat = simpleRate('test');
-  const aiRpStat = simpleRate('aiRp');
-
-  const miniStat = (label, stat, tab)=>{
-    const rate = stat.total>0 ? (stat.done/stat.total*100) : 0;
-    return `<div class="card" style="cursor:pointer;padding:12px 14px;" onclick="renderTab('${tab}')">
-      <div class="muted" style="font-size:12px;">${label}</div>
-      <div style="font-size:19px;font-weight:800;color:var(--primary);">${stat.done}/${stat.total}</div>
-      <div class="muted" style="font-size:11.5px;">이수율 ${rate.toFixed(0)}%</div>
-    </div>`;
-  };
-
-  // 화상교육이 회차별(기준날짜+1~4차) 신규 서식으로 업로드된 경우, 미이수자를 회차와 함께 보여준다
-  let videoDetailHtml = '';
-  if(DB.eduVideoRich && DB.eduVideoRich.sessions && DB.eduVideoRich.sessions.length>0){
-    const rich = DB.eduVideoRich;
-    const incomplete = staffList.map(u=>{
-      const rec = (rich.records||[]).find(r=>r.empId===u.empId);
-      if(!rec) return null;
-      const bad = rich.sessions.filter(s=>rec.sessionStatus[s.no]==='미이수');
-      return bad.length>0 ? { name:u.name, sessions: bad.map(s=>s.no+'차') } : null;
-    }).filter(Boolean);
-    videoDetailHtml = `<div class="muted" style="margin-top:4px;font-size:11.5px;">` +
-      (incomplete.length>0
-        ? `(기준날짜 ${rich.refDate}) 회차 미이수: ${incomplete.map(x=>`${x.name}(${x.sessions.join(',')})`).join(', ')}`
-        : `(기준날짜 ${rich.refDate}) 전원 회차 이수 완료`) +
-      `</div>`;
-  }
-
-  return `
-    <div class="card" style="margin-top:16px;">
-      <h3>📚 교육 관리 요약 <small>(${branchName(branchId)} · ${totalStaff}명)</small></h3>
-      <div style="font-weight:600;font-size:12.5px;color:var(--text-sub);margin-top:8px;">교육참석일자</div>
-      ${scheduleHtml}
-      <div style="font-weight:600;font-size:12.5px;color:var(--text-sub);margin-top:14px;">교육별 이수현황</div>
-      <div class="grid grid-3 stat-grid-3" style="margin-top:6px;">
-        ${miniStat('화상교육', videoStat, 'eduVideo')}
-        ${miniStat('월간test', testStat, 'eduTest')}
-        ${miniStat('AI R/P', aiRpStat, 'eduAiRp')}
-      </div>
-      ${videoDetailHtml}
-    </div>
-  `;
 }
 let homeClockTimer = null;
 let homeWidgetPollTimer = null;
