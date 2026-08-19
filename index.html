@@ -636,6 +636,21 @@
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="3" fill="#b3261e"/><path d="M7 7h10M10 4h4a1 1 0 0 1 1 1v2H9V5a1 1 0 0 1 1-1zM7.5 7l.7 11a1.5 1.5 0 0 0 1.5 1.4h4.6a1.5 1.5 0 0 0 1.5-1.4l.7-11" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
       선택 항목 삭제하기<span id="execPhotoSelCountDel"></span>
     </button>
+    <!-- 아래 3개 버튼도 위와 동일한 패턴 - 모바일 상품권/구독연동사은품/기타 사은품 취합 화면에서
+         관리자가 체크박스로 선택한 건만 한 번에 삭제할 때 쓴다. 기본은 숨김이고
+         updateExportToolbarVisibility()에서 각 탭+관리자일 때만 보이게 전환한다. -->
+    <button id="gcDeleteSelectedBtn" class="export-btn danger" style="display:none;" onclick="deleteSelectedGiftcardRequests()" title="체크박스로 선택한 건을 한 번에 삭제">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="3" fill="#b3261e"/><path d="M7 7h10M10 4h4a1 1 0 0 1 1 1v2H9V5a1 1 0 0 1 1-1zM7.5 7l.7 11a1.5 1.5 0 0 0 1.5 1.4h4.6a1.5 1.5 0 0 0 1.5-1.4l.7-11" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      선택 항목 삭제하기<span id="gcSelCountDel"></span>
+    </button>
+    <button id="cgDeleteSelectedBtn" class="export-btn danger" style="display:none;" onclick="deleteSelectedContestGifts()" title="체크박스로 선택한 건을 한 번에 삭제">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="3" fill="#b3261e"/><path d="M7 7h10M10 4h4a1 1 0 0 1 1 1v2H9V5a1 1 0 0 1 1-1zM7.5 7l.7 11a1.5 1.5 0 0 0 1.5 1.4h4.6a1.5 1.5 0 0 0 1.5-1.4l.7-11" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      선택 항목 삭제하기<span id="cgSelCountDel"></span>
+    </button>
+    <button id="stcDeleteSelectedBtn" class="export-btn danger" style="display:none;" onclick="deleteSelectedSubTierContestGifts()" title="체크박스로 선택한 건을 한 번에 삭제">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="2" width="20" height="20" rx="3" fill="#b3261e"/><path d="M7 7h10M10 4h4a1 1 0 0 1 1 1v2H9V5a1 1 0 0 1 1-1zM7.5 7l.7 11a1.5 1.5 0 0 0 1.5 1.4h4.6a1.5 1.5 0 0 0 1.5-1.4l.7-11" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      선택 항목 삭제하기<span id="stcSelCountDel"></span>
+    </button>
   </div>
   <div class="main" id="mainContent"></div>
 </div>

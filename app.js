@@ -7720,6 +7720,7 @@ function updateGiftcardBudget(val){
   renderTab('collectGiftcard');
 }
 function renderCollectGiftcard(){
+  if(!state.gcSelectedIds) state.gcSelectedIds = new Set();
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.giftcardRequests);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -7731,6 +7732,7 @@ function renderCollectGiftcard(){
     if(state.gcEditId === r.id){
       return `
     <tr>
+      ${SESSION.role==='admin' ? '<td></td>' : ''}
       <td><select id="gceBranch_${r.id}" style="width:120px">${branchOptionsHtml(r.branchId)}</select></td>
       <td><select id="gceTransferBranch_${r.id}" style="width:120px"><option value="NONE" ${(r.transferBranchId==='NONE'||!r.transferBranchId)?'selected':''}>해당없음</option>${branchOptionsHtml(r.transferBranchId)}</select></td>
       <td><input id="gceOrderNo_${r.id}" value="${escapeHtml(r.orderNo||'')}" style="width:110px"></td>
@@ -7756,6 +7758,7 @@ function renderCollectGiftcard(){
     }
     return `
     <tr>
+      ${SESSION.role==='admin' ? `<td><input type="checkbox" ${state.gcSelectedIds.has(r.id)?'checked':''} onchange="toggleGiftcardSelect('${r.id}', this.checked)"></td>` : ''}
       <td>${branchName(r.branchId)}</td>
       <td>${r.transferBranchId==='NONE'||!r.transferBranchId ? '해당없음' : branchName(r.transferBranchId)}</td>
       <td class="muted">${r.orderNo||'-'}</td>
@@ -7770,7 +7773,7 @@ function renderCollectGiftcard(){
       <td>${r.requesterName}</td>
       <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditGiftcardRequest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteGiftcardRequest('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="13" class="muted">등록된 내역이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="${SESSION.role==='admin'?14:13}" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">모바일 상품권 취합</div>
@@ -7871,7 +7874,7 @@ function renderCollectGiftcard(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr><th>지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>판매 유형</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${SESSION.role==='admin' ? '<th style="width:26px;"></th>' : ''}<th>지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>판매 유형</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -8005,6 +8008,32 @@ function deleteGiftcardRequest(id){
   if(!confirm('삭제하시겠습니까?')) return;
   DB.giftcardRequests = DB.giftcardRequests.filter(x=>x.id!==id);
   if(r) (r.receipts||[]).forEach(p=>{ if(p.dataUrl) deleteFromStorage(p.dataUrl); });
+  saveDB();
+  renderTab('collectGiftcard');
+}
+// 모바일 상품권 취합 - 관리자가 체크박스로 여러 건을 골라 상단 툴바의 "선택 항목 삭제하기"
+// 버튼으로 한 번에 삭제한다(실행력 점검 사진 취합의 선택 삭제와 동일한 패턴). 기존에 등록된
+// 다른 건들은 그대로 유지되고, 선택한 건만 지워진다.
+function toggleGiftcardSelect(id, checked){
+  if(!state.gcSelectedIds) state.gcSelectedIds = new Set();
+  if(checked) state.gcSelectedIds.add(id); else state.gcSelectedIds.delete(id);
+  updateGiftcardSelectionToolbar();
+}
+function updateGiftcardSelectionToolbar(){
+  const n = state.gcSelectedIds ? state.gcSelectedIds.size : 0;
+  const el = document.getElementById('gcSelCountDel');
+  if(el) el.textContent = n>0 ? ` (${n})` : '';
+}
+function deleteSelectedGiftcardRequests(){
+  if(SESSION.role!=='admin') return;
+  const ids = state.gcSelectedIds ? [...state.gcSelectedIds] : [];
+  if(ids.length===0){ alert('선택된 항목이 없습니다. 삭제할 건의 체크박스를 먼저 선택해 주세요.'); return; }
+  if(!confirm(`선택한 ${ids.length}건을 삭제하시겠습니까? 삭제한 내역은 복구할 수 없습니다.`)) return;
+  const idSet = new Set(ids);
+  const targets = (DB.giftcardRequests||[]).filter(r=>idSet.has(r.id));
+  targets.forEach(r=>(r.receipts||[]).forEach(p=>{ if(p.dataUrl) deleteFromStorage(p.dataUrl); }));
+  DB.giftcardRequests = (DB.giftcardRequests||[]).filter(r=>!idSet.has(r.id));
+  state.gcSelectedIds.clear();
   saveDB();
   renderTab('collectGiftcard');
 }
@@ -8339,6 +8368,7 @@ function renderCollectionNotice(key, tab){
     </div>`;
 }
 function renderCollectContest(){
+  if(!state.cgSelectedIds) state.cgSelectedIds = new Set();
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.contestGifts);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -8352,6 +8382,7 @@ function renderCollectContest(){
         : '없음';
       return `
     <tr>
+      ${isAdmin ? '<td></td>' : ''}
       <td><select id="cge_${r.id}_contestType" style="width:170px" onchange="syncContestGiftNameFor('cge_${r.id}_contestType','cge_${r.id}_giftName','cge_${r.id}_address','${r.id}')">
         <option value="">선택하세요</option>
         ${CONTEST_GIFT_TYPE_OPTIONS.map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===r.contestType?'selected':''}>${escapeHtml(o.value)}</option>`).join('')}
@@ -8383,6 +8414,7 @@ function renderCollectContest(){
     }
     return `
     <tr>
+      ${isAdmin ? `<td><input type="checkbox" ${state.cgSelectedIds.has(r.id)?'checked':''} onchange="toggleContestGiftSelect('${r.id}', this.checked)"></td>` : ''}
       <td>${escapeHtml(r.contestType||'-')}</td>
       <td>${escapeHtml(r.giftName||'-')}</td>
       <td>${branchName(r.branchId)}</td>
@@ -8396,7 +8428,7 @@ function renderCollectContest(){
       <td>${(r.evidenceFiles&&r.evidenceFiles.length>0) ? r.evidenceFiles.map(f=>noticeAttachmentHtml(f, 36, null)).join('') : '-'}</td>
       <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditContestGift('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteContestGift('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="12" class="muted">등록된 내역이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="${isAdmin?13:12}" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">구독연동사은품 취합</div>
@@ -8479,7 +8511,7 @@ function renderCollectContest(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th>증빙자료</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${isAdmin ? '<th style="width:26px;"></th>' : ''}<th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th>증빙자료</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -8651,6 +8683,31 @@ function deleteContestGift(id){
   saveDB();
   renderTab('collectContest');
 }
+// 구독연동사은품 취합 - 관리자가 체크박스로 여러 건을 골라 상단 툴바의 "선택 항목 삭제하기"
+// 버튼으로 한 번에 삭제한다(실행력 점검 사진 취합의 선택 삭제와 동일한 패턴).
+function toggleContestGiftSelect(id, checked){
+  if(!state.cgSelectedIds) state.cgSelectedIds = new Set();
+  if(checked) state.cgSelectedIds.add(id); else state.cgSelectedIds.delete(id);
+  updateContestGiftSelectionToolbar();
+}
+function updateContestGiftSelectionToolbar(){
+  const n = state.cgSelectedIds ? state.cgSelectedIds.size : 0;
+  const el = document.getElementById('cgSelCountDel');
+  if(el) el.textContent = n>0 ? ` (${n})` : '';
+}
+function deleteSelectedContestGifts(){
+  if(SESSION.role!=='admin') return;
+  const ids = state.cgSelectedIds ? [...state.cgSelectedIds] : [];
+  if(ids.length===0){ alert('선택된 항목이 없습니다. 삭제할 건의 체크박스를 먼저 선택해 주세요.'); return; }
+  if(!confirm(`선택한 ${ids.length}건을 삭제하시겠습니까? 삭제한 내역은 복구할 수 없습니다.`)) return;
+  const idSet = new Set(ids);
+  const targets = (DB.contestGifts||[]).filter(r=>idSet.has(r.id));
+  targets.forEach(r=>(r.evidenceFiles||[]).forEach(f=>deleteFromStorage(f.dataUrl)));
+  DB.contestGifts = (DB.contestGifts||[]).filter(r=>!idSet.has(r.id));
+  state.cgSelectedIds.clear();
+  saveDB();
+  renderTab('collectContest');
+}
 function startEditContestGift(id){
   const r = DB.contestGifts.find(x=>x.id===id);
   if(!canEditContestGift(r)){ alert('본인이 등록한 건 또는 관리자만 수정할 수 있습니다.'); return; }
@@ -8793,6 +8850,7 @@ function subTierContestBannerHtml(){
     </div>`;
 }
 function renderSubTierContest(){
+  if(!state.stcSelectedIds) state.stcSelectedIds = new Set();
   const myBranch = collectScopeBranch();
   const scoped = collectListScope(DB.subTierContestGifts);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -8808,6 +8866,7 @@ function renderSubTierContest(){
       const curNeedsAddress = !!(curOpt && curOpt.needsAddress);
       return `
     <tr>
+      ${SESSION.role==='admin' ? '<td></td>' : ''}
       <td><select id="stce_${r.id}_contestType" style="width:190px" onchange="syncSubTierGiftNameFor('stce_${r.id}_contestType','stce_${r.id}_giftName','stce_${r.id}_address','stce_${r.id}_addressBtn')">
         <option value="">선택하세요</option>
         ${SUB_TIER_CONTEST_OPTIONS.map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===r.contestType?'selected':''}>${escapeHtml(o.value)}</option>`).join('')}
@@ -8832,6 +8891,7 @@ function renderSubTierContest(){
     }
     return `
     <tr>
+      ${SESSION.role==='admin' ? `<td><input type="checkbox" ${state.stcSelectedIds.has(r.id)?'checked':''} onchange="toggleSubTierContestSelect('${r.id}', this.checked)"></td>` : ''}
       <td>${escapeHtml(r.contestType||'-')}</td>
       <td>${escapeHtml(r.giftName||'-')}</td>
       <td>${branchName(r.branchId)}</td>
@@ -8841,7 +8901,7 @@ function renderSubTierContest(){
       <td class="muted">${escapeHtml(r.requesterName)}</td>
       <td class="act-col" style="white-space:nowrap;">${canEdit ? `<button class="btn btn-sm" onclick="startEditSubTierContest('${r.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubTierContest('${r.id}')">삭제</button>` : ''}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="8" class="muted">등록된 내역이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="${SESSION.role==='admin'?9:8}" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">기타 사은품 취합</div>
@@ -8900,7 +8960,7 @@ function renderSubTierContest(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>주소</th><th>영수증 증빙</th><th>등록자</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${SESSION.role==='admin' ? '<th style="width:26px;"></th>' : ''}<th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>주소</th><th>영수증 증빙</th><th>등록자</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -8923,6 +8983,31 @@ function deleteSubTierContest(id){
   if(!confirm('삭제하시겠습니까?')) return;
   DB.subTierContestGifts = DB.subTierContestGifts.filter(x=>x.id!==id);
   (r.evidenceFiles||[]).forEach(f=>deleteFromStorage(f.dataUrl));
+  saveDB();
+  renderTab('subTierContest');
+}
+// 기타 사은품 취합 - 관리자가 체크박스로 여러 건을 골라 상단 툴바의 "선택 항목 삭제하기"
+// 버튼으로 한 번에 삭제한다(실행력 점검 사진 취합의 선택 삭제와 동일한 패턴).
+function toggleSubTierContestSelect(id, checked){
+  if(!state.stcSelectedIds) state.stcSelectedIds = new Set();
+  if(checked) state.stcSelectedIds.add(id); else state.stcSelectedIds.delete(id);
+  updateSubTierContestSelectionToolbar();
+}
+function updateSubTierContestSelectionToolbar(){
+  const n = state.stcSelectedIds ? state.stcSelectedIds.size : 0;
+  const el = document.getElementById('stcSelCountDel');
+  if(el) el.textContent = n>0 ? ` (${n})` : '';
+}
+function deleteSelectedSubTierContestGifts(){
+  if(SESSION.role!=='admin') return;
+  const ids = state.stcSelectedIds ? [...state.stcSelectedIds] : [];
+  if(ids.length===0){ alert('선택된 항목이 없습니다. 삭제할 건의 체크박스를 먼저 선택해 주세요.'); return; }
+  if(!confirm(`선택한 ${ids.length}건을 삭제하시겠습니까? 삭제한 내역은 복구할 수 없습니다.`)) return;
+  const idSet = new Set(ids);
+  const targets = (DB.subTierContestGifts||[]).filter(r=>idSet.has(r.id));
+  targets.forEach(r=>(r.evidenceFiles||[]).forEach(f=>deleteFromStorage(f.dataUrl)));
+  DB.subTierContestGifts = (DB.subTierContestGifts||[]).filter(r=>!idSet.has(r.id));
+  state.stcSelectedIds.clear();
   saveDB();
   renderTab('subTierContest');
 }
@@ -12350,6 +12435,26 @@ function updateExportToolbarVisibility(tab){
   // 실행력 점검 사진 화면을 벗어나면 이전에 체크해 둔 선택 상태가 계속 남아있지 않도록 비운다.
   if(!isPhotoAdmin && state.epSelectedIds) state.epSelectedIds.clear();
   updateExecPhotoSelectionToolbar();
+
+  // 모바일 상품권/구독연동사은품/기타 사은품 취합 - 관리자가 체크박스로 여러 건을 선택해
+  // 한 번에 삭제하는 버튼도 실행력 점검 사진과 동일한 패턴으로 해당 화면+관리자일 때만 보인다.
+  const isGcAdmin = (tab==='collectGiftcard' && SESSION && SESSION.role==='admin');
+  const gcDelBtn = document.getElementById('gcDeleteSelectedBtn');
+  if(gcDelBtn) gcDelBtn.style.display = isGcAdmin ? '' : 'none';
+  if(!isGcAdmin && state.gcSelectedIds) state.gcSelectedIds.clear();
+  updateGiftcardSelectionToolbar();
+
+  const isCgAdmin = (tab==='collectContest' && SESSION && SESSION.role==='admin');
+  const cgDelBtn = document.getElementById('cgDeleteSelectedBtn');
+  if(cgDelBtn) cgDelBtn.style.display = isCgAdmin ? '' : 'none';
+  if(!isCgAdmin && state.cgSelectedIds) state.cgSelectedIds.clear();
+  updateContestGiftSelectionToolbar();
+
+  const isStcAdmin = (tab==='subTierContest' && SESSION && SESSION.role==='admin');
+  const stcDelBtn = document.getElementById('stcDeleteSelectedBtn');
+  if(stcDelBtn) stcDelBtn.style.display = isStcAdmin ? '' : 'none';
+  if(!isStcAdmin && state.stcSelectedIds) state.stcSelectedIds.clear();
+  updateSubTierContestSelectionToolbar();
 }
 function updateInventoryNavLabel(){
   const el = document.getElementById('navInventoryDate');
