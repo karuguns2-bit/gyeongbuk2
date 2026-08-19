@@ -1018,6 +1018,7 @@ function migrateDB(){
   if(!DB.noticeReads) DB.noticeReads = {};
   if(!DB.materials) DB.materials = [];
   DB.materials.forEach(n=>{ if(!n.attachments) n.attachments = []; });
+  if(!DB.materialReads) DB.materialReads = {};
   if(!DB.infoReports) DB.infoReports = [];
   DB.infoReports.forEach(r=>{ if(!r.attachments) r.attachments = []; });
   if(!DB.execPhotos) DB.execPhotos = [];
@@ -3663,6 +3664,33 @@ function canEditMaterial(){ return !!(SESSION && SESSION.role==='admin'); }
 function sortedMaterials(){
   return [...(DB.materials||[])].sort((a,b)=> b.createdAt.localeCompare(a.createdAt));
 }
+// 각종 자료 매니저별 읽음 여부 추적 — 공지사항과 완전히 동일한 방식(DB.materialReads[자료id][사번] =
+// 읽은 시각)으로 별도 저장한다. 관리자 계정은 "매니저"가 아니므로 집계에서 제외한다.
+function markMaterialRead(materialId, empId){
+  if(!empId) return;
+  if(!DB.materialReads) DB.materialReads = {};
+  if(!DB.materialReads[materialId]) DB.materialReads[materialId] = {};
+  if(DB.materialReads[materialId][empId]) return; // 이미 읽음 처리됨 - 중복 저장 방지
+  DB.materialReads[materialId][empId] = new Date().toISOString();
+  saveDB(true);
+}
+function isMaterialReadBy(materialId, empId){
+  return !!(DB.materialReads && DB.materialReads[materialId] && DB.materialReads[materialId][empId]);
+}
+// 자료 하나에 대해 전체 매니저 대비 읽음/미확인 명단 — 관리자에게 "누가 아직 안 읽었는지" 보여준다.
+function materialReadSummary(materialId){
+  const managers = DB.users.filter(u=>u.role==='staff');
+  const readMap = (DB.materialReads && DB.materialReads[materialId]) || {};
+  const readList = managers.filter(u=>readMap[u.empId]);
+  const unreadList = managers.filter(u=>!readMap[u.empId]);
+  return { total: managers.length, readCount: readList.length, readList, unreadList };
+}
+// 목록에서 행을 펼치는 것은 "이 자료를 확인했다"는 명확한 의사표현이므로, 공지사항과 동일하게
+// 펼칠 때 매니저(staff) 기준 읽음 처리를 함께 해준다.
+function toggleMaterialExpand(id){
+  if(SESSION.role==='staff') markMaterialRead(id, SESSION.empId);
+  togglePostExpand(id, 'materials');
+}
 function renderMaterialsBoard(){
   const isAdmin = canEditMaterial();
   const editId = state.materialEditId || null;
@@ -3727,18 +3755,34 @@ function renderMaterialsBoard(){
     const photosHtml = (n.attachments||[]).map((f,idx)=> noticeAttachmentHtml(f, 108, isAdmin ? `removeMaterialAttachment('${n.id}', ${idx})` : null)).join('');
     const hasAttachment = (n.attachments||[]).length>0;
     const expanded = isPostExpanded(n.id);
+    // 관리자 화면에서만 "매니저별 읽음 현황"을 보여준다 — 매니저(staff) 계정에게는 노출하지 않는다.
+    const readSummary = isAdmin ? materialReadSummary(n.id) : null;
+    const readBadgeHtml = readSummary ? `<span class="badge ${readSummary.total>0 && readSummary.readCount===readSummary.total ? 'good' : 'warn'}" title="매니저 읽음 현황" style="white-space:nowrap;">👁 읽음 ${readSummary.readCount}/${readSummary.total}</span>` : '';
+    const readBreakdownHtml = readSummary ? `
+        <div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5e7eb;font-size:12px;">
+          <div style="margin-bottom:6px;"><b>읽음 (${readSummary.readCount}/${readSummary.total})</b> ${readSummary.readList.map(u=>`<span class="badge good" style="margin:2px 4px 0 0;">${escapeHtml(u.name)}</span>`).join('') || '<span class="muted">없음</span>'}</div>
+          <div><b>미확인</b> ${readSummary.unreadList.map(u=>`<span class="badge bad" style="margin:2px 4px 0 0;">${escapeHtml(u.name)}</span>`).join('') || '<span class="muted">없음</span>'}</div>
+        </div>` : '';
+    // 매니저(staff) 화면에서는 반대로 "본인이 이 자료를 읽었는지"를 행 우측에 표시한다.
+    const isStaffViewer = SESSION.role==='staff';
+    const myUnread = isStaffViewer && !isMaterialReadBy(n.id, SESSION.empId);
+    const myUnreadBadgeHtml = myUnread ? `<span class="badge bad" title="아직 확인하지 않았습니다" style="white-space:nowrap;">⚠ 미확인</span>` : '';
     return `
       <div class="card" style="margin-bottom:12px;">
-        <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${n.id}','materials')">
+        <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="toggleMaterialExpand('${n.id}')">
           <div class="nb-title">${escapeHtml(n.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            ${readBadgeHtml}
+            ${myUnreadBadgeHtml}
             ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
             <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
           </div>
         </div>
+        ${myUnread ? `<div class="small-note" style="color:var(--bad);font-weight:700;margin-top:4px;">⚠ 아직 조회하지 않은 자료입니다. 꼭 확인하세요!</div>` : ''}
         ${expanded ? `
         <div class="nb-content" style="margin:10px 0 0;">${richContentHtml(n.content)}</div>
         ${photosHtml ? `<div class="attach-gallery">${photosHtml}</div>` : ''}
+        ${readBreakdownHtml}
         <div class="flex-between" style="align-items:center;margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;">
           <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
           ${isAdmin ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditMaterial('${n.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteMaterial('${n.id}')">삭제</button></div>` : ''}
