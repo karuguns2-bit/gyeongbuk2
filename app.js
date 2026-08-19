@@ -10859,6 +10859,166 @@ function eduTargetNamesTitle(s){
   if(!s.targetEmpIds || s.targetEmpIds.length===0) return '';
   return s.targetEmpIds.map(id=>{ const u = DB.users.find(x=>x.empId===id); return u ? u.name : id; }).join(', ');
 }
+// ---- 교육 대상자 선택창(검색 가능한 체크박스 다중선택) ----
+// 예전엔 사번을 콤마로 직접 입력해야 했는데, 오탈자가 나면 "인식하지 못한 대상자" 경고만
+// 뜨고 등록은 실패하는 식이라 매니저 사번을 일일이 외워 입력해야 하는 부담이 컸다. 이제는
+// 이름/사번/지점으로 검색하며 체크박스로 정확히 골라 담는 방식으로 대체한다. 팝업은
+// position:fixed 모달로 띄운다 — 등록 폼/수정 행(表 안, overflow-y:auto인 .table-scroll)
+// 어디에 놓이든 잘려 보이지 않게 하기 위함이다.
+function eduTargetSelectedSet(key){
+  if(!state.eduTargetSel) state.eduTargetSel = {};
+  if(!state.eduTargetSel[key]) state.eduTargetSel[key] = new Set();
+  return state.eduTargetSel[key];
+}
+function eduTargetInitSel(key, empIds){
+  if(!state.eduTargetSel) state.eduTargetSel = {};
+  state.eduTargetSel[key] = new Set(empIds||[]);
+}
+function eduTargetClearSel(key){
+  if(state.eduTargetSel) delete state.eduTargetSel[key];
+}
+function eduTargetStaffList(query){
+  const q = String(query||'').trim();
+  let list = (DB.users||[]).filter(u=>u.role==='staff');
+  if(q){
+    list = list.filter(u=> u.name.includes(q) || u.empId.includes(q) || branchName(u.branchId).includes(q));
+  }
+  return list.sort((a,b)=> branchName(a.branchId).localeCompare(branchName(b.branchId)) || a.name.localeCompare(b.name));
+}
+function eduTargetChipsHtml(key){
+  const sel = eduTargetSelectedSet(key);
+  if(sel.size===0) return `<span class="muted" style="font-size:12px;">미지정 — 대상 지점 전체에게 노출됩니다</span>`;
+  return [...sel].map(empId=>{
+    const u = DB.users.find(x=>x.empId===empId);
+    const label = u ? `${u.name}(${branchName(u.branchId)})` : empId;
+    return `<span class="badge" style="background:#eef2ff;color:#3b4ba0;margin:2px 4px 2px 0;cursor:pointer;" onclick="toggleEduTargetPerson('${key}','${empId}',false)" title="클릭하면 제외">${escapeHtml(label)} ×</span>`;
+  }).join('');
+}
+function eduTargetOptionRowsHtml(key, query){
+  const sel = eduTargetSelectedSet(key);
+  const list = eduTargetStaffList(query);
+  if(list.length===0) return `<div class="muted" style="padding:8px 2px;font-size:12px;">검색 결과가 없습니다.</div>`;
+  let lastBranch = null;
+  const rows = [];
+  list.forEach(u=>{
+    const bName = branchName(u.branchId);
+    if(bName!==lastBranch){ rows.push(`<div class="muted" style="font-size:10.5px;font-weight:700;margin:8px 0 3px;">${escapeHtml(bName)}</div>`); lastBranch = bName; }
+    rows.push(`<label style="display:flex;align-items:center;gap:6px;padding:3px 2px;font-size:12.5px;cursor:pointer;">
+      <input type="checkbox" ${sel.has(u.empId)?'checked':''} onchange="toggleEduTargetPerson('${key}','${u.empId}',this.checked)">
+      ${escapeHtml(u.name)} <span class="muted" style="font-size:11px;">(${escapeHtml(u.empId)})</span>
+    </label>`);
+  });
+  return rows.join('');
+}
+function toggleEduTargetPerson(key, empId, checked){
+  const sel = eduTargetSelectedSet(key);
+  if(checked) sel.add(empId); else sel.delete(empId);
+  const chipsEl = document.getElementById('eduTargetChips_'+key);
+  if(chipsEl) chipsEl.innerHTML = eduTargetChipsHtml(key);
+  const listEl = document.getElementById('eduTargetList_'+key);
+  if(listEl){
+    const searchEl = document.getElementById('eduTargetSearch_'+key);
+    listEl.innerHTML = eduTargetOptionRowsHtml(key, searchEl?searchEl.value:'');
+  }
+}
+function handleEduTargetSearch(key, query){
+  const listEl = document.getElementById('eduTargetList_'+key);
+  if(listEl) listEl.innerHTML = eduTargetOptionRowsHtml(key, query);
+}
+function openEduTargetPicker(key){
+  const modal = document.getElementById('eduTargetModal_'+key);
+  if(!modal) return;
+  modal.style.display = 'flex';
+  handleEduTargetSearch(key, '');
+  const searchEl = document.getElementById('eduTargetSearch_'+key);
+  if(searchEl){ searchEl.value=''; searchEl.focus(); }
+}
+function closeEduTargetPicker(key){
+  const modal = document.getElementById('eduTargetModal_'+key);
+  if(modal) modal.style.display = 'none';
+}
+function eduTargetPickerHtml(key){
+  return `
+    <div>
+      <div id="eduTargetChips_${key}" style="min-height:22px;margin-bottom:4px;">${eduTargetChipsHtml(key)}</div>
+      <button type="button" class="btn btn-sm" onclick="openEduTargetPicker('${key}')">+ 대상자 선택</button>
+    </div>
+    <div id="eduTargetModal_${key}" style="display:none;position:fixed;inset:0;background:rgba(20,20,26,.4);z-index:200;align-items:center;justify-content:center;" onclick="closeEduTargetPicker('${key}')">
+      <div style="background:#fff;border-radius:14px;padding:16px 18px;width:320px;max-height:72vh;display:flex;flex-direction:column;box-shadow:0 12px 44px rgba(0,0,0,.28);" onclick="event.stopPropagation()">
+        <div class="flex-between" style="margin-bottom:8px;">
+          <div style="font-weight:800;font-size:14px;">대상자 선택</div>
+          <span class="muted" style="cursor:pointer;font-size:19px;line-height:1;" onclick="closeEduTargetPicker('${key}')">×</span>
+        </div>
+        <input id="eduTargetSearch_${key}" placeholder="이름 / 사번 / 지점 검색" style="width:100%;margin-bottom:8px;" oninput="handleEduTargetSearch('${key}', this.value)">
+        <div id="eduTargetList_${key}" style="overflow-y:auto;flex:1;padding-right:2px;"></div>
+        <div style="display:flex;justify-content:flex-end;margin-top:10px;">
+          <button type="button" class="btn btn-sm btn-primary" onclick="closeEduTargetPicker('${key}')">완료</button>
+        </div>
+      </div>
+    </div>`;
+}
+// ---- 교육 일정 달력형 보기 ----
+// 리스트만으로는 날짜 분포가 한눈에 안 들어와서, 월 달력에 일정 있는 날짜를 점으로 표시하고
+// 클릭하면 리스트를 그 날짜로 필터링해 준다. 카테고리(hq/inhouse/etc)별로 월/필터를 따로 기억한다.
+function eduCalMonthKey(cat){
+  if(!state.eduCalMonth) state.eduCalMonth = {};
+  if(!state.eduCalMonth[cat]) state.eduCalMonth[cat] = todayStr().slice(0,7);
+  return state.eduCalMonth[cat];
+}
+function shiftEduCalMonth(cat, delta){
+  const cur = eduCalMonthKey(cat);
+  const [y,m] = cur.split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  if(!state.eduCalMonth) state.eduCalMonth = {};
+  state.eduCalMonth[cat] = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  renderTab(eduTabName(cat));
+}
+function eduCalFilterDate(cat){
+  if(!state.eduCalFilterDate) state.eduCalFilterDate = {};
+  return state.eduCalFilterDate[cat] || null;
+}
+function toggleEduCalFilterDate(cat, dateStr){
+  if(!state.eduCalFilterDate) state.eduCalFilterDate = {};
+  state.eduCalFilterDate[cat] = (state.eduCalFilterDate[cat]===dateStr) ? null : dateStr;
+  renderTab(eduTabName(cat));
+}
+function eduScheduleCalendarHtml(cat){
+  const monthKey = eduCalMonthKey(cat);
+  const [y,m] = monthKey.split('-').map(Number);
+  const first = new Date(y, m-1, 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(y, m, 0).getDate();
+  const list = DB.eduSchedules[cat] || [];
+  const countByDate = {};
+  list.forEach(s=>{ countByDate[s.date] = (countByDate[s.date]||0)+1; });
+  const today = todayStr();
+  const filterDate = eduCalFilterDate(cat);
+  const cells = [];
+  for(let i=0;i<startWeekday;i++) cells.push('<div></div>');
+  for(let d=1; d<=daysInMonth; d++){
+    const dateStr = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    const cnt = countByDate[dateStr]||0;
+    const isToday = dateStr===today;
+    const isSel = dateStr===filterDate;
+    cells.push(`
+      <div ${cnt>0?`onclick="toggleEduCalFilterDate('${cat}','${dateStr}')"`:''} title="${cnt>0?cnt+'건':''}" style="aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:8px;font-size:12px;cursor:${cnt>0?'pointer':'default'};${isSel?'background:var(--primary);color:#fff;':(isToday?'background:#fdecec;color:var(--primary);font-weight:700;':'color:var(--text);')}">
+        <span>${d}</span>
+        ${cnt>0?`<span style="width:5px;height:5px;border-radius:50%;background:${isSel?'#fff':'var(--primary)'};margin-top:2px;"></span>`:''}
+      </div>`);
+  }
+  const weekDayHeaders = ['일','월','화','수','목','금','토'].map(w=>`<div class="muted" style="text-align:center;font-size:11px;font-weight:700;">${w}</div>`).join('');
+  return `
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:8px;">
+        <button type="button" class="btn btn-sm" onclick="shiftEduCalMonth('${cat}',-1)">◀</button>
+        <div style="font-weight:700;font-size:14px;">${y}년 ${m}월</div>
+        <button type="button" class="btn btn-sm" onclick="shiftEduCalMonth('${cat}',1)">▶</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px;">${weekDayHeaders}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">${cells.join('')}</div>
+      ${filterDate ? `<div class="small-note" style="margin-top:10px;">📌 <b>${filterDate}</b> 일정만 보는 중 · <span style="color:var(--primary);cursor:pointer;text-decoration:underline;" onclick="toggleEduCalFilterDate('${cat}','${filterDate}')">전체 보기</span></div>` : `<div class="small-note" style="margin-top:10px;">점이 있는 날짜를 클릭하면 해당 날짜 일정만 볼 수 있습니다.</div>`}
+    </div>`;
+}
 // 교육 일정(본부/사내/기타)과 교육 이수율(화상교육/월간test/AI R-P)은 사이드바에 각각
 // 3개씩 흩어져 있던 걸 "교육 일정 안내"/"교육 이수율 확인" 2개 항목으로 합치면서, 대신 이
 // 페이지 안에서 pill로 세부 카테고리를 전환할 수 있게 한다(실제 데이터/권한 로직은 기존과
@@ -10883,7 +11043,9 @@ function renderEduSchedule(cat){
   const sorted = [...list].sort((a,b)=>a.date.localeCompare(b.date));
   const today = todayStr();
   const editId = state.eduScheduleEditId;
-  const rows = sorted.map(s=>{
+  const calFilterDate = eduCalFilterDate(cat);
+  const displayList = calFilterDate ? sorted.filter(s=>s.date===calFilterDate) : sorted;
+  const rows = displayList.map(s=>{
     const dday = Math.round((toDateObj(s.date) - toDateObj(today)) / 86400000);
     let ddayLabel;
     if(dday>0) ddayLabel = `D-${dday}`;
@@ -10895,17 +11057,18 @@ function renderEduSchedule(cat){
       : (s.branchId ? branchName(s.branchId) : '전체');
 
     if(isAdmin && editId===s.id){
+      const editKey = `edit_${cat}_${s.id}`;
       return `<tr>
-        <td><input id="ese_${cat}_${s.id}_date" type="date" value="${s.date}" style="width:130px"></td>
+        <td><input id="ese_${cat}_${s.id}_date" type="date" value="${s.date}" style="width:120px"></td>
         <td class="muted">-</td>
-        <td><input id="ese_${cat}_${s.id}_title" value="${escapeHtml(s.title)}" style="width:180px"></td>
-        <td><input id="ese_${cat}_${s.id}_target" value="${escapeHtml((s.targetEmpIds||[]).join(', '))}" placeholder="사번, 쉼표로 구분 (비워두면 전체)" style="width:160px"></td>
-        <td><input id="ese_${cat}_${s.id}_location" value="${escapeHtml(s.location||'')}" style="width:140px"></td>
-        <td><input id="ese_${cat}_${s.id}_note" value="${escapeHtml(s.note||'')}" style="width:220px"></td>
+        <td><input id="ese_${cat}_${s.id}_title" value="${escapeHtml(s.title)}" style="width:140px"></td>
+        <td style="min-width:160px;">${eduTargetPickerHtml(editKey)}</td>
+        <td><input id="ese_${cat}_${s.id}_location" value="${escapeHtml(s.location||'')}" style="width:110px"></td>
+        <td><input id="ese_${cat}_${s.id}_note" value="${escapeHtml(s.note||'')}" style="width:160px"></td>
         <td style="white-space:nowrap;">
           <input id="ese_${cat}_${s.id}_alarm" type="number" min="0" max="30" value="${s.alarmDaysBefore!=null?s.alarmDaysBefore:2}" style="width:44px" title="알람 기준일(D-N)">
           <button class="btn btn-sm btn-primary" onclick="saveEditEduSchedule('${cat}','${s.id}')">저장</button>
-          <button class="btn btn-sm" onclick="cancelEditEduSchedule()">취소</button>
+          <button class="btn btn-sm" onclick="cancelEditEduSchedule('${cat}','${s.id}')">취소</button>
         </td>
       </tr>`;
     }
@@ -10918,15 +11081,16 @@ function renderEduSchedule(cat){
       <td class="muted">${escapeHtml(s.note||'-')}</td>
       <td style="white-space:nowrap;">${isAdmin ? `<button class="btn btn-sm" onclick="startEditEduSchedule('${cat}','${s.id}')">수정</button> <button class="btn btn-sm" onclick="deleteEduSchedule('${cat}','${s.id}')">삭제</button>` : ''}</td>
     </tr>`;
-  }).join('') || `<tr><td colspan="7" class="muted">등록된 일정이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="7" class="muted">${calFilterDate ? escapeHtml(calFilterDate)+'에 등록된 일정이 없습니다.' : '등록된 일정이 없습니다.'}</td></tr>`;
 
+  const addKey = `add_${cat}`;
   const formHtml = isAdmin ? `
     <div class="card" style="margin-bottom:16px;">
       <h3>일정 등록</h3>
       <div class="form-row">
         <div class="field">
           <label>교육명</label>
-          <input id="es_${cat}_title" placeholder="예: 신제품 교육" style="width:220px">
+          <input id="es_${cat}_title" placeholder="예: 신제품 교육" style="width:200px">
         </div>
         <div class="field">
           <label>일자</label>
@@ -10934,7 +11098,7 @@ function renderEduSchedule(cat){
         </div>
         <div class="field">
           <label>대상 지점 (선택, 미선택시 전체)</label>
-          <select id="es_${cat}_branch" style="width:170px">
+          <select id="es_${cat}_branch" style="width:160px">
             <option value="">전체</option>
             ${branchOptionsHtml(null)}
           </select>
@@ -10949,31 +11113,39 @@ function renderEduSchedule(cat){
           <label>장소</label>
           <input id="es_${cat}_location" placeholder="예: 평택 본사 교육장" style="width:200px">
         </div>
-        <div class="field" style="flex:1;min-width:220px;">
+        <div class="field" style="flex:1;min-width:200px;">
           <label>비고</label>
           <input id="es_${cat}_note" style="width:100%" placeholder="참고사항">
         </div>
       </div>
       <div class="form-row">
-        <div class="field" style="flex:1;min-width:280px;">
-          <label>대상자 (사번을 쉼표(,)로 구분해 입력 · 비워두면 대상 지점 전체)</label>
-          <input id="es_${cat}_target" style="width:100%" placeholder="예: 1001620, 1071817, 1104204">
+        <div class="field" style="flex:1;min-width:260px;">
+          <label>대상자 (선택하지 않으면 대상 지점 전체에게 노출)</label>
+          ${eduTargetPickerHtml(addKey)}
         </div>
         <button class="btn btn-primary" onclick="addEduSchedule('${cat}')">등록</button>
       </div>
-      <div id="es_${cat}_msg" class="small-note"></div>
     </div>` : '';
 
   return `
     ${eduScheduleCatPills(cat)}
     <div class="page-title">${eduCategoryLabel(cat)} 안내</div>
     <div class="page-desc">${cat==='hq' ? '본부(평택)에서 진행되는 교육 일정을 안내합니다.' : (cat==='inhouse' ? '사내(지점/본부)에서 진행되는 교육 일정을 안내합니다.' : '위 항목에 속하지 않는 기타 교육 일정을 안내합니다.')} 대상자로 지정된 경우 참석일 기준 알람일(D-N) 전부터 로그인 시 안내됩니다 (대상자 미지정 시 대상 지점 전체, 기본 D-2).</div>
-    ${formHtml}
-    <div class="card">
-      <table>
-        <thead><tr><th>일자</th><th>D-DAY</th><th>교육명</th><th>대상</th><th>장소</th><th>비고</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="flex:1;min-width:360px;max-width:560px;">
+        ${formHtml}
+        <div class="card">
+          <div class="table-scroll">
+          <table>
+            <thead><tr><th>일자</th><th>D-DAY</th><th>교육명</th><th>대상</th><th>장소</th><th>비고</th><th></th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+      <div style="flex:0 0 300px;min-width:260px;">
+        ${eduScheduleCalendarHtml(cat)}
+      </div>
     </div>
   `;
 }
@@ -10984,27 +11156,29 @@ function addEduSchedule(cat){
   const location = document.getElementById(`es_${cat}_location`).value.trim();
   const note = document.getElementById(`es_${cat}_note`).value.trim();
   const alarmDays = Number(document.getElementById(`es_${cat}_alarmDays`).value);
-  const targetText = document.getElementById(`es_${cat}_target`).value.trim();
   if(!title || !date){ alert('교육명과 일자를 입력해 주세요.'); return; }
-  const { empIds, unresolved } = resolveEduTargets(targetText);
+  const addKey = `add_${cat}`;
+  const targetEmpIds = [...eduTargetSelectedSet(addKey)];
   DB.eduSchedules[cat].push({
     id: 'es_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
     title, date, branchId, location: location||null, note: note||null,
-    targetEmpIds: empIds, alarmDaysBefore: isNaN(alarmDays) ? 2 : alarmDays,
+    targetEmpIds, alarmDaysBefore: isNaN(alarmDays) ? 2 : alarmDays,
     createdAt: new Date().toISOString()
   });
   touchTabContent(eduTabName(cat));
   saveDB();
-  const msgEl = document.getElementById(`es_${cat}_msg`);
-  if(msgEl && unresolved.length>0) msgEl.textContent = `다음 대상자를 인식하지 못했습니다(사번을 확인해 주세요): ${unresolved.join(', ')}`;
+  eduTargetClearSel(addKey);
   renderTab(eduTabName(cat));
 }
 function startEditEduSchedule(cat, id){
   if(SESSION.role!=='admin') return;
+  const s = DB.eduSchedules[cat].find(x=>x.id===id);
+  if(s) eduTargetInitSel(`edit_${cat}_${id}`, s.targetEmpIds);
   state.eduScheduleEditId = id;
   renderTab(eduTabName(cat));
 }
-function cancelEditEduSchedule(){
+function cancelEditEduSchedule(cat, id){
+  if(cat && id) eduTargetClearSel(`edit_${cat}_${id}`);
   state.eduScheduleEditId = null;
   renderTab(state.tab);
 }
@@ -11017,14 +11191,14 @@ function saveEditEduSchedule(cat, id){
   const location = document.getElementById(`ese_${cat}_${id}_location`).value.trim();
   const note = document.getElementById(`ese_${cat}_${id}_note`).value.trim();
   const alarmDays = Number(document.getElementById(`ese_${cat}_${id}_alarm`).value);
-  const targetText = document.getElementById(`ese_${cat}_${id}_target`).value.trim();
   if(!title || !date){ alert('교육명과 일자를 입력해 주세요.'); return; }
-  const { empIds, unresolved } = resolveEduTargets(targetText);
-  if(unresolved.length>0 && !confirm(`다음 대상자를 인식하지 못했습니다(사번 확인 필요): ${unresolved.join(', ')}\n나머지 인원으로 저장하시겠습니까?`)) return;
+  const editKey = `edit_${cat}_${id}`;
+  const targetEmpIds = [...eduTargetSelectedSet(editKey)];
   s.title = title; s.date = date; s.location = location||null; s.note = note||null;
-  s.targetEmpIds = empIds; s.alarmDaysBefore = isNaN(alarmDays) ? 2 : alarmDays;
+  s.targetEmpIds = targetEmpIds; s.alarmDaysBefore = isNaN(alarmDays) ? 2 : alarmDays;
   state.eduScheduleEditId = null;
   saveDB();
+  eduTargetClearSel(editKey);
   renderTab(eduTabName(cat));
 }
 function deleteEduSchedule(cat, id){
