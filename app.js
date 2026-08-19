@@ -7069,6 +7069,7 @@ function invTag(product){
   const p = product||'';
   if(p.includes('(행)')) return '행사';
   if(p.includes('(진)')) return '진열';
+  if(p.includes('(핸)')) return '핸디';
   return null;
 }
 function invFilterDefaults(){
@@ -7157,7 +7158,7 @@ function renderInventory(){
     const isClearance = isClearanceRow(r);
     return `<tr>
       <td>${r.store}</td>
-      <td>${tag==='행사'?'<span class="badge warn">행사</span>':'<span class="badge">진열</span>'}</td>
+      <td>${tag==='행사'?'<span class="badge warn">행사</span>':tag==='핸디'?'<span class="badge" style="background:#e5ecff;color:#3355cc;">핸디</span>':'<span class="badge">진열</span>'}</td>
       <td class="wrap" title="${escapeHtml(r.product||'')}">${r.product}${isClearance ? `<span class="inv-clearance-badge" title="소진리스트 대상 품목입니다">🔥 소진집중</span>` : ''}</td>
       <td class="wrap muted" title="${escapeHtml(r.cat2||'')}">${r.cat2}</td>
       <td class="wrap muted" title="${escapeHtml(r.model||'')}">${r.model}</td>
@@ -7197,9 +7198,10 @@ function renderInventory(){
           <div class="field" style="margin-bottom:12px;">
             <label>유형</label>
             <select onchange="setInvFilter('tag', this.value)">
-              <option value="ALL" ${f.tag==='ALL'||!f.tag?'selected':''}>전체(행사+진열)</option>
+              <option value="ALL" ${f.tag==='ALL'||!f.tag?'selected':''}>전체(행사+진열+핸디)</option>
               <option value="행사" ${f.tag==='행사'?'selected':''}>행사</option>
               <option value="진열" ${f.tag==='진열'?'selected':''}>진열</option>
+              <option value="핸디" ${f.tag==='핸디'?'selected':''}>핸디</option>
             </select>
           </div>
           <div class="field" style="margin-bottom:12px;position:relative;">
@@ -7224,7 +7226,7 @@ function renderInventory(){
             <div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>
           </div>
         </div>
-        <div class="small-note">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}${clearanceStats ? ` · 소진 카운팅 기준일(시작일) <b>${clearanceStats.date}</b> · 소진완료 <b>${clearanceStats.depleted}대</b> / ${clearanceStats.total}건 (소진율 <b>${clearanceStats.pct}%</b>)` : ''}</div>
+        <div class="small-note">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열/핸디 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}${clearanceStats ? ` · 소진 카운팅 기준일(시작일) <b>${clearanceStats.date}</b> · 소진완료 <b>${clearanceStats.depleted}대</b> / ${clearanceStats.total}건 (소진율 <b>${clearanceStats.pct}%</b>)` : ''}</div>
       </div>
 
       <div class="inv-main">
