@@ -262,7 +262,8 @@
   .grid{display:grid;gap:16px;}
   .grid-3{grid-template-columns:repeat(3,1fr);}
   .grid-2{grid-template-columns:repeat(2,1fr);}
-  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}}
+  .grid-4{grid-template-columns:repeat(4,1fr);}
+  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4{grid-template-columns:repeat(2,1fr);}}
 
   .card{background:var(--card);border:1px solid #eef0f2;border-radius:20px;padding:22px 24px;box-shadow:0 2px 10px rgba(16,24,32,.05);}
   .card h3{margin:0 0 14px;font-size:15px;font-weight:800;letter-spacing:-.01em;}
@@ -279,6 +280,7 @@
   .stat-tile-sub{font-size:11.5px;margin-top:6px;opacity:.85;}
   .stat-tile-pink{background:#ffe9ef;color:#c72f5e;}
   .stat-tile-blue{background:#e8f3ff;color:#1f6fd6;}
+  .stat-tile-purple{background:#f1eaff;color:#6a3fd6;}
   .stat-tile-green{background:#e7f9ee;color:#1a9c56;}
   .stat-tile-amber{background:#fff6e0;color:#b9821a;}
   .stat-tile-num,.stat-tile-label,.stat-tile-sub{color:inherit;}
@@ -605,12 +607,15 @@
        무거운 grid-3와 달리) 모바일에서도 세로로 다 풀어헤치기보다 압축된 3열로 유지하는 편이
        "세로로 늘어나는" 느낌을 훨씬 줄여준다. 폰트/여백만 작게 줄여서 3열에 맞춘다. */
     .stat-grid-3{ grid-template-columns:repeat(3,1fr) !important; gap:7px !important; }
-    .stat-grid-3 .card, .stat-grid-3 .stat-tile{ padding:9px 7px !important; }
-    .stat-grid-3 .stat-tile-label{ font-size:9.5px !important; margin-bottom:3px !important; }
-    .stat-grid-3 .stat-tile-num{ font-size:14px !important; line-height:1.15 !important; }
-    .stat-grid-3 .stat-tile-sub{ font-size:9px !important; margin-top:3px !important; }
-    .stat-grid-3 b{ font-size:13px !important; }
-    .stat-grid-3 .muted{ font-size:9.5px !important; }
+    /* 지점별 경쟁력(MS) 카드가 함께 뜨는 4분할 행은 3분할과 같은 폭에 4개를 욱여넣으면 너무
+       좁아지므로, 모바일에서만 2x2로 접어 가독성을 유지한다. */
+    .stat-grid-4{ grid-template-columns:repeat(2,1fr) !important; gap:7px !important; }
+    .stat-grid-3 .card, .stat-grid-3 .stat-tile, .stat-grid-4 .card, .stat-grid-4 .stat-tile{ padding:9px 7px !important; }
+    .stat-grid-3 .stat-tile-label, .stat-grid-4 .stat-tile-label{ font-size:9.5px !important; margin-bottom:3px !important; }
+    .stat-grid-3 .stat-tile-num, .stat-grid-4 .stat-tile-num{ font-size:14px !important; line-height:1.15 !important; }
+    .stat-grid-3 .stat-tile-sub, .stat-grid-4 .stat-tile-sub{ font-size:9px !important; margin-top:3px !important; }
+    .stat-grid-3 b, .stat-grid-4 b{ font-size:13px !important; }
+    .stat-grid-3 .muted, .stat-grid-4 .muted{ font-size:9.5px !important; }
 
     /* 홈 대시보드의 관리자별 목표/경쟁력 배너, 지표 한눈에보기의 4개 KPI 카드처럼 개수가
        가변적인(3~5개) flex-wrap 카드 묶음도 폭이 좁아 한 줄에 한 장씩만 쌓이면 스크롤이

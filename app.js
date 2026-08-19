@@ -2104,6 +2104,10 @@ function renderHome(){
   const msisTarget = target * 1.25;
   const achieved = branchAchieved(myBranch, homePeriod);
   const pct = pctOf(achieved, target);
+  // 지점별 경쟁력(MS): 선택된(조회 중인) 지점의 msis경쟁력 시트 데이터가 있으면 목표/실적/달성률
+  // 카드 옆에 4번째 카드로 함께 보여준다. 데이터가 없는 지점/기간은 카드 자체를 숨긴다.
+  const homeCompData = competitivenessDataForPeriod(homePeriod);
+  const homeCompBranch = homeCompData && homeCompData.competitiveness && homeCompData.competitiveness[myBranch];
   // 매니저/사원은 본인 소속 지점(myBranch)에 고정되어 있지만, "오늘 출근 현황" 카드만은 다른
   // 지점의 출근 현황도 조회할 수 있도록 카드 우측 상단에 별도 지점 선택을 둔다(관리자는 이미
   // 상단 전체 지점 pill로 페이지 전체를 전환할 수 있으므로, 카드에도 같은 목록을 띄워 관리자
@@ -2148,7 +2152,7 @@ function renderHome(){
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
-    <div class="grid grid-3 stat-grid-3" style="margin-bottom:16px;">
+    <div class="grid ${homeCompBranch&&homeCompBranch.msPct!=null?'grid-4 stat-grid-4':'grid-3 stat-grid-3'}" style="margin-bottom:16px;">
       <div class="card stat-tile stat-tile-blue">
         <div class="stat-tile-label">이번 달 목표 <span style="font-weight:400;opacity:.8;">(MSIS실판매등록 기준 예상 목표치)</span></div>
         <div class="stat-tile-num">${fmtWon(msisTarget)}</div>
@@ -2165,6 +2169,13 @@ function renderHome(){
         <div class="progress-bar" style="margin-top:8px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(pct,100)}%"></div></div>
         <div class="stat-tile-sub" style="margin-top:6px;">목표 페이스 ${expectedPacePct().toFixed(1)}%</div>
       </div>
+      ${homeCompBranch && homeCompBranch.msPct!=null ? `
+      <div class="card stat-tile stat-tile-purple">
+        <div class="stat-tile-label">지점별 경쟁력 <span style="font-weight:400;opacity:.8;">(MS · msis경쟁력 시트)</span></div>
+        <div class="stat-tile-num">${homeCompBranch.msPct}%</div>
+        <div class="stat-tile-sub">LG ${fmtKK(homeCompBranch.lgWon)} · SS ${fmtKK(homeCompBranch.ssWon)} · GAP ${gapCell(homeCompBranch.gapWon)}</div>
+        <div class="stat-tile-sub" style="margin-top:4px;">${homeCompData.asOf?'as of '+homeCompData.asOf:goalsPeriodLabel(homePeriod)}</div>
+      </div>` : ''}
     </div>
 
     <div class="grid grid-2">
