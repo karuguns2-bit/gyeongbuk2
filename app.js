@@ -7426,6 +7426,7 @@ function renderCollectPhoto(){
   const myBranch = collectScopeBranch(true);
   const scoped = collectListScope(DB.execPhotos, true);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const epAllSelected = sorted.length>0 && sorted.every(r=>state.epSelectedIds.has(r.id));
   const editId = state.epEditId;
   const cards = sorted.map(r=>{
     const canEdit = canEditExecPhoto(r);
@@ -7498,6 +7499,13 @@ function renderCollectPhoto(){
       </div>
     </div>
 
+    ${SESSION.role==='admin' && sorted.length>0 ? `
+    <div style="margin-bottom:10px;">
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" ${epAllSelected?'checked':''} onchange="toggleExecPhotoSelectAll(this.checked)">
+        전체 선택
+      </label>
+    </div>` : ''}
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">
       ${cards}
     </div>
@@ -7584,6 +7592,13 @@ function deleteExecPhoto(id){
 // "선택 항목 내려받기"/"선택 항목 삭제하기" 버튼으로 한 번에 처리할 수 있게 한다.
 // 체크박스를 누를 때마다 화면 전체를 다시 그리면 스크롤 위치가 튀고 깜빡이므로, 선택 상태는
 // state에 Set으로만 들고 있다가 툴바 버튼의 표시 건수만 가볍게 갱신한다(전체 재렌더 없음).
+function toggleExecPhotoSelectAll(checked){
+  if(!state.epSelectedIds) state.epSelectedIds = new Set();
+  const scoped = collectListScope(DB.execPhotos, true);
+  if(checked) scoped.forEach(r=>state.epSelectedIds.add(r.id));
+  else scoped.forEach(r=>state.epSelectedIds.delete(r.id));
+  renderTab('collectPhoto');
+}
 function toggleExecPhotoSelect(id, checked){
   if(!state.epSelectedIds) state.epSelectedIds = new Set();
   if(checked) state.epSelectedIds.add(id); else state.epSelectedIds.delete(id);
