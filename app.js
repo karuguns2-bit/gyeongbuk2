@@ -7727,6 +7727,7 @@ function renderCollectGiftcard(){
   const budget = DB.giftcardBudgetWon || 0;
   const used = giftcardUsedWon();
   const remain = budget - used;
+  const gcAllSelected = sorted.length>0 && sorted.every(r=>state.gcSelectedIds.has(r.id));
   const rows = sorted.map(r=>{
     const canEdit = canEditGiftcardRequest(r);
     if(state.gcEditId === r.id){
@@ -7874,7 +7875,7 @@ function renderCollectGiftcard(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr>${SESSION.role==='admin' ? '<th style="width:26px;"></th>' : ''}<th>지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>판매 유형</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${SESSION.role==='admin' ? `<th style="width:26px;"><input type="checkbox" ${gcAllSelected?'checked':''} onchange="toggleGiftcardSelectAll(this.checked)" title="전체 선택"></th>` : ''}<th>지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>판매 유형</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -8014,6 +8015,13 @@ function deleteGiftcardRequest(id){
 // 모바일 상품권 취합 - 관리자가 체크박스로 여러 건을 골라 상단 툴바의 "선택 항목 삭제하기"
 // 버튼으로 한 번에 삭제한다(실행력 점검 사진 취합의 선택 삭제와 동일한 패턴). 기존에 등록된
 // 다른 건들은 그대로 유지되고, 선택한 건만 지워진다.
+function toggleGiftcardSelectAll(checked){
+  if(!state.gcSelectedIds) state.gcSelectedIds = new Set();
+  const scoped = collectListScope(DB.giftcardRequests);
+  if(checked) scoped.forEach(r=>state.gcSelectedIds.add(r.id));
+  else scoped.forEach(r=>state.gcSelectedIds.delete(r.id));
+  renderTab('collectGiftcard');
+}
 function toggleGiftcardSelect(id, checked){
   if(!state.gcSelectedIds) state.gcSelectedIds = new Set();
   if(checked) state.gcSelectedIds.add(id); else state.gcSelectedIds.delete(id);
@@ -8374,6 +8382,7 @@ function renderCollectContest(){
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const isAdmin = SESSION.role==='admin';
   const editId = state.cgEditId;
+  const cgAllSelected = sorted.length>0 && sorted.every(r=>state.cgSelectedIds.has(r.id));
   const rows = sorted.map(r=>{
     const canEdit = canEditContestGift(r);
     if(canEdit && editId===r.id){
@@ -8511,7 +8520,7 @@ function renderCollectContest(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr>${isAdmin ? '<th style="width:26px;"></th>' : ''}<th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th>증빙자료</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${isAdmin ? `<th style="width:26px;"><input type="checkbox" ${cgAllSelected?'checked':''} onchange="toggleContestGiftSelectAll(this.checked)" title="전체 선택"></th>` : ''}<th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th>증빙자료</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -8685,6 +8694,13 @@ function deleteContestGift(id){
 }
 // 구독연동사은품 취합 - 관리자가 체크박스로 여러 건을 골라 상단 툴바의 "선택 항목 삭제하기"
 // 버튼으로 한 번에 삭제한다(실행력 점검 사진 취합의 선택 삭제와 동일한 패턴).
+function toggleContestGiftSelectAll(checked){
+  if(!state.cgSelectedIds) state.cgSelectedIds = new Set();
+  const scoped = collectListScope(DB.contestGifts);
+  if(checked) scoped.forEach(r=>state.cgSelectedIds.add(r.id));
+  else scoped.forEach(r=>state.cgSelectedIds.delete(r.id));
+  renderTab('collectContest');
+}
 function toggleContestGiftSelect(id, checked){
   if(!state.cgSelectedIds) state.cgSelectedIds = new Set();
   if(checked) state.cgSelectedIds.add(id); else state.cgSelectedIds.delete(id);
@@ -8856,6 +8872,7 @@ function renderSubTierContest(){
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const editId = state.stcEditId;
 
+  const stcAllSelected = sorted.length>0 && sorted.every(r=>state.stcSelectedIds.has(r.id));
   const rows = sorted.map(r=>{
     const canEdit = canEditSubTierContest(r);
     if(canEdit && editId===r.id){
@@ -8960,7 +8977,7 @@ function renderSubTierContest(){
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr>${SESSION.role==='admin' ? '<th style="width:26px;"></th>' : ''}<th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>주소</th><th>영수증 증빙</th><th>등록자</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${SESSION.role==='admin' ? `<th style="width:26px;"><input type="checkbox" ${stcAllSelected?'checked':''} onchange="toggleSubTierContestSelectAll(this.checked)" title="전체 선택"></th>` : ''}<th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>주소</th><th>영수증 증빙</th><th>등록자</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -8988,6 +9005,13 @@ function deleteSubTierContest(id){
 }
 // 기타 사은품 취합 - 관리자가 체크박스로 여러 건을 골라 상단 툴바의 "선택 항목 삭제하기"
 // 버튼으로 한 번에 삭제한다(실행력 점검 사진 취합의 선택 삭제와 동일한 패턴).
+function toggleSubTierContestSelectAll(checked){
+  if(!state.stcSelectedIds) state.stcSelectedIds = new Set();
+  const scoped = collectListScope(DB.subTierContestGifts);
+  if(checked) scoped.forEach(r=>state.stcSelectedIds.add(r.id));
+  else scoped.forEach(r=>state.stcSelectedIds.delete(r.id));
+  renderTab('subTierContest');
+}
 function toggleSubTierContestSelect(id, checked){
   if(!state.stcSelectedIds) state.stcSelectedIds = new Set();
   if(checked) state.stcSelectedIds.add(id); else state.stcSelectedIds.delete(id);
