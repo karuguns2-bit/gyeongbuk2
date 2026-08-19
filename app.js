@@ -9873,6 +9873,63 @@ function icCountBarConfig(labels, values, color){
 // 아니며, 이 별도 구조화 필드들만 집계 대상이다(자유 텍스트를 실시간으로 AI가 분석하는 기능은
 // 이 사이트에 연결된 백엔드/AI API가 없어 지원하지 않음 — 등록 시점에 구조화된 값을 입력받아
 // 누적하는 방식으로 동일한 목적을 달성한다).
+// 성공 사례가 쌓일 때마다(제품별 집계 agg 기준) 공통 패턴을 뽑아 매니저가 상담에 바로 쓸 수
+// 있는 참고 멘트/피드백을 만들어준다. 실시간 LLM이 아니라 규칙 기반 집계이므로, 사례가 새로
+// 등록될 때마다 tally가 바뀌면서 이 함수의 결과도 자동으로 갱신되는 방식으로 "지속적인 분석"을
+// 구현한다(등록 건수가 늘수록 상위 소구 유형/키워드/반응 비중이 더 정확해진다).
+function issueCaseFeedbackLines(agg){
+  const lines = [];
+  const totalCount = agg.count||0;
+  if(totalCount < 2){
+    lines.push(`등록된 사례가 ${totalCount}건으로 아직 적어 공통 패턴을 분석하기 어렵습니다. 사례가 2건 이상 쌓이면 이 영역에 상담 참고 포인트가 자동으로 정리됩니다.`);
+    return lines;
+  }
+  const successEntries = Object.entries(agg.successTypes||{}).sort((a,b)=>b[1]-a[1]);
+  const successTotal = successEntries.reduce((s,[,c])=>s+c,0);
+  if(successEntries.length>0 && successTotal>0){
+    const [topType, topCount] = successEntries[0];
+    const pct = Math.round(topCount/successTotal*100);
+    lines.push(`가장 자주 통했던 소구 방식은 <b>"${escapeHtml(topType)}"</b>입니다 (${topCount}건 · ${pct}%). 상담 시 이 방식을 먼저 시도해 보세요.`);
+    if(successEntries.length>1){
+      const [secondType, secondCount] = successEntries[1];
+      lines.push(`다음으로는 <b>"${escapeHtml(secondType)}"</b>(${secondCount}건)도 효과적이었습니다. 첫 소구가 안 통할 때 대안으로 활용해 보세요.`);
+    }
+  }
+  const tagEntries = Object.entries(agg.tags||{}).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  if(tagEntries.length>0){
+    lines.push(`고객에게 자주 강조된 핵심 키워드는 ${tagEntries.map(([t,c])=>`<b>#${escapeHtml(t)}</b>(${c}회)`).join(', ')}입니다. 상담 멘트에 함께 녹여서 설명하면 효과적입니다.`);
+  }
+  const sentiments = agg.sentiments || {};
+  const posCount = (sentiments['매우 긍정']||0) + (sentiments['긍정']||0);
+  const negCount = sentiments['부정']||0;
+  const sentTotal = Object.values(sentiments).reduce((s,c)=>s+c,0);
+  if(sentTotal>0){
+    if(negCount>0 && negCount >= posCount*0.3){
+      lines.push(`고객 반응 중 일부(${negCount}건)는 부정적이었습니다. 상담 전 우려 포인트를 미리 파악해 대응 멘트를 준비해 두는 것이 좋습니다.`);
+    } else if(posCount>0){
+      const posPct = Math.round(posCount/sentTotal*100);
+      lines.push(`고객 반응은 대체로 긍정적입니다 (긍정 이상 응답 ${posPct}%). 자신감을 갖고 위 소구 포인트를 적극 활용하세요.`);
+    }
+  }
+  const recentReactions = (agg.reactions||[]).filter(r=>r && r.text)
+    .sort((a,b)=>String(b.date||'').localeCompare(String(a.date||'')))
+    .slice(0,2);
+  if(recentReactions.length>0){
+    lines.push(`실제 상담 참고 사례: ` + recentReactions.map(r=>`"${escapeHtml(r.text)}"${r.branch?` <span class="muted">(${escapeHtml(r.branch)}${r.date?' · '+r.date:''})</span>`:''}`).join(' &nbsp;/&nbsp; '));
+  }
+  if(lines.length===0){
+    lines.push('아직 요약할 만한 공통 패턴이 충분하지 않습니다. 사례가 더 쌓이면 자동으로 갱신됩니다.');
+  }
+  return lines;
+}
+function issueCaseFeedbackHtml(agg, contextLabel){
+  const lines = issueCaseFeedbackLines(agg);
+  return `
+      <div class="ai-box" style="margin-top:14px;">
+        <div class="ai-title">💡 상담 참고 포인트${contextLabel?` <small style="font-weight:400;">(${contextLabel})</small>`:''}</div>
+        ${lines.map(l=>`<div class="ai-item">${l}</div>`).join('')}
+      </div>`;
+}
 function renderIssueCaseDashboard(){
   const cases = DB.issueCases || [];
   const byProduct = issueCaseAggregate();
@@ -9889,10 +9946,13 @@ function renderIssueCaseDashboard(){
 
   let bodyHtml;
   if(!selProduct){
-    const successTally = {}, tagTally = {};
+    const successTally = {}, tagTally = {}, sentimentTally = {};
+    const allReactions = [];
     products.forEach(p=>{
       Object.entries(p.successTypes).forEach(([t,c])=>{ successTally[t]=(successTally[t]||0)+c; });
       Object.entries(p.tags).forEach(([t,c])=>{ tagTally[t]=(tagTally[t]||0)+c; });
+      Object.entries(p.sentiments).forEach(([t,c])=>{ sentimentTally[t]=(sentimentTally[t]||0)+c; });
+      allReactions.push(...p.reactions);
     });
     const successEntries = Object.entries(successTally).sort((a,b)=>b[1]-a[1]);
     const tagEntriesAll = Object.entries(tagTally).sort((a,b)=>b[1]-a[1]).slice(0,20);
@@ -9907,6 +9967,7 @@ function renderIssueCaseDashboard(){
           ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(140, successEntries.length*30)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
         </div>
       </div>
+      ${issueCaseFeedbackHtml({ count: cases.length, successTypes: successTally, tags: tagTally, sentiments: sentimentTally, reactions: allReactions }, '전체 제품')}
       <div style="margin-top:14px;">
         <div class="stat-sub" style="margin-bottom:6px;">전체 핵심 키워드 <small>자주 언급된 순</small></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -9920,15 +9981,14 @@ function renderIssueCaseDashboard(){
     const successEntries = Object.entries(b.successTypes).sort((a,c)=>c[1]-a[1]);
     const tagEntries = Object.entries(b.tags).sort((a,c)=>c[1]-a[1]).slice(0,15);
     bodyHtml = `
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
-        <div style="flex:1;min-width:220px;">
-          <div class="stat-sub" style="margin-bottom:6px;">성공 유형 <small>${escapeHtml(selProduct)} · 총 ${b.count}건</small></div>
-          ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(120, successEntries.length*30)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
-        </div>
-        <div style="flex:1;min-width:220px;">
-          <div class="stat-sub" style="margin-bottom:6px;">핵심 키워드 <small>자주 언급된 순</small></div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">${tagEntries.map(([t,c])=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}</div>
-        </div>
+      <div style="margin-top:12px;">
+        <div class="stat-sub" style="margin-bottom:6px;">성공 유형 <small>${escapeHtml(selProduct)} · 총 ${b.count}건</small></div>
+        ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(120, successEntries.length*30)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
+      </div>
+      ${issueCaseFeedbackHtml({ count: b.count, successTypes: b.successTypes, tags: b.tags, sentiments: b.sentiments, reactions: b.reactions }, escapeHtml(selProduct))}
+      <div style="margin-top:14px;">
+        <div class="stat-sub" style="margin-bottom:6px;">핵심 키워드 <small>자주 언급된 순</small></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${tagEntries.map(([t,c])=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}</div>
       </div>`;
     if(successEntries.length>0) moRenderChart('icSuccessTypeChart', icCountBarConfig(successEntries.map(e=>e[0]), successEntries.map(e=>e[1]), '#4a7fd6'));
   }
