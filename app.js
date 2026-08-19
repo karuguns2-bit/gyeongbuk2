@@ -2178,6 +2178,14 @@ function renderHome(){
       </div>` : ''}
     </div>
 
+    ${SESSION.role==='exec' ? `
+    <div class="card">
+      <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
+      <div class="ai-box">
+        <div class="ai-title">💡 오늘의 코멘트</div>
+        ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
+      </div>
+    </div>` : `
     <div class="grid grid-2">
       <div class="card">
         <div class="flex-between" style="align-items:center;">
@@ -2197,7 +2205,7 @@ function renderHome(){
           ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
         </div>
       </div>
-    </div>
+    </div>`}
 
     ${renderHomeEduSummaryBanner()}
 
