@@ -1070,6 +1070,8 @@ function migrateDB(){
   // 재고 조회: "소진리스트" 시트에서 추출한 소진집중 대상 상품코드 목록(깜빡이는 알림 배지용)
   if(!DB.inventoryClearanceCodes) DB.inventoryClearanceCodes = [];
   if(DB.inventoryClearanceBaseline===undefined) DB.inventoryClearanceBaseline = null;
+  // 여러 영업팀 재고가 섞인 파일을 올려도 기본은 혼매경북팀만 표시 - 관리자가 켜면 전체 팀 표시
+  if(DB.inventoryShowAllTeams===undefined) DB.inventoryShowAllTeams = false;
   if(!DB.kakaoFriends) DB.kakaoFriends = [];
   DB.kakaoFriends.forEach(r=>{ if(!r.date) r.date = r.weekStart; if(!r.weekStart && r.date) r.weekStart = getMondayStr(r.date); });
   if(!DB.prospects) DB.prospects = [];
@@ -5167,8 +5169,12 @@ const INV_HEADER_ALIASES = {
   model: ['모델명','모델'],
   code: ['상품코드','코드','바코드'],
   qty: ['현재수량','수량','재고수량'],
-  amountWon: ['현재금액','금액','재고금액']
+  amountWon: ['현재금액','금액','재고금액'],
+  team: ['팀명','영업팀','담당팀']
 };
+// 여러 영업팀 재고가 한 파일에 섞여 올라오는 "부가정보 데이터" 형식의 경우, 팀명 컬럼 기준으로
+// 우리 팀(혼매경북팀) 재고만 기본으로 보여준다(관리자가 "타영업팀 재고 함께보기"를 켜면 전체 표시).
+const INV_HOME_TEAM = '혼매경북팀';
 // 파일 맨 위에 안내 문구 등 다른 행이 섞여 있을 수 있으므로, 위에서부터 최대 10행까지 훑어
 // "점포명"류 + "상품명"류 컬럼이 함께 있는 행을 진짜 헤더 행으로 판단한다.
 function findInvHeaderRowIndex(rows){
@@ -5207,7 +5213,8 @@ function parseInventorySheetRows(rows){
       model: colIndex.model>=0 ? toStr(row[colIndex.model]) : '',
       code: colIndex.code>=0 ? toNum(row[colIndex.code]) : null,
       qty: colIndex.qty>=0 ? (toNum(row[colIndex.qty]) || 0) : 0,
-      amountWon: colIndex.amountWon>=0 ? toNum(row[colIndex.amountWon]) : null
+      amountWon: colIndex.amountWon>=0 ? toNum(row[colIndex.amountWon]) : null,
+      team: colIndex.team>=0 ? toStr(row[colIndex.team]) : ''
     });
   }
   return out;
@@ -5355,8 +5362,16 @@ function handleInventoryFile(evt){
       if(datedSheets.length >= 2){
         currentSheetName = datedSheets[datedSheets.length-1].name;
         baselineSheetInfo = datedSheets[0];
+      } else if(invSheetNames.length > 0){
+        currentSheetName = invSheetNames[0];
       } else {
-        currentSheetName = invSheetNames[0] || wb.SheetNames[0];
+        // 시트 이름에 "재고"가 들어간 시트가 하나도 없는 파일(예: "부가정보 데이터" 시트에
+        // 팀별 재고가 통째로 들어있는 형식)은, 전체 시트를 훑어 점포명+상품명 헤더가 있는
+        // 첫 시트를 재고 시트로 인식한다.
+        currentSheetName = wb.SheetNames.find(n=>{
+          const testRows = XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, defval:null, raw:true});
+          return findInvHeaderRowIndex(testRows) !== -1;
+        }) || wb.SheetNames[0];
       }
 
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[currentSheetName], {header:1, defval:null, raw:true});
@@ -7106,6 +7121,16 @@ function clearInvFilterList(field){
   state.invFilter.page = 1;
   renderTab('inventory');
 }
+// 재고 조회 - 관리자 전용 "타영업팀 재고 함께보기" 스위치. 여러 팀 재고가 섞인 파일을 올려도
+// 기본은 혼매경북팀만 보이도록 걸러두되, 관리자가 이 스위치를 켜면 파일 내 전체 팀 재고를 다시
+// 필터 없이 다 볼 수 있다(재업로드 없이 즉시 토글 - DB.inventory 자체에는 전체 팀 데이터가 그대로 남아있음).
+function toggleInventoryShowAllTeams(checked){
+  if(!SESSION || SESSION.role!=='admin') return;
+  DB.inventoryShowAllTeams = !!checked;
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 타영업팀 재고 함께보기를 ${DB.inventoryShowAllTeams ? '켰습니다' : '껐습니다'}`);
+  renderTab('inventory');
+}
 function renderInventory(){
   if(!state.invFilter) state.invFilter = invFilterDefaults();
   const f = state.invFilter;
@@ -7113,9 +7138,15 @@ function renderInventory(){
   if(!f.statusList) f.statusList = [];
   if(!f.saleStatusList) f.saleStatusList = [];
 
-  // 행사(행)/진열(진) 태그가 붙은 품목만 다룸 — 그 외 일반 재고는 이 화면에서 제외
+  // 여러 영업팀 재고가 한 파일에 섞여 올라온 경우, 팀명이 혼매경북팀이 아닌 행은 기본적으로
+  // 제외한다(팀명 컬럼이 없는 예전 형식 파일은 원래부터 경북팀 데이터만 들어있었으므로 그대로 표시).
+  // 관리자가 "타영업팀 재고 함께보기"를 켜면 이 필터 없이 파일 내 전체 팀 재고를 다 볼 수 있다.
+  const teamScopedInventory = DB.inventoryShowAllTeams
+    ? DB.inventory
+    : DB.inventory.filter(r=>!r.team || r.team===INV_HOME_TEAM);
+  // 행사(행)/진열(진)/핸디(핸) 태그가 붙은 품목만 다룸 — 그 외 일반 재고는 이 화면에서 제외
   // (권한 제한 없음: 관리자/지점 매니저 모두 전 지점 재고를 동일하게 조회 가능)
-  const taggedInventory = DB.inventory.filter(r=>invTag(r.product));
+  const taggedInventory = teamScopedInventory.filter(r=>invTag(r.product));
 
   const stores = [...new Set(taggedInventory.map(r=>r.store))].sort();
   // "구분1"으로 화면에 표시하는 값은 원본 파일의 구분2(cat2) 컬럼 — 구분1(cat1)은 더 이상 표시/편집하지
@@ -7188,6 +7219,14 @@ function renderInventory(){
     <div class="inv-layout">
       <div class="inv-sidebar">
         <div class="card inv-filter-card" style="margin-bottom:16px;">
+          ${SESSION.role==='admin' ? `
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;">
+            <span class="toggle-switch">
+              <input type="checkbox" ${DB.inventoryShowAllTeams ? 'checked' : ''} onchange="toggleInventoryShowAllTeams(this.checked)">
+              <span class="slider"></span>
+            </span>
+            <span style="font-size:13px;">타영업팀 재고 함께보기 ${DB.inventoryShowAllTeams ? '(전체 팀 표시 중)' : '(혼매경북팀만 표시 중)'}</span>
+          </label>` : ''}
           <div class="field" style="margin-bottom:12px;">
             <label>매장</label>
             <select onchange="setInvFilter('store', this.value)">
