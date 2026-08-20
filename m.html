@@ -264,11 +264,11 @@
   .grid-2{grid-template-columns:repeat(2,1fr);}
   .grid-4{grid-template-columns:repeat(4,1fr);}
   @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4{grid-template-columns:repeat(2,1fr);}}
-  .sysadmin-masonry{column-count:2;column-gap:16px;}
-  .sysadmin-masonry .card{break-inside:avoid-column;-webkit-column-break-inside:avoid;margin:0 0 16px;}
-  .sysadmin-masonry .sysadmin-full{column-span:all;}
-  .sysadmin-section-label{font-weight:700;font-size:13.5px;color:var(--primary);margin:10px 0 2px;column-span:all;break-inside:avoid-column;}
-  @media(max-width:1000px){.sysadmin-masonry{column-count:1;}}
+  .sysadmin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:start;}
+  .sysadmin-grid .sysadmin-span2{grid-column:span 2;}
+  .sysadmin-grid .sysadmin-span4{grid-column:1/-1;}
+  @media(max-width:1000px){.sysadmin-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:640px){.sysadmin-grid{grid-template-columns:1fr;}.sysadmin-grid .sysadmin-span2{grid-column:1/-1;}}
 
   .card{background:var(--card);border:1px solid #eef0f2;border-radius:20px;padding:22px 24px;box-shadow:0 2px 10px rgba(16,24,32,.05);}
   .card h3{margin:0 0 14px;font-size:15px;font-weight:800;letter-spacing:-.01em;}
