@@ -1069,6 +1069,8 @@ function migrateDB(){
     DB.eduSchedules[cat].forEach(s=>{
       if(s.targetEmpIds===undefined) s.targetEmpIds = [];
       if(s.alarmDaysBefore===undefined) s.alarmDaysBefore = null;
+      // 몇박 며칠짜리 교육(숙박 교육 등) 지원 - 종료일이 없으면 시작일과 같은 하루짜리 일정으로 취급.
+      if(s.endDate===undefined) s.endDate = null;
     });
   });
   if(!DB.eduCompletion) DB.eduCompletion = { video: [], test: [], aiRp: [] };
@@ -7706,7 +7708,7 @@ function renderInventory(){
         <div class="card inv-filter-card" style="margin-bottom:16px;">
           ${filterPresetBarHtml('inventory')}
           ${SESSION.role==='admin' ? `
-          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;">
+          <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;touch-action:manipulation;">
             <span class="toggle-switch">
               <input type="checkbox" ${DB.inventoryShowAllTeams ? 'checked' : ''} onchange="toggleInventoryShowAllTeams(this.checked)">
               <span class="slider"></span>
@@ -11476,6 +11478,18 @@ function toggleEduCalFilterDate(cat, dateStr){
   state.eduCalFilterDate[cat] = (state.eduCalFilterDate[cat]===dateStr) ? null : dateStr;
   renderTab(eduTabName(cat));
 }
+// 몇박 며칠짜리 교육(숙박 교육 등)을 위한 종료일 지원 - endDate가 없으면(예전 데이터 포함)
+// 시작일(date)과 같은 하루짜리 일정으로 취급한다.
+function eduScheduleEndDate(s){
+  return s.endDate || s.date;
+}
+function eduScheduleDateRangeLabel(s){
+  const end = eduScheduleEndDate(s);
+  return end === s.date ? s.date : `${s.date} ~ ${end}`;
+}
+function eduScheduleCoversDate(s, dateStr){
+  return dateStr >= s.date && dateStr <= eduScheduleEndDate(s);
+}
 function eduScheduleCalendarHtml(cat){
   const monthKey = eduCalMonthKey(cat);
   const [y,m] = monthKey.split('-').map(Number);
@@ -11484,7 +11498,21 @@ function eduScheduleCalendarHtml(cat){
   const daysInMonth = new Date(y, m, 0).getDate();
   const list = DB.eduSchedules[cat] || [];
   const byDate = {};
-  list.forEach(s=>{ if(!byDate[s.date]) byDate[s.date] = []; byDate[s.date].push(s); });
+  // 몇박 며칠짜리 교육은 시작일부터 종료일까지 매일 칸에 함께 표시한다(최대 60일 - 데이터 오류로
+  // 인한 무한 확장을 막기 위한 안전장치일 뿐, 실사용 범위에서는 걸릴 일이 없다).
+  list.forEach(s=>{
+    const end = eduScheduleEndDate(s);
+    let cur = toDateObj(s.date);
+    const endObj = toDateObj(end);
+    let guard = 0;
+    while(cur <= endObj && guard < 60){
+      const dStr = `${cur.getFullYear()}-${pad(cur.getMonth()+1)}-${pad(cur.getDate())}`;
+      if(!byDate[dStr]) byDate[dStr] = [];
+      byDate[dStr].push(s);
+      cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate()+1);
+      guard++;
+    }
+  });
   const today = todayStr();
   const filterDate = eduCalFilterDate(cat);
   const cells = [];
@@ -11545,14 +11573,17 @@ function renderEduSchedule(cat){
   const today = todayStr();
   const editId = state.eduScheduleEditId;
   const calFilterDate = eduCalFilterDate(cat);
-  const displayList = calFilterDate ? sorted.filter(s=>s.date===calFilterDate) : sorted;
+  const displayList = calFilterDate ? sorted.filter(s=>eduScheduleCoversDate(s, calFilterDate)) : sorted;
   const rows = displayList.map(s=>{
-    const dday = Math.round((toDateObj(s.date) - toDateObj(today)) / 86400000);
-    let ddayLabel;
-    if(dday>0) ddayLabel = `D-${dday}`;
-    else if(dday===0) ddayLabel = `D-DAY`;
-    else ddayLabel = `종료`;
-    const badgeClass = dday<0 ? '' : (dday<=2 ? 'bad' : (dday<=7 ? 'warn' : 'good'));
+    const endDateForDday = eduScheduleEndDate(s);
+    const daysUntilStart = Math.round((toDateObj(s.date) - toDateObj(today)) / 86400000);
+    const daysUntilEnd = Math.round((toDateObj(endDateForDday) - toDateObj(today)) / 86400000);
+    const isMultiDay = endDateForDday !== s.date;
+    let ddayLabel, badgeClass;
+    if(daysUntilEnd < 0){ ddayLabel = `종료`; badgeClass = ''; }
+    else if(daysUntilStart <= 0){ ddayLabel = isMultiDay ? `진행중` : `D-DAY`; badgeClass = 'warn'; }
+    else { ddayLabel = `D-${daysUntilStart}`; badgeClass = daysUntilStart<=2 ? 'bad' : (daysUntilStart<=7 ? 'warn' : 'good'); }
+    const dday = daysUntilEnd;
     const targetLabel = (s.targetEmpIds && s.targetEmpIds.length>0)
       ? `<span title="${escapeHtml(eduTargetNamesTitle(s))}">${s.targetEmpIds.length}명 지정</span>`
       : (s.branchId ? branchName(s.branchId) : '전체');
@@ -11560,7 +11591,10 @@ function renderEduSchedule(cat){
     if(isAdmin && editId===s.id){
       const editKey = `edit_${cat}_${s.id}`;
       return `<tr>
-        <td><input id="ese_${cat}_${s.id}_date" type="date" value="${s.date}" style="width:120px"></td>
+        <td>
+          <input id="ese_${cat}_${s.id}_date" type="date" value="${s.date}" style="width:120px" title="시작일">
+          <input id="ese_${cat}_${s.id}_endDate" type="date" value="${eduScheduleEndDate(s)}" style="width:120px;margin-top:3px;" title="종료일(당일 교육이면 시작일과 동일하게 두세요)">
+        </td>
         <td class="muted">-</td>
         <td><input id="ese_${cat}_${s.id}_title" value="${escapeHtml(s.title)}" style="width:140px"></td>
         <td style="min-width:160px;">${eduTargetPickerHtml(editKey)}</td>
@@ -11574,7 +11608,7 @@ function renderEduSchedule(cat){
       </tr>`;
     }
     return `<tr>
-      <td>${s.date}</td>
+      <td>${eduScheduleDateRangeLabel(s)}</td>
       <td>${dday>=0 ? `<span class="badge ${badgeClass}">${ddayLabel}</span>` : `<span class="muted">${ddayLabel}</span>`}</td>
       <td>${escapeHtml(s.title)}</td>
       <td>${targetLabel}</td>
@@ -11594,8 +11628,12 @@ function renderEduSchedule(cat){
           <input id="es_${cat}_title" placeholder="예: 신제품 교육" style="width:200px">
         </div>
         <div class="field">
-          <label>일자</label>
+          <label>시작일</label>
           <input id="es_${cat}_date" type="date">
+        </div>
+        <div class="field">
+          <label>종료일 (선택, 숙박 등 며칠짜리 교육일 때만)</label>
+          <input id="es_${cat}_endDate" type="date">
         </div>
         <div class="field">
           <label>대상 지점 (선택, 미선택시 전체)</label>
@@ -11653,16 +11691,19 @@ function renderEduSchedule(cat){
 function addEduSchedule(cat){
   const title = document.getElementById(`es_${cat}_title`).value.trim();
   const date = document.getElementById(`es_${cat}_date`).value;
+  const endDateRaw = document.getElementById(`es_${cat}_endDate`).value;
   const branchId = document.getElementById(`es_${cat}_branch`).value || null;
   const location = document.getElementById(`es_${cat}_location`).value.trim();
   const note = document.getElementById(`es_${cat}_note`).value.trim();
   const alarmDays = Number(document.getElementById(`es_${cat}_alarmDays`).value);
-  if(!title || !date){ alert('교육명과 일자를 입력해 주세요.'); return; }
+  if(!title || !date){ alert('교육명과 시작일을 입력해 주세요.'); return; }
+  if(endDateRaw && endDateRaw < date){ alert('종료일은 시작일보다 빠를 수 없습니다.'); return; }
+  const endDate = (endDateRaw && endDateRaw !== date) ? endDateRaw : null;
   const addKey = `add_${cat}`;
   const targetEmpIds = [...eduTargetSelectedSet(addKey)];
   DB.eduSchedules[cat].push({
     id: 'es_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-    title, date, branchId, location: location||null, note: note||null,
+    title, date, endDate, branchId, location: location||null, note: note||null,
     targetEmpIds, alarmDaysBefore: isNaN(alarmDays) ? 2 : alarmDays,
     createdAt: new Date().toISOString()
   });
@@ -11689,13 +11730,16 @@ function saveEditEduSchedule(cat, id){
   if(!s) return;
   const title = document.getElementById(`ese_${cat}_${id}_title`).value.trim();
   const date = document.getElementById(`ese_${cat}_${id}_date`).value;
+  const endDateRaw = document.getElementById(`ese_${cat}_${id}_endDate`).value;
   const location = document.getElementById(`ese_${cat}_${id}_location`).value.trim();
   const note = document.getElementById(`ese_${cat}_${id}_note`).value.trim();
   const alarmDays = Number(document.getElementById(`ese_${cat}_${id}_alarm`).value);
-  if(!title || !date){ alert('교육명과 일자를 입력해 주세요.'); return; }
+  if(!title || !date){ alert('교육명과 시작일을 입력해 주세요.'); return; }
+  if(endDateRaw && endDateRaw < date){ alert('종료일은 시작일보다 빠를 수 없습니다.'); return; }
   const editKey = `edit_${cat}_${id}`;
   const targetEmpIds = [...eduTargetSelectedSet(editKey)];
-  s.title = title; s.date = date; s.location = location||null; s.note = note||null;
+  s.title = title; s.date = date; s.endDate = (endDateRaw && endDateRaw !== date) ? endDateRaw : null;
+  s.location = location||null; s.note = note||null;
   s.targetEmpIds = targetEmpIds; s.alarmDaysBefore = isNaN(alarmDays) ? 2 : alarmDays;
   state.eduScheduleEditId = null;
   saveDB();
@@ -12128,11 +12172,17 @@ function computeEduReminders(){
       const hasTargets = s.targetEmpIds && s.targetEmpIds.length>0;
       const targetMatch = hasTargets ? s.targetEmpIds.includes(SESSION.empId) : (!s.branchId || s.branchId===SESSION.branchId);
       if(!targetMatch) return;
+      const endDate = eduScheduleEndDate(s);
       const daysUntil = Math.round((toDateObj(s.date) - toDateObj(today)) / 86400000);
+      const daysUntilEnd = Math.round((toDateObj(endDate) - toDateObj(today)) / 86400000);
       const threshold = (s.alarmDaysBefore!=null) ? s.alarmDaysBefore : 2;
+      const dateLabel = eduScheduleDateRangeLabel(s);
       if(daysUntil>=0 && daysUntil<=threshold){
         const ddayText = daysUntil===0 ? '오늘' : `${daysUntil}일 후`;
-        messages.push(`📅 <b>${label}</b> &quot;${escapeHtml(s.title)}&quot; 일정이 <b>${s.date}</b>(${ddayText})로 예정되어 있습니다.${s.location?` 장소: ${escapeHtml(s.location)}`:''}`);
+        messages.push(`📅 <b>${label}</b> &quot;${escapeHtml(s.title)}&quot; 일정이 <b>${dateLabel}</b>(${ddayText})로 예정되어 있습니다.${s.location?` 장소: ${escapeHtml(s.location)}`:''}`);
+      } else if(daysUntil<0 && daysUntilEnd>=0){
+        // 며칠짜리 교육이 지금 진행 중인 경우에도 놓치지 않도록 안내한다.
+        messages.push(`📅 <b>${label}</b> &quot;${escapeHtml(s.title)}&quot; 일정이 <b>${dateLabel}</b> 기간 중 진행 중입니다.${s.location?` 장소: ${escapeHtml(s.location)}`:''}`);
       }
     });
   });

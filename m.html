@@ -90,6 +90,17 @@
   body.dark-mode #addressSearchModal > div,
   body.dark-mode #noticeDetailModal > div{ background:#1f2126 !important; }
   body.dark-mode #addressSearchBaseText{ background:#26282e !important; }
+  /* 다크 모드에서 밝은 배경(공지/강조 박스, 읽기전용 입력창, 팝오버 등)이 그대로 남아
+     그 안의 글씨가 안 보이거나 너무 흐리게 보이던 부분들을 고쳐준다. (2026.08)
+     - 자체 색을 함께 지정하는 배지/통계카드류(예: stat-tile, badge)는 원래부터 밝은 배경 위에
+       어울리는 진한 글씨색을 같이 쓰고 있어 다크 모드에서도 문제없이 그대로 둔다. */
+  body.dark-mode [style*="background:#fff;"]{ background:var(--card) !important; }
+  body.dark-mode [style*="background:#fff7f9"]{ background:#2a1e22 !important; }
+  body.dark-mode [style*="background:#fff7e0"]{ background:#2a2416 !important; }
+  body.dark-mode [style*="background:#fffbf0"]{ background:#2a2416 !important; }
+  body.dark-mode [style*="background:#f7f7f8"]{ background:#26282e !important; }
+  body.dark-mode [style*="background:#f7f8fa"]{ background:#26282e !important; }
+  body.dark-mode [style*="background:#fafafa"]{ background:#1a1b1f !important; }
 
   body.font-small{ font-size:13px; }
   body.font-large{ font-size:16px; }
@@ -252,10 +263,10 @@
   }
 
   /* ---------- 관리자 설정용 토글 스위치 ---------- */
-  .toggle-switch{ position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0; }
+  .toggle-switch{ position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;touch-action:manipulation; }
   .toggle-switch input{ opacity:0;width:0;height:0; }
   .toggle-switch .slider{
-    position:absolute;inset:0;background:#d1d5db;border-radius:999px;cursor:pointer;transition:background .18s ease;
+    position:absolute;inset:0;background:#d1d5db;border-radius:999px;cursor:pointer;transition:background .18s ease;touch-action:manipulation;
   }
   .toggle-switch .slider::before{
     content:"";position:absolute;width:18px;height:18px;left:3px;top:3px;background:#fff;border-radius:50%;
@@ -268,7 +279,7 @@
   #app{display:none;min-height:100vh;}
   #app.active{display:flex;}
   .sidebar{
-    width:216px;background:#1c1c1f;color:#eee;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
+    width:236px;background:#1c1c1f;color:#eee;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
     height:100vh;overflow-y:auto;
   }
   /* 메뉴가 30개 가까이 되면서 사이드바 높이가 화면보다 길어져 본문과 함께 통째로
@@ -886,7 +897,10 @@
     <div class="nav-item sub" data-tab="collectPhoto">실행력 점검 사진 취합</div>
     <div class="nav-item sub" data-tab="collectGiftcard">모바일 상품권 취합</div>
     <div class="nav-item sub" data-tab="collectContest">구독연동사은품 취합</div>
-    <div class="nav-item sub" data-tab="subTierContest">기타 사은품 취합<br>(다품목/금액대/연동사은품등)</div>
+    <div class="nav-item sub" data-tab="subTierContest">
+      <div>기타 사은품 취합</div>
+      <div class="nav-sub-date">(다품목/금액대/연동사은품등)</div>
+    </div>
     <div class="nav-group-label">성장 지원</div>
     <div class="nav-item sub" data-tab="mistakeNote">구독 오답노트</div>
     <div class="nav-item sub" data-tab="issueCase">이슈제품 판매 성공 사례</div>
