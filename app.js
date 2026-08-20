@@ -1306,6 +1306,53 @@ const VALID_TABS = ['home','systemAdmin','accountManagement','metricsOverview','
   'subTierContest','mistakeNote','issueCase','bestPractice','policyQuiz','eduHq','eduInhouse','eduEtc','eduVideo',
   'eduTest','eduAiRp','kakaoFriends','prospects','suggestions'];
 
+/* =========================================================================
+   2b. 개인화 UI 설정 (다크모드/글자크기/밀도/홈 위젯 켜고끄기+순서/즐겨찾기 메뉴/
+   최근 방문/최근 검색어/저장된 필터) - 계정(empId)별로 이 브라우저에만 저장된다.
+   서버(DB)에는 올라가지 않는 순수 화면 설정이라 다른 사람과 공유되지 않고, 다른 PC로
+   로그인하면 그 PC의 기본값부터 다시 시작한다.
+   ========================================================================= */
+function uiPrefsStorageKey(){
+  return 'lg_kpi_uiprefs_' + (SESSION && SESSION.empId ? SESSION.empId : 'anon');
+}
+function defaultUiPrefs(){
+  return {
+    darkMode: false,
+    fontSize: 'normal',       // 'small' | 'normal' | 'large'
+    density: 'comfortable',   // 'comfortable' | 'compact'
+    hiddenHomeWidgets: [],    // HOME_WIDGETS 중 숨긴 위젯 key 목록
+    homeWidgetOrder: [],      // HOME_WIDGETS key 순서(비어있으면 기본 순서)
+    pinnedNav: [],            // 즐겨찾기로 고정한 탭 key 목록
+    recentPages: [],          // 최근 방문한 탭 key (최신순)
+    recentSearches: [],       // 최근 검색어(최신순)
+    savedFilters: {}          // { pageKey: [{name, filter, savedAt}] }
+  };
+}
+function loadUiPrefs(){
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(uiPrefsStorageKey()) || 'null'); }catch(e){ saved = null; }
+  state.uiPrefs = Object.assign(defaultUiPrefs(), saved || {});
+  applyUiPrefsToDocument();
+}
+function saveUiPrefs(){
+  if(!state.uiPrefs) return;
+  try{ localStorage.setItem(uiPrefsStorageKey(), JSON.stringify(state.uiPrefs)); }catch(e){ /* 저장 공간 문제 등은 무시 */ }
+}
+function applyUiPrefsToDocument(){
+  const p = state.uiPrefs || defaultUiPrefs();
+  document.body.classList.toggle('dark-mode', !!p.darkMode);
+  document.body.classList.remove('font-small', 'font-large');
+  if(p.fontSize==='small') document.body.classList.add('font-small');
+  if(p.fontSize==='large') document.body.classList.add('font-large');
+  document.body.classList.toggle('density-compact', p.density==='compact');
+}
+function resetUiPrefsOnLogout(){
+  // 로그아웃 시 화면 상태(다크모드 등)를 기본값으로 되돌린다 - 같은 PC에서 다른 계정으로
+  // 로그인할 때 이전 사람 설정이 잠깐이라도 남아 보이지 않도록.
+  state.uiPrefs = null;
+  document.body.classList.remove('dark-mode', 'font-small', 'font-large', 'density-compact');
+}
+
 // 아이디 저장 체크박스: 로그인 화면이 뜰 때(최초 로드/로그아웃 후) 저장된 아이디가 있으면
 // 입력창에 미리 채워주고 체크박스도 켜둔다.
 function applyRememberedLoginId(){
@@ -1329,6 +1376,9 @@ function enterApp(user, fromRestore){
   updateNavVisibilityForRole();
   state.viewBranchId = user.branchId || DB.branches[0].id;
   state.eduReminders = computeEduReminders();
+  loadUiPrefs();
+  renderNavPins();
+  renderNavRecent();
   // 새로고침으로 세션을 복원하는 경우(fromRestore)에만 마지막으로 보던 탭을 그대로 이어서
   // 보여준다 - 아이디/비밀번호로 새로 로그인할 때는 지금처럼 항상 홈에서 시작한다.
   let initialTab = 'home';
@@ -1378,6 +1428,7 @@ function handleLogout(){
   stopHeartbeat();
   stopHomeStatusWidget();
   stopScreensaverWatch();
+  resetUiPrefsOnLogout();
   try{ localStorage.removeItem(SESSION_STORAGE_KEY); }catch(e){ /* 무시 */ }
   document.getElementById('app').classList.remove('active');
   document.getElementById('loginScreen').style.display='flex';
@@ -1550,14 +1601,123 @@ function refreshNavBadges(){
   });
 }
 
-document.querySelectorAll('.nav-item').forEach(el=>{
+function navigateToTab(tab){
+  document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
+  const target = document.querySelector('.nav-item[data-tab="'+tab+'"]');
+  if(target) target.classList.add('active');
+  markTabViewed(tab);
+  recordRecentPage(tab);
+  renderTab(tab);
+}
+// 최근 방문한 화면 최대 3개를 기억해뒀다가 사이드바 위쪽에 바로가기로 보여준다.
+// '홈'은 사이드바 맨 위에 항상 고정되어 있어 굳이 "최근"에 다시 보여줄 필요가 없으므로 제외한다.
+const RECENT_PAGES_MAX = 3;
+function recordRecentPage(tab){
+  if(!state.uiPrefs || tab === 'home') return;
+  if(!state.uiPrefs.recentPages) state.uiPrefs.recentPages = [];
+  const recent = state.uiPrefs.recentPages.filter(t=>t !== tab);
+  recent.unshift(tab);
+  state.uiPrefs.recentPages = recent.slice(0, RECENT_PAGES_MAX);
+  saveUiPrefs();
+  renderNavRecent();
+}
+function renderNavRecent(){
+  const group = document.getElementById('navRecentGroup');
+  if(!group || !state.uiPrefs) return;
+  const items = (state.uiPrefs.recentPages || []).map(tab=>({tab, label: NAV_LABELS[tab]})).filter(x=>x.label);
+  if(items.length === 0){
+    group.innerHTML = '';
+    group.style.display = 'none';
+    return;
+  }
+  group.style.display = '';
+  group.innerHTML = '<div class="nav-group-label" style="border-top:none;margin-top:0;">🕘 최근 방문</div>' +
+    items.map(x=>'<div class="nav-item nav-recent-item" data-recent-tab="'+x.tab+'">'+x.label+'</div>').join('');
+  group.querySelectorAll('.nav-recent-item').forEach(el=>{
+    el.addEventListener('click', ()=> navigateToTab(el.dataset.recentTab));
+  });
+}
+document.querySelectorAll('.nav-item[data-tab]').forEach(el=>{
   el.addEventListener('click', ()=>{
-    document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
-    el.classList.add('active');
-    markTabViewed(el.dataset.tab);
-    renderTab(el.dataset.tab);
+    navigateToTab(el.dataset.tab);
   });
 });
+
+// ===== 즐겨찾기(핀 고정) 메뉴 =====
+// 사이드바 메뉴마다 붙는 라벨(즐겨찾기 목록에 짧게 표시할 때 사용)
+const NAV_LABELS = {
+  systemAdmin: '시스템 관리',
+  metricsOverview: '지표 한눈에 보기',
+  goals: '목표 관리(MSIS기준)',
+  subscription: '구독 실적',
+  subB2bSales: '구독 소상공인 판매건 등록',
+  sales: '실적/제품 분석',
+  notices: '공지사항',
+  materials: '각종 자료',
+  infoReports: '정보보고',
+  inventory: '재고 조회',
+  kakaoFriends: '카카오 플친 관리 현황',
+  prospects: '개별 가망고객 관리현황',
+  eduHq: '교육 일정 안내',
+  eduVideo: '교육 이수율 확인',
+  collectPhoto: '실행력 점검 사진 취합',
+  collectGiftcard: '모바일 상품권 취합',
+  collectContest: '구독연동사은품 취합',
+  subTierContest: '기타 사은품 취합',
+  mistakeNote: '구독 오답노트',
+  issueCase: '이슈제품 판매 성공 사례',
+  bestPractice: '우수 활동 사례 공유',
+  policyQuiz: '금주 주말 정책 숙지도 점검',
+  suggestions: '현장 건의사항'
+};
+function toggleNavPin(tab){
+  if(!state.uiPrefs) return;
+  if(!state.uiPrefs.pinnedNav) state.uiPrefs.pinnedNav = [];
+  const pinned = state.uiPrefs.pinnedNav;
+  const idx = pinned.indexOf(tab);
+  if(idx >= 0) pinned.splice(idx, 1);
+  else pinned.push(tab);
+  saveUiPrefs();
+  renderNavPins();
+}
+function renderNavPins(){
+  if(!state.uiPrefs) return;
+  const pinned = state.uiPrefs.pinnedNav || [];
+  // 1) 메뉴 항목마다 즐겨찾기(별) 아이콘을 붙인다 (홈은 항상 최상단이라 제외)
+  document.querySelectorAll('.nav-item[data-tab]').forEach(el=>{
+    const tab = el.dataset.tab;
+    if(tab === 'home') return;
+    let star = el.querySelector('.nav-pin-star');
+    if(!star){
+      star = document.createElement('span');
+      star.className = 'nav-pin-star';
+      star.addEventListener('click', e=>{
+        e.stopPropagation();
+        toggleNavPin(tab);
+      });
+      el.appendChild(star);
+    }
+    const isPinned = pinned.includes(tab);
+    star.textContent = isPinned ? '★' : '☆';
+    star.classList.toggle('pinned', isPinned);
+    star.title = isPinned ? '즐겨찾기 해제' : '즐겨찾기에 추가';
+  });
+  // 2) 즐겨찾기 바로가기 섹션 렌더링
+  const group = document.getElementById('navPinnedGroup');
+  if(!group) return;
+  const items = pinned.map(tab=>({tab, label: NAV_LABELS[tab]})).filter(x=>x.label);
+  if(items.length === 0){
+    group.innerHTML = '';
+    group.style.display = 'none';
+    return;
+  }
+  group.style.display = '';
+  group.innerHTML = '<div class="nav-group-label" style="border-top:none;margin-top:0;">⭐ 즐겨찾기</div>' +
+    items.map(x=>'<div class="nav-item nav-pin-item" data-pin-tab="'+x.tab+'">'+x.label+'</div>').join('');
+  group.querySelectorAll('.nav-pin-item').forEach(el=>{
+    el.addEventListener('click', ()=> navigateToTab(el.dataset.pinTab));
+  });
+}
 
 // 화면 어디에 파일을 놓아도 브라우저가 그 파일을 열어버리며 페이지를 벗어나는 것을 방지
 // (실제 첨부 처리는 각 업로드 영역의 dropzone 리스너에서 stopPropagation으로 가로챈다)
@@ -2123,6 +2283,147 @@ function renderHomeManagerCompetitivenessBanner(){
       <div class="mo-kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
+// 홈 대시보드 - 개인화 가능한 위젯 목록(교육 안내/근무 일정/AI 분석 피드백). 순서는
+// state.uiPrefs.homeWidgetOrder에 저장되고, 켜고 끄기는 hiddenHomeWidgets에 저장된다.
+// (공지사항 미확인 안내는 안전상 항상 노출 - 개인화 대상에서 제외)
+const HOME_WIDGET_DEFS = [
+  { key:'eduReminder', label:'교육 안내' },
+  { key:'attendance', label:'근무 일정' },
+  { key:'aiFeedback', label:'AI 분석 피드백' }
+];
+function homeWidgetOrderedKeys(){
+  const p = state.uiPrefs || defaultUiPrefs();
+  const known = HOME_WIDGET_DEFS.map(w=>w.key);
+  const saved = (p.homeWidgetOrder && p.homeWidgetOrder.length) ? p.homeWidgetOrder : known;
+  const merged = saved.filter(k=>known.includes(k));
+  known.forEach(k=>{ if(!merged.includes(k)) merged.push(k); });
+  return merged;
+}
+function renderHomeWidgetSection(htmlByKey){
+  const p = state.uiPrefs || defaultUiPrefs();
+  const hidden = new Set(p.hiddenHomeWidgets||[]);
+  const keys = homeWidgetOrderedKeys().filter(k=> htmlByKey[k] && !hidden.has(k));
+  if(keys.length===0) return '';
+  return `<div id="homeWidgetList">` + keys.map(k=>`
+    <div class="home-widget-item" draggable="true" data-widget-key="${k}"
+      ondragstart="homeWidgetDragStart(event)" ondragover="homeWidgetDragOver(event)"
+      ondrop="homeWidgetDrop(event)" ondragend="homeWidgetDragEnd(event)">
+      <div class="home-widget-handle" title="드래그해서 순서 바꾸기">⠿⠿</div>
+      <div class="home-widget-body">${htmlByKey[k]}</div>
+    </div>`).join('') + `</div>`;
+}
+// 드래그하는 동안은 DOM만 직접 옮기고(성능/스크롤 위치 보존), 실제로 놓았을 때(drop)만
+// 새 순서를 uiPrefs에 저장한다 - 다른 드래그 기능들과 동일한 패턴.
+function homeWidgetDragStart(e){
+  const item = e.target.closest('.home-widget-item');
+  if(!item) return;
+  e.dataTransfer.effectAllowed = 'move';
+  try{ e.dataTransfer.setData('text/plain', item.dataset.widgetKey); }catch(err){ /* 일부 브라우저 무시 */ }
+  item.classList.add('dragging');
+}
+function homeWidgetDragOver(e){
+  e.preventDefault();
+  const list = document.getElementById('homeWidgetList');
+  const dragging = list ? list.querySelector('.home-widget-item.dragging') : null;
+  const item = e.target.closest('.home-widget-item');
+  if(!list || !dragging || !item || item===dragging) return;
+  const rect = item.getBoundingClientRect();
+  const before = (e.clientY - rect.top) < rect.height/2;
+  list.insertBefore(dragging, before ? item : item.nextSibling);
+}
+function homeWidgetDrop(e){
+  e.preventDefault();
+  const list = document.getElementById('homeWidgetList');
+  if(!list || !state.uiPrefs) return;
+  const visibleOrder = [...list.querySelectorAll('.home-widget-item')].map(el=>el.dataset.widgetKey);
+  const known = HOME_WIDGET_DEFS.map(w=>w.key);
+  const hiddenTail = known.filter(k=>!visibleOrder.includes(k));
+  state.uiPrefs.homeWidgetOrder = [...visibleOrder, ...hiddenTail];
+  saveUiPrefs();
+}
+function homeWidgetDragEnd(e){
+  const item = e.target.closest('.home-widget-item');
+  if(item) item.classList.remove('dragging');
+}
+
+/* ---------- ⚙ 화면 설정 패널 (다크모드/글자크기/밀도/홈 위젯 켜고끄기) ---------- */
+function openUiSettingsPanel(){
+  if(!state.uiPrefs) loadUiPrefs();
+  let modal = document.getElementById('uiSettingsModal');
+  if(!modal){
+    modal = document.createElement('div');
+    modal.id = 'uiSettingsModal';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = uiSettingsModalHtml();
+  modal.style.display = 'flex';
+}
+function closeUiSettingsPanel(){
+  const modal = document.getElementById('uiSettingsModal');
+  if(modal) modal.style.display = 'none';
+}
+function uiSettingsModalHtml(){
+  const p = state.uiPrefs || defaultUiPrefs();
+  const hidden = new Set(p.hiddenHomeWidgets||[]);
+  return `
+    <div class="ui-settings-backdrop" onclick="closeUiSettingsPanel()">
+      <div class="ui-settings-card" onclick="event.stopPropagation()">
+        <div class="flex-between" style="align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;">⚙ 화면 설정</h3>
+          <button class="btn btn-sm" onclick="closeUiSettingsPanel()">닫기</button>
+        </div>
+        <div class="us-row">
+          <span>다크 모드</span>
+          <span class="toggle-switch">
+            <input type="checkbox" ${p.darkMode?'checked':''} onchange="setUiPref('darkMode', this.checked)">
+            <span class="slider"></span>
+          </span>
+        </div>
+        <div class="us-row">
+          <span>글자 크기</span>
+          <div class="us-btn-group">
+            <button class="us-opt-btn ${p.fontSize==='small'?'active':''}" onclick="setUiPref('fontSize','small')">작게</button>
+            <button class="us-opt-btn ${!p.fontSize||p.fontSize==='normal'?'active':''}" onclick="setUiPref('fontSize','normal')">보통</button>
+            <button class="us-opt-btn ${p.fontSize==='large'?'active':''}" onclick="setUiPref('fontSize','large')">크게</button>
+          </div>
+        </div>
+        <div class="us-row">
+          <span>카드 밀도</span>
+          <div class="us-btn-group">
+            <button class="us-opt-btn ${!p.density||p.density==='comfortable'?'active':''}" onclick="setUiPref('density','comfortable')">널널하게</button>
+            <button class="us-opt-btn ${p.density==='compact'?'active':''}" onclick="setUiPref('density','compact')">촘촘하게</button>
+          </div>
+        </div>
+        <div class="us-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
+          <span>홈 대시보드에 표시할 위젯</span>
+          ${HOME_WIDGET_DEFS.map(w=>`
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;">
+              <input type="checkbox" ${hidden.has(w.key)?'':'checked'} onchange="toggleHomeWidgetVisible('${w.key}', this.checked)">
+              ${w.label}
+            </label>`).join('')}
+          <div class="muted" style="font-size:11.5px;">홈 화면에서 위젯 왼쪽의 ⠿⠿ 표시를 드래그하면 순서도 바꿀 수 있어요.</div>
+        </div>
+      </div>
+    </div>`;
+}
+// 버튼형 옵션(글자크기/밀도)과 토글(다크모드) 공통 저장 함수. 눌린 즉시 화면에 반영되고,
+// 패널이 열려 있는 동안은 버튼 active 표시도 함께 갱신한다(패널을 닫지 않고 이것저것 눌러볼 수 있게).
+function setUiPref(key, val){
+  if(!state.uiPrefs) loadUiPrefs();
+  state.uiPrefs[key] = val;
+  saveUiPrefs();
+  applyUiPrefsToDocument();
+  const modal = document.getElementById('uiSettingsModal');
+  if(modal && modal.style.display!=='none') modal.innerHTML = uiSettingsModalHtml();
+}
+function toggleHomeWidgetVisible(key, checked){
+  if(!state.uiPrefs) loadUiPrefs();
+  const hidden = new Set(state.uiPrefs.hiddenHomeWidgets||[]);
+  if(checked) hidden.delete(key); else hidden.add(key);
+  state.uiPrefs.hiddenHomeWidgets = [...hidden];
+  saveUiPrefs();
+  if(SESSION && state.tab==='home') renderTab('home');
+}
 function renderHome(){
   const myBranch = canSwitchBranch() ? state.viewBranchId : SESSION.branchId;
   const branch = DB.branches.find(b=>b.id===myBranch);
@@ -2176,11 +2477,34 @@ function renderHome(){
 
   const feedback = aiFeedbackForBranch(myBranch, homePeriod);
 
+  const homeWidgetHtmlByKey = {
+    eduReminder: renderEduReminderBanner(),
+    attendance: SESSION.role==='exec' ? '' : `
+      <div class="card">
+        <div class="flex-between" style="align-items:center;">
+          <h3 style="margin:0;">근무 일정 <small>(${attBranch?attBranch.name:''} · ${attDate}${attDateRelLabel?' · '+attDateRelLabel:''})</small></h3>
+          ${attBranchSelectorHtml}
+        </div>
+        ${attDateNavHtml}
+        <table style="margin-top:10px;">
+          <thead><tr><th>이름</th><th>사번</th><th>상태</th><th>출근</th><th>퇴근</th></tr></thead>
+          <tbody>${attRows}</tbody>
+        </table>
+      </div>`,
+    aiFeedback: `
+      <div class="card">
+        <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
+        <div class="ai-box">
+          <div class="ai-title">💡 오늘의 코멘트</div>
+          ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
+        </div>
+      </div>`
+  };
+
   return `
     <div class="page-title">홈 대시보드</div>
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
     ${renderNoticeBanner()}
-    ${renderEduReminderBanner()}
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
@@ -2210,34 +2534,7 @@ function renderHome(){
       </div>` : ''}
     </div>
 
-    ${SESSION.role==='exec' ? `
-    <div class="card">
-      <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
-      <div class="ai-box">
-        <div class="ai-title">💡 오늘의 코멘트</div>
-        ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
-      </div>
-    </div>` : `
-    <div class="grid grid-2">
-      <div class="card">
-        <div class="flex-between" style="align-items:center;">
-          <h3 style="margin:0;">근무 일정 <small>(${attBranch?attBranch.name:''} · ${attDate}${attDateRelLabel?' · '+attDateRelLabel:''})</small></h3>
-          ${attBranchSelectorHtml}
-        </div>
-        ${attDateNavHtml}
-        <table style="margin-top:10px;">
-          <thead><tr><th>이름</th><th>사번</th><th>상태</th><th>출근</th><th>퇴근</th></tr></thead>
-          <tbody>${attRows}</tbody>
-        </table>
-      </div>
-      <div class="card">
-        <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
-        <div class="ai-box">
-          <div class="ai-title">💡 오늘의 코멘트</div>
-          ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
-        </div>
-      </div>
-    </div>`}
+    ${renderHomeWidgetSection(homeWidgetHtmlByKey)}
 
     <div id="homeStatusWidget" style="position:fixed;bottom:20px;right:20px;z-index:60;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:14px 16px;width:230px;">
       <div style="font-weight:700;font-size:12.5px;color:var(--text-sub);" id="homeClockDate">-</div>
@@ -6993,6 +7290,7 @@ function renderSales(){
   return `
     <div class="page-title">실적 / 제품 분석</div>
     <div class="page-desc">${scopeBranch==='ALL' ? '전체 지점' : branchName(scopeBranch)} · ${salesPeriod ? salesPeriod+' 월 데이터' : '전체 기간 누적 데이터'} · 금액은 모두 KK(백만원) 단위 · "실판매 목표대비 실적조회" 시트 기반(관리자가 [시스템 관리]에서 목표/실적 파일을 새로 올리면 갱신됩니다)</div>
+    ${filterPresetBarHtml('sales')}
     ${branchSelectorHtml}
     ${salesFilterCardHtml}
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
@@ -7183,6 +7481,70 @@ function toggleInventoryShowAllTeams(checked){
   logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 타영업팀 재고 함께보기를 ${DB.inventoryShowAllTeams ? '켰습니다' : '껐습니다'}`);
   renderTab('inventory');
 }
+// ===== 저장된 필터(내 필터) =====
+// 재고 조회 / 실적·제품 분석처럼 필터 항목이 많은 화면에서 자주 쓰는 조합을 이름 붙여 저장해두고
+// 매번 같은 조합을 다시 누르지 않고 한 번에 불러올 수 있게 한다 (계정별 저장, 화면당 최대 10개).
+const SAVED_FILTERS_MAX = 10;
+function savedFilterPresets(pageKey){
+  if(!state.uiPrefs || !state.uiPrefs.savedFilters) return [];
+  return state.uiPrefs.savedFilters[pageKey] || [];
+}
+function currentFilterSnapshot(pageKey){
+  if(pageKey === 'inventory'){
+    if(!state.invFilter) state.invFilter = invFilterDefaults();
+    return JSON.parse(JSON.stringify(state.invFilter));
+  }
+  if(pageKey === 'sales'){
+    return { viewBranchId: state.viewBranchId, salesEmp: state.salesEmp, salesPeriod: state.salesPeriod };
+  }
+  return null;
+}
+function saveFilterPreset(pageKey){
+  if(!state.uiPrefs) return;
+  const snap = currentFilterSnapshot(pageKey);
+  if(!snap) return;
+  const name = prompt('저장할 필터 이름을 입력하세요 (예: 냉장고 행사만)');
+  if(!name || !name.trim()) return;
+  const trimmed = name.trim().slice(0, 30);
+  if(!state.uiPrefs.savedFilters) state.uiPrefs.savedFilters = {};
+  let list = (state.uiPrefs.savedFilters[pageKey] || []).filter(p=>p.name !== trimmed);
+  list.unshift({name: trimmed, filter: snap, savedAt: new Date().toISOString()});
+  state.uiPrefs.savedFilters[pageKey] = list.slice(0, SAVED_FILTERS_MAX);
+  saveUiPrefs();
+  renderTab(pageKey);
+}
+function applyFilterPreset(pageKey, name){
+  const preset = savedFilterPresets(pageKey).find(p=>p.name === name);
+  if(!preset) return;
+  const f = preset.filter || {};
+  if(pageKey === 'inventory'){
+    state.invFilter = Object.assign(invFilterDefaults(), f, {page: 1});
+  } else if(pageKey === 'sales'){
+    state.viewBranchId = f.viewBranchId;
+    state.salesEmp = f.salesEmp;
+    state.salesPeriod = f.salesPeriod;
+  }
+  renderTab(pageKey);
+}
+function deleteFilterPreset(pageKey, name){
+  if(!state.uiPrefs || !state.uiPrefs.savedFilters || !state.uiPrefs.savedFilters[pageKey]) return;
+  if(!confirm('"' + name + '" 필터를 삭제할까요?')) return;
+  state.uiPrefs.savedFilters[pageKey] = state.uiPrefs.savedFilters[pageKey].filter(p=>p.name !== name);
+  saveUiPrefs();
+  renderTab(pageKey);
+}
+function filterPresetBarHtml(pageKey){
+  const list = savedFilterPresets(pageKey);
+  const chips = list.map(p=>{
+    const safe = p.name.replace(/'/g,'');
+    return `<span class="filter-preset-chip" onclick="applyFilterPreset('${pageKey}','${safe}')">${escapeHtml(p.name)}<span class="filter-preset-x" onclick="event.stopPropagation();deleteFilterPreset('${pageKey}','${safe}')" title="삭제">×</span></span>`;
+  }).join('');
+  return `<div class="filter-preset-bar">
+    <span class="filter-preset-label">🔖 내 필터</span>
+    ${chips}
+    <span class="filter-preset-add" onclick="saveFilterPreset('${pageKey}')">＋ 현재 필터 저장</span>
+  </div>`;
+}
 function renderInventory(){
   if(!state.invFilter) state.invFilter = invFilterDefaults();
   const f = state.invFilter;
@@ -7271,6 +7633,7 @@ function renderInventory(){
     <div class="inv-layout">
       <div class="inv-sidebar">
         <div class="card inv-filter-card" style="margin-bottom:16px;">
+          ${filterPresetBarHtml('inventory')}
           ${SESSION.role==='admin' ? `
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;">
             <span class="toggle-switch">
@@ -12959,10 +13322,62 @@ function globalSearchResultsHtml(query){
       </div>
     </div>`).join('');
 }
+// 검색창이 비어있을 때(포커스만 준 상태)는 결과 대신 최근 검색어를 보여준다.
+// 매번 같은 모델명/지점명을 다시 타이핑하지 않도록 최근 5개까지 기억한다.
+const RECENT_SEARCHES_MAX = 5;
+function recordRecentSearch(term){
+  const t = String(term||'').trim();
+  if(!t || !state.uiPrefs) return;
+  if(!state.uiPrefs.recentSearches) state.uiPrefs.recentSearches = [];
+  const list = state.uiPrefs.recentSearches.filter(x=>x !== t);
+  list.unshift(t);
+  state.uiPrefs.recentSearches = list.slice(0, RECENT_SEARCHES_MAX);
+  saveUiPrefs();
+}
+function removeRecentSearch(term){
+  if(!state.uiPrefs || !state.uiPrefs.recentSearches) return;
+  state.uiPrefs.recentSearches = state.uiPrefs.recentSearches.filter(x=>x !== term);
+  saveUiPrefs();
+  const input = document.getElementById('globalSearchInput');
+  handleGlobalSearchInput(input ? input.value : '');
+}
+function applyRecentSearch(term){
+  const input = document.getElementById('globalSearchInput');
+  if(input){ input.value = term; input.focus(); }
+  handleGlobalSearchInput(term);
+}
+function recentSearchesHtml(){
+  const list = (state.uiPrefs && state.uiPrefs.recentSearches) || [];
+  if(list.length === 0) return '';
+  return '<div class="gs-recent-label">최근 검색어</div>' +
+    list.map(t=>`<div class="gs-recent-item" data-term="${escapeHtml(t)}">
+      <span class="gs-recent-icon">🕘</span><span class="gs-recent-text">${escapeHtml(t)}</span>
+      <span class="gs-recent-remove" data-term="${escapeHtml(t)}" title="삭제">×</span>
+    </div>`).join('');
+}
+function wireRecentSearchItems(container){
+  container.querySelectorAll('.gs-recent-item').forEach(el=>{
+    el.addEventListener('click', ()=> applyRecentSearch(el.dataset.term));
+  });
+  container.querySelectorAll('.gs-recent-remove').forEach(el=>{
+    el.addEventListener('click', e=>{
+      e.stopPropagation();
+      removeRecentSearch(el.dataset.term);
+    });
+  });
+}
 function handleGlobalSearchInput(value){
+  const q = String(value||'').trim();
   document.querySelectorAll('.gs-dropdown').forEach(d=>{
-    d.style.display = value.trim() ? 'block' : 'none';
-    d.innerHTML = globalSearchResultsHtml(value);
+    if(!q){
+      const html = recentSearchesHtml();
+      d.innerHTML = html;
+      d.style.display = html ? 'block' : 'none';
+      wireRecentSearchItems(d);
+    } else {
+      d.style.display = 'block';
+      d.innerHTML = globalSearchResultsHtml(value);
+    }
   });
 }
 function closeGlobalSearch(){
@@ -12971,6 +13386,7 @@ function closeGlobalSearch(){
 function goToGlobalSearchResult(type, id){
   const input = document.getElementById('globalSearchInput');
   const q = input ? input.value : '';
+  recordRecentSearch(q);
   closeGlobalSearch();
   if(type==='notice') setBoardSearch('notice', 'notices', q);
   else if(type==='material') setBoardSearch('material', 'materials', q);
