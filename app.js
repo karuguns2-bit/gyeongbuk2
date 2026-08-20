@@ -2258,7 +2258,8 @@ function renderHomeManagerCompetitivenessBanner(){
 const HOME_WIDGET_DEFS = [
   { key:'eduReminder', label:'교육 안내' },
   { key:'attendance', label:'근무 일정' },
-  { key:'aiFeedback', label:'AI 분석 피드백' }
+  { key:'aiFeedback', label:'AI 분석 피드백' },
+  { key:'clearanceRec', label:'소진 추천' }
 ];
 function homeWidgetOrderedKeys(){
   const p = state.uiPrefs || defaultUiPrefs();
@@ -2393,6 +2394,105 @@ function toggleHomeWidgetVisible(key, checked){
   saveUiPrefs();
   if(SESSION && state.tab==='home') renderTab('home');
 }
+// ---- 목표 달성 축하 효과 (레벨업 애니메이션) ----
+// 매니저(staff) 본인 소속 지점이 이번 달 목표를 "처음" 달성한 순간에만 컨페티 애니메이션 +
+// 축하 배너를 보여준다. 홈 화면을 다시 방문할 때마다 반복되면 금방 질리므로, 계정+월
+// 단위로 이미 보여줬는지를 localStorage에 남겨 같은 달에는 다시 뜨지 않게 한다(서버 DB에는
+// 올라가지 않는 순수 화면 연출용 상태 - 다른 사람과 공유되지 않고 다음 달이면 자동으로 초기화).
+function goalCelebrationStorageKey(period){
+  return 'lg_kpi_goalcelebrated_' + (SESSION && SESSION.empId ? SESSION.empId : 'anon') + '_' + period;
+}
+function checkGoalCelebration(pct, period){
+  if(!SESSION || SESSION.role !== 'staff') return;
+  if(!(pct >= 100)) return;
+  const key = goalCelebrationStorageKey(period);
+  let already = false;
+  try{ already = localStorage.getItem(key) === '1'; }catch(e){ /* 무시 */ }
+  if(already) return;
+  try{ localStorage.setItem(key, '1'); }catch(e){ /* 저장 공간 문제 등은 무시 */ }
+  showGoalCelebration();
+}
+function showGoalCelebration(){
+  fireConfetti();
+  showSaveBanner('🎉 이번 달 목표를 달성했어요! 수고하셨습니다.');
+}
+function fireConfetti(){
+  const colors = ['#A50034','#ffb400','#1a9c56','#3355cc','#ff6f91','#7d0027'];
+  const container = document.createElement('div');
+  container.className = 'confetti-container';
+  const pieceCount = 60;
+  for(let i=0;i<pieceCount;i++){
+    const piece = document.createElement('span');
+    piece.className = 'confetti-piece';
+    piece.style.left = (Math.random()*100) + 'vw';
+    piece.style.background = colors[i % colors.length];
+    piece.style.animationDuration = (1.6 + Math.random()*1.2) + 's';
+    piece.style.animationDelay = (Math.random()*0.4) + 's';
+    piece.style.transform = 'rotate(' + Math.floor(Math.random()*360) + 'deg)';
+    container.appendChild(piece);
+  }
+  document.body.appendChild(container);
+  setTimeout(()=> container.remove(), 3200);
+}
+// ---- 소진 추천 (넷플릭스식 개인화 추천) ----
+// 매니저 본인의 판매 이력(카테고리별 누적 금액)을 기준으로 가장 강한 카테고리를 찾아, 그
+// 카테고리와 이름이 겹치는 소진집중 대상 재고를 몇 개 추천해준다. 정교한 매칭은 아니고
+// (예: "PAC(에어컨)"의 "에어컨"이 재고 상품명/구분에 포함되는지 정도의 느슨한 키워드 매칭)
+// 참고용 추천이라는 점을 문구에 명시한다. 관리자/임원에게는 "내 판매 이력"이라는 개념이
+// 없으므로 매니저(staff) 전용으로만 노출한다.
+function myTopSalesCategory(){
+  if(!SESSION || !SESSION.empId) return null;
+  const rows = (DB.salesData||[]).filter(r=>r.empId===SESSION.empId);
+  if(rows.length===0) return null;
+  const totals = {};
+  rows.forEach(r=>{
+    const m = /\(([^()]+)\)\s*$/.exec(String(r.product||''));
+    const cat = m ? m[1].trim() : null;
+    if(!cat) return;
+    totals[cat] = (totals[cat]||0) + (Number(r.amount)||0);
+  });
+  const entries = Object.entries(totals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+  return entries.length>0 ? entries[0][0] : null;
+}
+function clearanceRecommendations(){
+  const category = myTopSalesCategory();
+  if(!category) return null;
+  const clearanceSet = new Set((DB.inventoryClearanceCodes||[]).map(Number));
+  const isRecClearanceRow = r=> r.code!=null && clearanceSet.has(Number(r.code));
+  const pool = (DB.inventory||[]).filter(r=>
+    isRecClearanceRow(r) && invTag(r.product) &&
+    (String(r.product||'').includes(category) || String(r.cat2||'').includes(category))
+  );
+  // 같은 모델이 여러 매장에 흩어져 있으면 대표로 한 건만 보여준다(중복 제거).
+  const seenModel = new Set();
+  const uniq = [];
+  pool.forEach(r=>{
+    const key = r.model || r.product;
+    if(seenModel.has(key)) return;
+    seenModel.add(key);
+    uniq.push(r);
+  });
+  if(uniq.length===0) return null;
+  return { category, items: uniq.slice(0, 3) };
+}
+function renderClearanceRecommendationWidget(){
+  if(!SESSION || SESSION.role !== 'staff') return '';
+  const rec = clearanceRecommendations();
+  if(!rec) return '';
+  return `
+    <div class="card">
+      <h3>🎯 소진 추천 <small>(내 판매 이력 기반 참고용 추천)</small></h3>
+      <div class="muted" style="font-size:12px;margin-bottom:8px;">최근 <b>${escapeHtml(rec.category)}</b> 판매 실적이 좋으셔서, 아래 소진집중 대상 제품을 추천드려요.</div>
+      ${rec.items.map(r=>`
+        <div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border);">
+          <div>
+            <div style="font-weight:600;font-size:13px;">${escapeHtml(r.product||'')}</div>
+            <div class="muted" style="font-size:11.5px;">${escapeHtml(r.store||'')} · ${escapeHtml(r.model||'')}</div>
+          </div>
+          <span class="badge" style="background:#fdeee2;color:#c2622b;">🔥 소진집중</span>
+        </div>`).join('')}
+    </div>`;
+}
 function renderHome(){
   const myBranch = canSwitchBranch() ? state.viewBranchId : SESSION.branchId;
   const branch = DB.branches.find(b=>b.id===myBranch);
@@ -2406,6 +2506,7 @@ function renderHome(){
   const msisTarget = target * 1.25;
   const achieved = branchAchieved(myBranch, homePeriod);
   const pct = pctOf(achieved, target);
+  checkGoalCelebration(pct, homePeriod);
   // 지점별 경쟁력(MS): 선택된(조회 중인) 지점의 msis경쟁력 시트 데이터가 있으면 목표/실적/달성률
   // 카드 옆에 4번째 카드로 함께 보여준다. 데이터가 없는 지점/기간은 카드 자체를 숨긴다.
   const homeCompData = competitivenessDataForPeriod(homePeriod);
@@ -2467,7 +2568,8 @@ function renderHome(){
           <div class="ai-title">💡 오늘의 코멘트</div>
           ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
         </div>
-      </div>`
+      </div>`,
+    clearanceRec: renderClearanceRecommendationWidget()
   };
 
   return `
