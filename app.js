@@ -1285,6 +1285,15 @@ function ensureUser(empIdRaw, name, branchId){
 let SESSION = null; // {empId, name, role, branchId}
 const REMEMBER_ID_KEY = 'lg_kpi_remember_id';
 const SESSION_STORAGE_KEY = 'lg_kpi_session';
+// 새로고침해도 홈 대시보드로 돌아가지 않고 마지막으로 보던 화면이 그대로 뜨도록, 탭을
+// 전환할 때마다(renderTab) 마지막 탭 키를 여기에 저장해 둔다.
+const LAST_TAB_STORAGE_KEY = 'lg_kpi_last_tab';
+// renderTab()이 실제로 처리하는 탭 키 전체 목록 - 새로고침 복원 시 저장된 값이 이 중 하나가
+// 아니면(예: 옛 버전에서 남은 값, 조작된 값) 안전하게 홈으로 대체한다.
+const VALID_TABS = ['home','systemAdmin','accountManagement','metricsOverview','goals','notices','materials',
+  'infoReports','subscription','subB2bSales','sales','inventory','collectPhoto','collectGiftcard','collectContest',
+  'subTierContest','mistakeNote','issueCase','bestPractice','policyQuiz','eduHq','eduInhouse','eduEtc','eduVideo',
+  'eduTest','eduAiRp','kakaoFriends','prospects','suggestions'];
 
 // 아이디 저장 체크박스: 로그인 화면이 뜰 때(최초 로드/로그아웃 후) 저장된 아이디가 있으면
 // 입력창에 미리 채워주고 체크박스도 켜둔다.
@@ -1309,7 +1318,15 @@ function enterApp(user, fromRestore){
   updateNavVisibilityForRole();
   state.viewBranchId = user.branchId || DB.branches[0].id;
   state.eduReminders = computeEduReminders();
-  renderTab('home');
+  // 새로고침으로 세션을 복원하는 경우(fromRestore)에만 마지막으로 보던 탭을 그대로 이어서
+  // 보여준다 - 아이디/비밀번호로 새로 로그인할 때는 지금처럼 항상 홈에서 시작한다.
+  let initialTab = 'home';
+  if(fromRestore){
+    let savedTab = null;
+    try{ savedTab = localStorage.getItem(LAST_TAB_STORAGE_KEY); }catch(e){ /* 무시 */ }
+    if(savedTab && VALID_TABS.includes(savedTab)) initialTab = savedTab;
+  }
+  renderTab(initialTab);
   startDbPolling();
   startHeartbeat();
   startScreensaverWatch();
@@ -1598,6 +1615,7 @@ function renderTab(tab){
     if(anchorBefore) scrollAnchorViewportTop = anchorBefore.getBoundingClientRect().top;
   }
   state.tab = tab;
+  try{ localStorage.setItem(LAST_TAB_STORAGE_KEY, tab); }catch(e){ /* 저장 공간 문제 등은 무시 */ }
   if(tab!=='home' && typeof noticeTimer!=='undefined' && noticeTimer){ clearInterval(noticeTimer); noticeTimer=null; }
   const main = document.getElementById('mainContent');
   if(tab==='home') main.innerHTML = renderHome();
