@@ -1208,6 +1208,14 @@ function migrateDB(){
   // (권한 로직은 이미 staff 기준 체크가 대부분이었으므로, manager로 등록돼 있던 계정만
   // staff로 이관하면 직책 표시도 자연히 "매니저"로 통일된다).
   (DB.users||[]).forEach(u=>{ if(u.role==='manager') u.role = 'staff'; });
+  // 재고 조회 데이터에 id가 없던 옛 행들(재고 파일을 처음 올렸을 때는 신규 상품에 id를
+  // 부여하지 않았음)에 1회성으로 id를 채워 넣는다. id가 없는 행이 하나라도 섞여 있으면
+  // mergeRemoteDB가 이 목록 전체를 "id로 식별되지 않는 목록"으로 취급해 통째로 덮어쓰는
+  // 방식으로 병합해버려서, 다른 사람이 옛 데이터를 들고 있다가 아무 항목이나 하나 수정해
+  // 저장하기만 해도 방금 새로 올린 전체 재고 데이터가 사라질 수 있었다(2026.08 확인된 사고).
+  (DB.inventory||[]).forEach((r,idx)=>{
+    if(r.id==null) r.id = 'inv_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6);
+  });
   if(JSON.stringify(DB) !== __migrateBefore) saveDB(true);
 }
 // silent=true면 저장은 그대로 하되 "저장되었습니다" 토스트를 띄우지 않는다 - 사용자가 직접
@@ -5648,12 +5656,17 @@ function parseInventorySheetRows(rows){
 function applyInventorySnapshot(parsedInventory){
   const prevByKey = {};
   (DB.inventory||[]).forEach(r=>{ prevByKey[invRowKey(r)] = r; });
-  const next = parsedInventory.map(r=>{
+  // 매장+상품코드+모델명+상품명 조합으로 기존 행을 못 찾은(=이 파일에서 처음 보는) 상품에는
+  // 반드시 새 id를 부여해야 한다 - id가 없으면 이 배열 전체가 "id로 식별되는 목록"으로
+  // 인식되지 못해(mergeRemoteDB의 isIdKeyedArray), 저장 충돌이 났을 때 항목 단위로 안전하게
+  // 병합되지 못하고 통째로 덮어써질 위험이 생긴다(다른 관리자/매니저가 옛 데이터를 들고 있는
+  // 상태로 재고 한 건만 수정해 저장해도, 방금 올린 전체 재고가 통째로 사라져버릴 수 있음).
+  const next = parsedInventory.map((r, idx)=>{
     const prev = prevByKey[invRowKey(r)];
     if(prev){
       return {
         ...r,
-        id: prev.id,
+        id: prev.id != null ? prev.id : ('inv_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6)),
         cat1: (prev.cat1!=null && prev.cat1!=='') ? prev.cat1 : r.cat1,
         note: prev.note || '',
         status: prev.status || '보유중',
@@ -5662,7 +5675,7 @@ function applyInventorySnapshot(parsedInventory){
         displaySoldOutDate: prev.displaySoldOutDate || ''
       };
     }
-    return { ...r, note:'', status:'보유중', saleStatus:'판매가능', displayDate:'', displaySoldOutDate:'' };
+    return { ...r, id: 'inv_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6), note:'', status:'보유중', saleStatus:'판매가능', displayDate:'', displaySoldOutDate:'' };
   });
   DB.inventory = next;
   return next.length;
