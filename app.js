@@ -1308,7 +1308,7 @@ const VALID_TABS = ['home','systemAdmin','accountManagement','metricsOverview','
 
 /* =========================================================================
    2b. 개인화 UI 설정 (다크모드/글자크기/밀도/홈 위젯 켜고끄기+순서/즐겨찾기 메뉴/
-   최근 방문/최근 검색어/저장된 필터) - 계정(empId)별로 이 브라우저에만 저장된다.
+   최근 검색어/저장된 필터) - 계정(empId)별로 이 브라우저에만 저장된다.
    서버(DB)에는 올라가지 않는 순수 화면 설정이라 다른 사람과 공유되지 않고, 다른 PC로
    로그인하면 그 PC의 기본값부터 다시 시작한다.
    ========================================================================= */
@@ -1323,7 +1323,6 @@ function defaultUiPrefs(){
     hiddenHomeWidgets: [],    // HOME_WIDGETS 중 숨긴 위젯 key 목록
     homeWidgetOrder: [],      // HOME_WIDGETS key 순서(비어있으면 기본 순서)
     pinnedNav: [],            // 즐겨찾기로 고정한 탭 key 목록
-    recentPages: [],          // 최근 방문한 탭 key (최신순)
     recentSearches: [],       // 최근 검색어(최신순)
     savedFilters: {}          // { pageKey: [{name, filter, savedAt}] }
   };
@@ -1378,7 +1377,6 @@ function enterApp(user, fromRestore){
   state.eduReminders = computeEduReminders();
   loadUiPrefs();
   renderNavPins();
-  renderNavRecent();
   // 새로고침으로 세션을 복원하는 경우(fromRestore)에만 마지막으로 보던 탭을 그대로 이어서
   // 보여준다 - 아이디/비밀번호로 새로 로그인할 때는 지금처럼 항상 홈에서 시작한다.
   let initialTab = 'home';
@@ -1606,36 +1604,7 @@ function navigateToTab(tab){
   const target = document.querySelector('.nav-item[data-tab="'+tab+'"]');
   if(target) target.classList.add('active');
   markTabViewed(tab);
-  recordRecentPage(tab);
   renderTab(tab);
-}
-// 최근 방문한 화면 최대 3개를 기억해뒀다가 사이드바 위쪽에 바로가기로 보여준다.
-// '홈'은 사이드바 맨 위에 항상 고정되어 있어 굳이 "최근"에 다시 보여줄 필요가 없으므로 제외한다.
-const RECENT_PAGES_MAX = 3;
-function recordRecentPage(tab){
-  if(!state.uiPrefs || tab === 'home') return;
-  if(!state.uiPrefs.recentPages) state.uiPrefs.recentPages = [];
-  const recent = state.uiPrefs.recentPages.filter(t=>t !== tab);
-  recent.unshift(tab);
-  state.uiPrefs.recentPages = recent.slice(0, RECENT_PAGES_MAX);
-  saveUiPrefs();
-  renderNavRecent();
-}
-function renderNavRecent(){
-  const group = document.getElementById('navRecentGroup');
-  if(!group || !state.uiPrefs) return;
-  const items = (state.uiPrefs.recentPages || []).map(tab=>({tab, label: NAV_LABELS[tab]})).filter(x=>x.label);
-  if(items.length === 0){
-    group.innerHTML = '';
-    group.style.display = 'none';
-    return;
-  }
-  group.style.display = '';
-  group.innerHTML = '<div class="nav-group-label" style="border-top:none;margin-top:0;">🕘 최근 방문</div>' +
-    items.map(x=>'<div class="nav-item nav-recent-item" data-recent-tab="'+x.tab+'">'+x.label+'</div>').join('');
-  group.querySelectorAll('.nav-recent-item').forEach(el=>{
-    el.addEventListener('click', ()=> navigateToTab(el.dataset.recentTab));
-  });
 }
 document.querySelectorAll('.nav-item[data-tab]').forEach(el=>{
   el.addEventListener('click', ()=>{

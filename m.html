@@ -58,6 +58,38 @@
   body.dark-mode table{ color:var(--text); }
   body.dark-mode tr:hover{ background:#24262c; }
   body.dark-mode .badge{ filter:brightness(1.15); }
+  /* 다크 모드 심화 적용 - body 배경/카드 배경만 바꿔서는 버튼/필터 pill/검색 드롭다운/
+     재고조회 필터 입력창/AI 분석 박스/모달 등 곳곳의 흰색 배경이 그대로 남아 "다크모드가
+     안 먹는 것처럼" 보이던 문제를 해결한다. 일부는 더 구체적인(specificity 높은) 기존
+     선택자에 가려지므로 !important로 확실히 덮어쓴다. (2026.08) */
+  body.dark-mode .card{ border-color:#2c2e34; }
+  body.dark-mode .btn{ background:#26282e; border-color:#3a3c44; color:var(--text); }
+  body.dark-mode .btn:hover{ background:#2e3038; }
+  body.dark-mode .branch-pill{ background:#26282e; border-color:#3a3c44; color:var(--text-sub); }
+  body.dark-mode .branch-pill:hover{ border-color:var(--primary); color:var(--primary); }
+  body.dark-mode .branch-pill.active{ background:var(--primary); color:#fff; }
+  body.dark-mode .sales-branch-item:hover{ background:#26282e; }
+  body.dark-mode .gs-dropdown{ background:#1f2126; box-shadow:0 10px 30px rgba(0,0,0,.5); }
+  body.dark-mode .gs-result-item{ border-bottom-color:#2c2e34; }
+  body.dark-mode .gs-result-item:hover{ background:#26282e; }
+  body.dark-mode .gs-result-title{ color:var(--text); }
+  body.dark-mode .gs-recent-item:hover{ background:#26282e; }
+  body.dark-mode .gs-recent-remove:hover{ background:#33353c; color:#ccc; }
+  body.dark-mode .inv-filter-card .field select,
+  body.dark-mode .inv-filter-card .field input{ background:#26282e !important; color:var(--text) !important; border-color:#3a3c44; }
+  body.dark-mode .inv-filter-section{ border-top-color:#2c2e34; }
+  body.dark-mode .filter-preset-chip{ background:#26282e; color:var(--text); }
+  body.dark-mode .filter-preset-chip:hover{ background:#2e3038; }
+  body.dark-mode .filter-preset-add{ background:#2a1e22; }
+  body.dark-mode .table-scroll table th.act-col{ background:#1a1b1f; }
+  body.dark-mode .ai-box{ background:#1f2126; border-color:#2c2e34; }
+  body.dark-mode .rich-editor-wrap{ background:#1f2126; }
+  body.dark-mode .rich-toolbar{ background:#1a1b1f; }
+  body.dark-mode .rt-color-palette{ background:#1f2126; }
+  body.dark-mode .rt-sel{ background:#26282e; }
+  body.dark-mode #addressSearchModal > div,
+  body.dark-mode #noticeDetailModal > div{ background:#1f2126 !important; }
+  body.dark-mode #addressSearchBaseText{ background:#26282e !important; }
 
   body.font-small{ font-size:13px; }
   body.font-large{ font-size:16px; }
@@ -260,7 +292,6 @@
   .nav-item.active .nav-pin-star{color:rgba(255,255,255,.8);}
   .nav-item.active .nav-pin-star.pinned{color:#ffe066;}
   .nav-pin-item{font-weight:500;}
-  .nav-recent-item{font-weight:500;font-size:12.5px;opacity:.9;}
   .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#7c7c82;text-transform:uppercase;border-top:1px solid #2c2c30;margin-top:8px;}
   .nav-item.sub{padding:8px 34px 8px 20px;font-size:13px;}
   .nav-item.sub.sub2{padding:7px 34px 7px 28px;font-size:12px;}
@@ -815,7 +846,6 @@
   <div class="sidebar">
     <div class="brand">혼매경북팀 <span>(경북2담당)</span><br>업무 지원 시스템</div>
     <div id="navPinnedGroup" style="display:none;"></div>
-    <div id="navRecentGroup" style="display:none;"></div>
     <div class="nav-item active" data-tab="home">홈</div>
     <div class="nav-group-label" id="navSystemAdminGroup" style="display:none;">시스템 관리</div>
     <div class="nav-item sub" data-tab="systemAdmin" id="navSystemAdminItem" style="display:none;">시스템 관리</div>
