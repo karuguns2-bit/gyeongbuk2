@@ -2507,6 +2507,20 @@ function renderSystemAdmin(){
     </div>
 
     <div class="card" style="margin-bottom:16px;">
+      <h3>전체 데이터 백업 다운로드</h3>
+      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">공지사항·재고·실적·계정 등 현재 저장된 전체 데이터를 하나의 백업 파일(JSON)로 내려받습니다. 실수로 데이터가 손상되거나 손실됐을 때를 대비해 주기적으로 받아 안전한 곳(PC/USB 등)에 보관해 두는 것을 권장합니다.</div>
+      <button class="btn btn-primary" onclick="downloadDbBackup()">전체 데이터 백업 다운로드</button>
+      <div id="dbBackupMsg" class="small-note" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <h3>백업 파일로 복원 <small style="color:var(--bad);">(주의 - 되돌릴 수 없음)</small></h3>
+      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">위에서 받아둔 백업 파일(.json)을 선택하면 현재 저장된 모든 데이터를 그 백업 시점 상태로 완전히 되돌립니다. 진행 전 확인창이 한 번 더 뜨고, 복원 직전 현재 상태도 안전을 위해 자동으로 백업 다운로드됩니다.</div>
+      <input type="file" accept=".json" onchange="handleDbRestoreFile(event)">
+      <div id="dbRestoreMsg" class="small-note" style="margin-top:6px;"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
       <h3>신규 계정 생성</h3>
       <div class="muted" style="margin-bottom:8px;font-size:12.5px;">이름과 사번만 입력해도 계정이 생성됩니다 (초기 비밀번호 1234). 지점명과 직책도 함께 지정할 수 있습니다.</div>
       <div class="form-row">
@@ -12427,6 +12441,63 @@ function downloadBlob(blob, filename){
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click();
   setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+}
+// 시스템 관리 - 전체 데이터(DB) 백업 다운로드. 실수로 데이터가 손상되거나 손실됐을 때 복구
+// 근거로 쓸 수 있도록, 관리자가 원하는 시점에 전체 DB를 하나의 JSON 파일로 내려받게 한다.
+// preRestore=true로 호출하면(복원 직전 안전판 목적) 파일명에 "복원전"을 붙이고 화면 안내 문구도 없이
+// 조용히 다운로드만 한다(복원 흐름 자체의 안내 문구와 겹치지 않도록).
+function downloadDbBackup(preRestore){
+  if(!SESSION || SESSION.role!=='admin'){ alert('전체 데이터 백업은 관리자만 다운로드할 수 있습니다.'); return; }
+  try{
+    const json = JSON.stringify(DB, null, 2);
+    const blob = new Blob([json], {type:'application/json'});
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+    const filename = preRestore ? `혼매경북팀_데이터백업_복원전_${stamp}.json` : `혼매경북팀_데이터백업_${stamp}.json`;
+    downloadBlob(blob, filename);
+    logActivity('update', `${SESSION.name}님(관리자)이 [시스템 관리] 전체 데이터 백업을 다운로드했습니다${preRestore ? ' (복원 직전 안전판)' : ''}`);
+    if(!preRestore) showUploadResult('dbBackupMsg', true, `백업 파일을 다운로드했습니다. (${stamp} 기준)`);
+  }catch(err){
+    if(!preRestore) showUploadResult('dbBackupMsg', false, '백업 파일 생성 중 오류가 발생했습니다: ' + err.message);
+  }
+}
+// 시스템 관리 - 백업 파일로 전체 데이터 복원. 되돌릴 수 없는 작업이므로 (1) 파일이 진짜 이
+// 화면에서 받은 백업 형식이 맞는지 최소한의 형태 검증을 거치고, (2) 진행 전 확인창을 띄우고,
+// (3) 복원을 실제로 적용하기 직전에 "복원 전" 현재 상태를 안전판으로 한 번 더 자동 다운로드한다.
+function handleDbRestoreFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  if(!SESSION || SESSION.role!=='admin'){ alert('전체 데이터 복원은 관리자만 할 수 있습니다.'); evt.target.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = function(e){
+    let parsed;
+    try{
+      parsed = JSON.parse(e.target.result);
+    }catch(err){
+      showUploadResult('dbRestoreMsg', false, '백업 파일을 읽지 못했습니다. ".json" 백업 파일이 맞는지 확인해 주세요.');
+      evt.target.value = '';
+      return;
+    }
+    if(!parsed || typeof parsed!=='object' || Array.isArray(parsed) || !Array.isArray(parsed.branches) || !Array.isArray(parsed.users)){
+      showUploadResult('dbRestoreMsg', false, '올바른 백업 파일 형식이 아닙니다. "전체 데이터 백업 다운로드"로 받은 파일만 복원할 수 있습니다.');
+      evt.target.value = '';
+      return;
+    }
+    const ok = confirm('⚠️ 이 백업 파일로 복원하면 현재 저장된 모든 데이터(공지사항·재고·실적·계정 등 전부)가 백업 시점 내용으로 완전히 덮어써집니다.\n되돌릴 수 없는 작업입니다. 복원 직전 지금 상태도 안전을 위해 자동으로 한 번 더 백업 다운로드됩니다.\n\n계속 진행하시겠습니까?');
+    if(!ok){ evt.target.value = ''; return; }
+    downloadDbBackup(true); // 복원 전 현재 상태 안전판
+    DB = parsed;
+    migrateDB(); // 백업 시점 이후 추가된 항목의 기본값을 채워 스키마를 최신 상태로 맞춘다
+    saveDB();
+    evt.target.value = '';
+    alert('복원이 완료되었습니다. 화면을 새로고침합니다.');
+    location.reload();
+  };
+  reader.onerror = function(){
+    showUploadResult('dbRestoreMsg', false, '파일을 읽는 중 오류가 발생했습니다.');
+    evt.target.value = '';
+  };
+  reader.readAsText(file);
 }
 // 파일명(원본 이름 또는 URL)에서 확장자를 뽑아낸다. 못 찾으면 기본값(.jpg)을 쓴다.
 function guessAttachmentExt(name){
