@@ -2341,13 +2341,13 @@ function uiSettingsModalHtml(){
           <h3 style="margin:0;">⚙ 화면 설정</h3>
           <button class="btn btn-sm" onclick="closeUiSettingsPanel()">닫기</button>
         </div>
-        <div class="us-row">
+        <label class="us-row" style="cursor:pointer;">
           <span>다크 모드</span>
           <span class="toggle-switch">
             <input type="checkbox" ${p.darkMode?'checked':''} onchange="setUiPref('darkMode', this.checked)">
             <span class="slider"></span>
           </span>
-        </div>
+        </label>
         <div class="us-row">
           <span>글자 크기</span>
           <div class="us-btn-group">
