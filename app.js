@@ -771,6 +771,17 @@ async function refreshConflictLog(){
   const items = await fetchRecentConflicts(10);
   el.innerHTML = conflictLogHtml(items);
 }
+// 시스템 관리 - "저장 충돌 이력" 카드는 평소엔 거의 볼 일이 없어 접어 두고, 필요할 때만
+// 펼쳐보게 한다. 데이터는(반응 없어 보이지 않도록) 접혀 있어도 계속 백그라운드로 불러와 두고,
+// 이 토글은 순수하게 화면 표시 여부만 바꾼다(다시 그리지 않음).
+function toggleConflictLogVisible(){
+  const wrap = document.getElementById('conflictLogWrap');
+  const btn = document.getElementById('conflictLogToggleBtn');
+  if(!wrap || !btn) return;
+  const opening = wrap.style.display === 'none';
+  wrap.style.display = opening ? '' : 'none';
+  btn.textContent = opening ? '접기 ▴' : '펼쳐보기 ▾';
+}
 function conflictLogHtml(items){
   if(!items || items.length===0) return '최근 저장 충돌 병합 기록이 없습니다.';
   return items.map(it=>{
@@ -2535,9 +2546,14 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span4">
-      <h3>저장 충돌 이력 <small>(여러 매니저가 거의 동시에 저장할 때 자동 병합된 기록)</small></h3>
-      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">두 사람이 비슷한 시간에 각자 다른 내용을 저장하면, 서버가 자동으로 두 내용을 모두 살려 병합합니다. 최근에 이런 병합이 있었다면 아래에 표시됩니다 - 등록한 내용이 잘 반영됐는지 궁금할 때 참고하세요.</div>
-      <div id="conflictLogList" class="muted" style="font-size:12.5px;">불러오는 중...</div>
+      <div class="flex-between" style="align-items:center;">
+        <h3 style="margin:0;">저장 충돌 이력 <small>(여러 매니저가 거의 동시에 저장할 때 자동 병합된 기록)</small></h3>
+        <button class="btn btn-sm" id="conflictLogToggleBtn" onclick="toggleConflictLogVisible()">펼쳐보기 ▾</button>
+      </div>
+      <div id="conflictLogWrap" style="display:none;margin-top:10px;">
+        <div class="muted" style="margin-bottom:10px;font-size:12.5px;">두 사람이 비슷한 시간에 각자 다른 내용을 저장하면, 서버가 자동으로 두 내용을 모두 살려 병합합니다. 최근에 이런 병합이 있었다면 아래에 표시됩니다 - 등록한 내용이 잘 반영됐는지 궁금할 때 참고하세요.</div>
+        <div id="conflictLogList" class="muted" style="font-size:12.5px;">불러오는 중...</div>
+      </div>
     </div>
 
 <div class="card sysadmin-span2">
