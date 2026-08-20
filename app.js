@@ -2498,8 +2498,8 @@ function renderSystemAdmin(){
     <div class="page-title">시스템 관리</div>
     <div class="page-desc">관리자 전용 화면입니다. 계정(매니저/사원) 관리, 신규 계정 생성, 각종 데이터 업로드를 이 화면에서 한 번에 처리할 수 있습니다.</div>
 
-    <div class="grid grid-2" style="align-items:start;">
-    <div class="sysadmin-section-label" style="grid-column:1/-1;">⚙️ 시스템 설정</div>
+    <div class="sysadmin-masonry">
+    <div class="sysadmin-section-label">⚙️ 시스템 설정</div>
 
     <div class="card">
       <h3>스크린세이버 설정</h3>
@@ -2527,7 +2527,7 @@ function renderSystemAdmin(){
       <div id="dbOptStatus" class="small-note" style="margin-top:6px;"></div>
     </div>
 
-    <div class="sysadmin-section-label" style="grid-column:1/-1;">💾 데이터 백업 · 복원</div>
+    <div class="sysadmin-section-label">💾 데이터 백업 · 복원</div>
 
     <div class="card">
       <h3>전체 데이터 백업 다운로드</h3>
@@ -2543,9 +2543,9 @@ function renderSystemAdmin(){
       <div id="dbRestoreMsg" class="small-note" style="margin-top:6px;"></div>
     </div>
 
-    <div class="sysadmin-section-label" style="grid-column:1/-1;">👤 계정 관리</div>
+    <div class="sysadmin-section-label">👤 계정 관리</div>
 
-    <div class="card" style="grid-column:1/-1;">
+    <div class="card sysadmin-full">
       <h3>신규 계정 생성</h3>
       <div class="muted" style="margin-bottom:8px;font-size:12.5px;">이름과 사번만 입력해도 계정이 생성됩니다 (초기 비밀번호 1234). 지점명과 직책도 함께 지정할 수 있습니다.</div>
       <div class="form-row">
@@ -2564,7 +2564,7 @@ function renderSystemAdmin(){
       <button class="btn btn-primary" onclick="renderTab('accountManagement')">계정관리 상세</button>
     </div>
 
-    <div class="sysadmin-section-label" style="grid-column:1/-1;">📤 데이터 업로드</div>
+    <div class="sysadmin-section-label">📤 데이터 업로드</div>
 
     <div class="card">
       <h3>📊 지표 한 눈에 보기 파일 업로드 <small>("일일실적 현황" 파일 · MASTER/Gross(CC포함)/구독/고수익 시트 포함 .xlsb/.xlsx)</small></h3>
@@ -2612,7 +2612,7 @@ function renderSystemAdmin(){
       <div id="clearanceBaselineMsg" class="small-note"></div>
     </div>
 
-    <div class="card" style="grid-column:1/-1;">
+    <div class="card sysadmin-full">
       <h3>교육 이수율 데이터 업로드</h3>
       <div class="form-row" style="align-items:flex-start;flex-wrap:wrap;">
         <div class="field">
