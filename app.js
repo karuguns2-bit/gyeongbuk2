@@ -7631,6 +7631,9 @@ function renderInventory(){
   const teamScopedInventory = DB.inventoryShowAllTeams
     ? DB.inventory
     : DB.inventory.filter(r=>!r.team || r.team===INV_HOME_TEAM);
+  // 토글을 켜도 아무 변화가 없어 "안 되는 것처럼" 보이는 문제 방지 - 지금 반영된 재고 데이터
+  // 안에 실제로 타영업팀 정보(팀명 컬럼 값)가 있는지 미리 파악해 토글 옆에 안내해준다.
+  const otherTeamInvCount = DB.inventory.filter(r=>r.team && r.team!==INV_HOME_TEAM).length;
   // 행사(행)/진열(진)/핸디(핸) 태그가 붙은 품목만 다룸 — 그 외 일반 재고는 이 화면에서 제외
   // (권한 제한 없음: 관리자/지점 매니저 모두 전 지점 재고를 동일하게 조회 가능)
   const taggedInventory = teamScopedInventory.filter(r=>invTag(r.product));
@@ -7697,7 +7700,7 @@ function renderInventory(){
         ${isDisplay ? `<input type="date" style="width:100%;" value="${r.displayDate||''}" onchange="setInvMeta('${rid}','displayDate',this.value)" title="진열일자">` : '<span class="muted">-</span>'}
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="11" class="muted">조건에 맞는 재고가 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="11" class="muted">조건에 맞는 재고가 없습니다.${f.q && f.q.trim() ? ' 이 화면은 행사(행)/진열(진)/핸디(핸) 태그가 붙은 재고만 표시합니다 - 검색하신 상품/코드가 실제로 있어도 이 태그가 없으면 보이지 않습니다.' : ''}</td></tr>`;
 
   return `
     <div class="page-title">재고 조회</div>
@@ -7713,8 +7716,9 @@ function renderInventory(){
               <input type="checkbox" ${DB.inventoryShowAllTeams ? 'checked' : ''} onchange="toggleInventoryShowAllTeams(this.checked)">
               <span class="slider"></span>
             </span>
-            <span style="font-size:13px;">타영업팀 재고 함께보기 ${DB.inventoryShowAllTeams ? '(전체 팀 표시 중)' : '(혼매경북팀만 표시 중)'}</span>
-          </label>` : ''}
+            <span style="font-size:13px;">타영업팀 재고 함께보기 ${DB.inventoryShowAllTeams ? `(전체 팀 표시 중 · 타영업팀 ${otherTeamInvCount}건)` : '(혼매경북팀만 표시 중)'}</span>
+          </label>
+          ${otherTeamInvCount===0 ? `<div class="muted" style="font-size:11px;margin:-8px 0 14px;">⚠ 지금 반영된 재고 데이터에는 타영업팀 정보가 없어 켜도 변화가 없습니다. 재고 파일에 &quot;팀명&quot; 컬럼이 포함되어 있으면 다음 업로드부터 자동으로 구분됩니다.</div>` : ''}` : ''}
           <div class="field" style="margin-bottom:12px;">
             <label>매장</label>
             <select onchange="setInvFilter('store', this.value)">
@@ -7799,9 +7803,15 @@ function invSearchSuggestions(query){
   const seen = new Set();
   const out = [];
   (DB.inventory||[]).forEach(r=>{
+    // 이 화면의 검색 결과는 행사(행)/진열(진)/핸디(핸) 태그가 붙은 재고만 대상으로 하므로,
+    // 태그 없는 상품을 추천하면 클릭해도 결과가 하나도 안 뜨는("자동완성이 안 되는 것처럼
+    // 보이는") 문제가 생긴다. 그래서 추천 후보도 반드시 같은 태그 조건으로 걸러야 한다.
+    if(!invTag(r.product)) return;
     const model = String(r.model||'').trim();
     if(!model || seen.has(model)) return;
-    const hay = (model + ' ' + (r.product||'')).toLowerCase();
+    // 모델명/상품명뿐 아니라 상품코드로도 찾을 수 있게 한다(코드로 검색했을 때 추천이 하나도
+    // 안 뜨던 문제 개선).
+    const hay = (model + ' ' + (r.product||'') + ' ' + (r.code!=null?String(r.code):'')).toLowerCase();
     if(!hay.includes(q)) return;
     seen.add(model);
     out.push({ model, product: r.product||'' });
@@ -7812,7 +7822,9 @@ function invSearchSuggestHtml(suggestions){
   if(!suggestions || suggestions.length===0) return '';
   const items = suggestions.map(s=>{
     const productShort = s.product.length>26 ? s.product.slice(0,26)+'…' : s.product;
-    return `<div style="padding:4px 2px;cursor:pointer;" onclick="applyInvSearchSuggestion('${s.model.replace(/'/g,'')}')">
+    // 모델명에 작은따옴표 등 특수문자가 있어도 안전하도록 onclick 문자열에 직접 끼워 넣지 않고
+    // data 속성(escapeHtml로 이스케이프)에 담아 클릭 시 그대로 읽어온다.
+    return `<div style="padding:4px 2px;cursor:pointer;" data-inv-suggest-model="${escapeHtml(s.model)}" onclick="applyInvSearchSuggestion(this.dataset.invSuggestModel)">
       <span style="color:var(--primary);font-weight:600;">${escapeHtml(s.model)}</span>
       ${s.product ? `<span class="muted" style="margin-left:6px;">${escapeHtml(productShort)}</span>` : ''}
     </div>`;
