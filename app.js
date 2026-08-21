@@ -8705,7 +8705,13 @@ const SUB_TIER_CONTEST_OPTIONS = [
   // 워시타워/콤보·냉장고 구재고 판매 사은품: 매장으로 배송되는 항목이라 fixedAddress로 주소를 자동
   // 고정하고("매장으로 입고"가 아니라 "매장으로 배송"), 8/14~8/17 기간 + 선착순 5건 한정으로 제한한다.
   { value:'워시타워/콤보 구재고 판매시', gift:'[LG생활건강]피지 캡슐세제+아우리 드라이시트 2종세트', fixedAddress:'매장으로 배송', windowStart:'2026-08-14', windowEnd:'2026-08-17', limit:5 },
-  { value:'냉장고 구재고 판매시', gift:'[가이타이너] 와이드 전기 그릴', fixedAddress:'매장으로 배송', windowStart:'2026-08-14', windowEnd:'2026-08-17', limit:5 }
+  { value:'냉장고 구재고 판매시', gift:'[가이타이너] 와이드 전기 그릴', fixedAddress:'매장으로 배송', windowStart:'2026-08-14', windowEnd:'2026-08-17', limit:5 },
+  // ---- 2026-08-21 추가: 스타일러/식기세척기/스탠바이미2 반값 Set 판촉비 지급(각 항목 선착순 4건 한정) ----
+  // 실제 배송이 필요한 물품이 아니라 판촉비 지급 건이라 주소칸에는 "별도 기재사항 없음"을 자동으로
+  // 채워 넣고(fixedAddress), 선택하는 순간 선착순 한정 안내를 이 항목 전용 문구(selectAlert)로 보여준다.
+  { value:'스타일러 판매시(구독/일시불)', gift:'판촉비 3만원', fixedAddress:'별도 기재사항 없음', limit:4, selectAlert:'4건 한정 선착순 지급!, 초과등록 불가건입니다.' },
+  { value:'식기세척기 판매시(구독/일시불)', gift:'판촉비 3만원', fixedAddress:'별도 기재사항 없음', limit:4, selectAlert:'4건 한정 선착순 지급!, 초과등록 불가건입니다.' },
+  { value:'스탠바이미2 반값 Set 판매시(구독)', gift:'판촉비3만원+쿠쿠전자레인지1대', fixedAddress:'별도 기재사항 없음', limit:4, selectAlert:'4건 한정 선착순 지급!, 초과등록 불가건입니다.' }
 ];
 // 신청기간이 정해진 항목(windowStart/windowEnd)이면 오늘 날짜가 그 범위(포함) 안에 있는지 확인한다.
 // 기간이 지정되지 않은 기존 항목들은 항상 true(기존 동작 그대로 상시 신청 가능).
@@ -9371,7 +9377,7 @@ function syncSubTierGiftNameFor(selectId, giftId, addressId, addressBtnId){
       }
       return;
     }
-    alert(`"${opt.value}" 항목 현재 잔여수량은 ${remaining}건입니다. (선착순 ${opt.limit}건 한정)`);
+    alert(opt.selectAlert ? opt.selectAlert : `"${opt.value}" 항목 현재 잔여수량은 ${remaining}건입니다. (선착순 ${opt.limit}건 한정)`);
   }
 }
 // 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
