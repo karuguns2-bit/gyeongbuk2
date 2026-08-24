@@ -1089,6 +1089,16 @@ function migrateDB(){
   DB.kakaoFriends.forEach(r=>{ if(!r.date) r.date = r.weekStart; if(!r.weekStart && r.date) r.weekStart = getMondayStr(r.date); });
   if(!DB.prospects) DB.prospects = [];
   DB.prospects.forEach(p=>{ if(p.purchaseType===undefined) p.purchaseType = null; });
+  // 2026-08-24 방문 상담 일지 양식에 맞춰 방문일자/방문시간/고객구분/방문단위/방문경로/상담제품
+  // 대분류 6개 항목을 추가했다. 그 이전에 등록된 건들은 값이 없으니 전부 null로 채워 넣는다.
+  (DB.prospects||[]).forEach(p=>{
+    if(p.visitDate===undefined) p.visitDate = null;
+    if(p.visitTime===undefined) p.visitTime = null;
+    if(p.customerAgeGroup===undefined) p.customerAgeGroup = null;
+    if(p.visitUnit===undefined) p.visitUnit = null;
+    if(p.visitChannel===undefined) p.visitChannel = null;
+    if(p.productCategory===undefined) p.productCategory = null;
+  });
   if(!DB.subB2bSales) DB.subB2bSales = [];
   if(!DB.policyQuizAttempts) DB.policyQuizAttempts = [];
   if(!DB.kakaoContestInfo) DB.kakaoContestInfo = JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO));
@@ -12722,6 +12732,12 @@ function renderKakaoFriends(){
 const PROSPECT_HAPPY_CALL_OPTIONS = ['실행', '미실행'];
 const PROSPECT_SALE_STATUS_OPTIONS = ['판매', '미판매', '보류'];
 const PROSPECT_PURCHASE_TYPE_OPTIONS = ['구독', '일시불'];
+// 2026-08-24 방문 상담 일지 양식 추가 항목(방문일자/방문시간/고객구분/방문단위/방문경로/상담제품 대분류)
+const PROSPECT_VISIT_TIME_OPTIONS = ['오전', '오후'];
+const PROSPECT_AGE_GROUP_OPTIONS = ['20대', '30대', '40대', '50대', '60대↑'];
+const PROSPECT_VISIT_UNIT_OPTIONS = ['가족단위', '부부', '1인', '지인동행', '기타'];
+const PROSPECT_VISIT_CHANNEL_OPTIONS = ['워크인', '전단지', '기타'];
+const PROSPECT_PRODUCT_CATEGORY_OPTIONS = ['대형가전', '소형가전', 'PC', '혼수', '이사'];
 function myProspects(){
   return (DB.prospects||[]).filter(p=>p.empId===SESSION.empId);
 }
@@ -12756,6 +12772,15 @@ function setProspectFilterEmp(empId){
   state.prospectFilterEmpId = empId || null;
   renderTab('prospects');
 }
+// 값별 등록 건수를 집계해 "A건(B건), C건(D건)" 형태로 이어붙인다(값이 없는 건은 제외).
+// 방문경로/고객구분처럼 새로 추가된 항목별 분포를 피드백 문구에 간단히 얹을 때 재사용한다.
+function prospectGroupCountsLabel(list, field){
+  const counts = {};
+  list.forEach(p=>{ const v = p[field]; if(v) counts[v] = (counts[v]||0)+1; });
+  const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  if(entries.length===0) return null;
+  return entries.map(([k,v])=>`${k} ${v}건`).join(' · ');
+}
 function prospectMonthlyStats(){
   const thisMonth = todayStr().slice(0,7);
   const mine = visibleProspects().filter(p=>String(p.createdAt||'').slice(0,7)===thisMonth);
@@ -12765,7 +12790,11 @@ function prospectMonthlyStats(){
   const notSold = mine.filter(p=>p.saleStatus==='미판매').length;
   const pending = mine.filter(p=>p.saleStatus==='보류').length;
   const noHappyCall = mine.filter(p=>p.happyCall!=='실행').length;
-  return {total, totalAmt, sold, notSold, pending, noHappyCall};
+  // 2026-08-24 추가: 방문경로/고객구분/방문단위별 분포(값이 하나도 입력 안 된 달에는 null)
+  const channelLabel = prospectGroupCountsLabel(mine, 'visitChannel');
+  const ageGroupLabel = prospectGroupCountsLabel(mine, 'customerAgeGroup');
+  const visitUnitLabel = prospectGroupCountsLabel(mine, 'visitUnit');
+  return {total, totalAmt, sold, notSold, pending, noHappyCall, channelLabel, ageGroupLabel, visitUnitLabel};
 }
 function prospectFeedback(){
   const s = prospectMonthlyStats();
@@ -12782,6 +12811,9 @@ function prospectFeedback(){
   }
   if(s.noHappyCall>0) lines.push(`⚠ 해피콜 미실행 고객이 <b>${s.noHappyCall}명</b> 있습니다. 우선적으로 연락해 보세요.`);
   if(s.pending>0) lines.push(`보류 상태 고객 <b>${s.pending}명</b> — 구매희망일이 임박한 고객부터 순차적으로 재상담을 권장합니다.`);
+  if(s.channelLabel) lines.push(`방문경로별: ${s.channelLabel}`);
+  if(s.ageGroupLabel) lines.push(`고객구분별: ${s.ageGroupLabel}`);
+  if(s.visitUnitLabel) lines.push(`방문단위별: ${s.visitUnitLabel}`);
   return lines;
 }
 function renderProspects(){
@@ -12814,6 +12846,12 @@ function renderProspects(){
       return `
     <tr>
       ${repCellsHtml}
+      <td><input id="pgeVisitDate_${p.id}" type="date" value="${p.visitDate||''}" style="width:135px"></td>
+      <td><select id="pgeVisitTime_${p.id}"><option value="">미선택</option>${PROSPECT_VISIT_TIME_OPTIONS.map(o=>`<option value="${o}" ${p.visitTime===o?'selected':''}>${o}</option>`).join('')}</select></td>
+      <td><select id="pgeAgeGroup_${p.id}"><option value="">미선택</option>${PROSPECT_AGE_GROUP_OPTIONS.map(o=>`<option value="${o}" ${p.customerAgeGroup===o?'selected':''}>${o}</option>`).join('')}</select></td>
+      <td><select id="pgeVisitUnit_${p.id}"><option value="">미선택</option>${PROSPECT_VISIT_UNIT_OPTIONS.map(o=>`<option value="${o}" ${p.visitUnit===o?'selected':''}>${o}</option>`).join('')}</select></td>
+      <td><select id="pgeVisitChannel_${p.id}"><option value="">미선택</option>${PROSPECT_VISIT_CHANNEL_OPTIONS.map(o=>`<option value="${o}" ${p.visitChannel===o?'selected':''}>${o}</option>`).join('')}</select></td>
+      <td><select id="pgeProductCategory_${p.id}"><option value="">미선택</option>${PROSPECT_PRODUCT_CATEGORY_OPTIONS.map(o=>`<option value="${o}" ${p.productCategory===o?'selected':''}>${o}</option>`).join('')}</select></td>
       <td><input id="pgeName_${p.id}" value="${escapeHtml(p.customerName)}" style="width:100px"></td>
       <td><input id="pgePhone_${p.id}" value="${escapeHtml(p.phone)}" style="width:120px"></td>
       <td><input id="pgeItem_${p.id}" value="${escapeHtml(p.desiredItem||'')}" style="width:110px"></td>
@@ -12832,6 +12870,12 @@ function renderProspects(){
     return `
     <tr>
       ${repCellsHtml}
+      <td>${p.visitDate||'-'}</td>
+      <td>${escapeHtml(p.visitTime||'-')}</td>
+      <td>${escapeHtml(p.customerAgeGroup||'-')}</td>
+      <td>${escapeHtml(p.visitUnit||'-')}</td>
+      <td>${escapeHtml(p.visitChannel||'-')}</td>
+      <td>${escapeHtml(p.productCategory||'-')}</td>
       <td>${escapeHtml(p.customerName)}</td>
       <td>${escapeHtml(p.phone)}</td>
       <td>${escapeHtml(p.desiredItem||'-')}</td>
@@ -12854,7 +12898,7 @@ function renderProspects(){
         ${canManage ? `<button class="btn btn-sm" onclick="startEditProspect('${p.id}')">수정</button> <button class="btn btn-sm" onclick="deleteProspect('${p.id}')">삭제</button>` : '<span class="muted" style="font-size:11px;">-</span>'}
       </td>
     </tr>`;
-  }).join('') || `<tr><td colspan="${isAdmin?11:9}" class="muted">등록된 가망고객이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="${isAdmin?17:15}" class="muted">등록된 가망고객이 없습니다.</td></tr>`;
 
   return `
     <div class="page-title">개별 가망고객 관리현황</div>
@@ -12869,6 +12913,24 @@ function renderProspects(){
 
     <div class="card" style="margin-bottom:16px;">
       <h3>가망고객 등록</h3>
+      <div class="form-row">
+        <div class="field"><label>방문일자</label><input id="pgVisitDate" type="date"></div>
+        <div class="field"><label>방문시간</label>
+          <select id="pgVisitTime"><option value="">선택 안함</option>${PROSPECT_VISIT_TIME_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>고객구분</label>
+          <select id="pgAgeGroup"><option value="">선택 안함</option>${PROSPECT_AGE_GROUP_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>방문단위</label>
+          <select id="pgVisitUnit"><option value="">선택 안함</option>${PROSPECT_VISIT_UNIT_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>방문경로</label>
+          <select id="pgVisitChannel"><option value="">선택 안함</option>${PROSPECT_VISIT_CHANNEL_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+        </div>
+        <div class="field"><label>상담제품(대분류)</label>
+          <select id="pgProductCategory"><option value="">선택 안함</option>${PROSPECT_PRODUCT_CATEGORY_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}</select>
+        </div>
+      </div>
       <div class="form-row">
         <div class="field"><label>고객명</label><input id="pgCustomerName" placeholder="예: 홍길동" style="width:120px"></div>
         <div class="field"><label>연락처</label><input id="pgPhone" placeholder="예: 010-1234-5678" style="width:150px"></div>
@@ -12898,13 +12960,19 @@ function renderProspects(){
 
     <div class="card">
       <table>
-        <thead><tr>${isAdmin?'<th>담당자</th><th>지점</th>':''}<th>고객명</th><th>연락처</th><th>구매희망품목</th><th>구매희망일</th><th>상담제품</th><th>구매유형</th><th>예상금액</th><th>해피콜</th><th>판매여부</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${isAdmin?'<th>담당자</th><th>지점</th>':''}<th>방문일자</th><th>방문시간</th><th>고객구분</th><th>방문단위</th><th>방문경로</th><th>상담제품</th><th>고객명</th><th>연락처</th><th>구매희망품목</th><th>구매희망일</th><th>상담제품</th><th>구매유형</th><th>예상금액</th><th>해피콜</th><th>판매여부</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
   `;
 }
 function addProspect(){
+  const visitDate = document.getElementById('pgVisitDate').value || null;
+  const visitTime = document.getElementById('pgVisitTime').value || null;
+  const customerAgeGroup = document.getElementById('pgAgeGroup').value || null;
+  const visitUnit = document.getElementById('pgVisitUnit').value || null;
+  const visitChannel = document.getElementById('pgVisitChannel').value || null;
+  const productCategory = document.getElementById('pgProductCategory').value || null;
   const customerName = document.getElementById('pgCustomerName').value.trim();
   const phone = document.getElementById('pgPhone').value.trim();
   const desiredItem = document.getElementById('pgDesiredItem').value.trim();
@@ -12918,6 +12986,7 @@ function addProspect(){
   DB.prospects.push({
     id: 'pg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
     empId: SESSION.empId, branchId: SESSION.branchId,
+    visitDate, visitTime, customerAgeGroup, visitUnit, visitChannel, productCategory,
     customerName, phone, desiredItem: desiredItem||null, desiredDate: desiredDate||null,
     consultProduct: consultProduct||null, purchaseType, expectedAmountWon,
     happyCall, saleStatus, createdAt: new Date().toISOString()
@@ -12946,6 +13015,12 @@ function saveEditProspect(id){
   const customerName = document.getElementById('pgeName_'+id).value.trim();
   const phone = document.getElementById('pgePhone_'+id).value.trim();
   if(!customerName || !phone){ alert('고객명과 연락처를 입력해 주세요.'); return; }
+  p.visitDate = document.getElementById('pgeVisitDate_'+id).value || null;
+  p.visitTime = document.getElementById('pgeVisitTime_'+id).value || null;
+  p.customerAgeGroup = document.getElementById('pgeAgeGroup_'+id).value || null;
+  p.visitUnit = document.getElementById('pgeVisitUnit_'+id).value || null;
+  p.visitChannel = document.getElementById('pgeVisitChannel_'+id).value || null;
+  p.productCategory = document.getElementById('pgeProductCategory_'+id).value || null;
   p.customerName = customerName;
   p.phone = phone;
   p.desiredItem = document.getElementById('pgeItem_'+id).value.trim() || null;
