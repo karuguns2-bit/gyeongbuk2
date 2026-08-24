@@ -12736,7 +12736,7 @@ const PROSPECT_PURCHASE_TYPE_OPTIONS = ['구독', '일시불'];
 const PROSPECT_VISIT_TIME_OPTIONS = ['오전', '오후'];
 const PROSPECT_AGE_GROUP_OPTIONS = ['20대', '30대', '40대', '50대', '60대↑'];
 const PROSPECT_VISIT_UNIT_OPTIONS = ['가족단위', '부부', '1인', '지인동행', '기타'];
-const PROSPECT_VISIT_CHANNEL_OPTIONS = ['워크인', '전단지', '기타'];
+const PROSPECT_VISIT_CHANNEL_OPTIONS = ['워크인', '전단지(POP,현수막)', '카플친', '당근', '온라인DB', '이업종 연계(식품관,테넌트)', '대형마트 방송', '행사장'];
 const PROSPECT_PRODUCT_CATEGORY_OPTIONS = ['대형가전', '소형가전', 'PC', '혼수', '이사'];
 function myProspects(){
   return (DB.prospects||[]).filter(p=>p.empId===SESSION.empId);
