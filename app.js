@@ -12865,6 +12865,10 @@ function renderProspects(){
   const isAdmin = canSwitchBranch();
   const list = [...visibleProspects()].sort((a,b)=> String(b.createdAt).localeCompare(String(a.createdAt)));
   const feedback = prospectFeedback();
+  // 등록 건수가 계속 늘어나므로 다른 게시판들과 동일한 10/20/전체 목록 개수 설정 + 검색을 적용한다.
+  const paging = applyBoardSearchAndPaging('prospects','prospects', list,
+    p => `${p.customerName||''} ${p.phone||''} ${p.desiredItem||''} ${p.consultProduct||''}`,
+    '고객명 · 연락처 · 구매희망품목 · 상담제품으로 검색');
 
   const adminFilterHtml = isAdmin ? `
     <div class="card" style="margin-bottom:16px;">
@@ -12882,7 +12886,7 @@ function renderProspects(){
       </div>
     </div>` : '';
 
-  const rows = list.map(p=>{
+  const rows = paging.items.map(p=>{
     const canManage = p.empId===SESSION.empId;
     const repCellsHtml = isAdmin ? `
       <td class="muted">${escapeHtml((DB.users.find(u=>u.empId===p.empId)||{}).name || p.empId)}</td>
@@ -13004,10 +13008,14 @@ function renderProspects(){
     </div>
 
     <div class="card">
+      ${paging.barHtml}
+      <div class="table-scroll">
       <table>
         <thead><tr>${isAdmin?'<th>담당자</th><th>지점</th>':''}<th>방문일자</th><th>방문시간</th><th>고객구분</th><th>방문단위</th><th>방문경로</th><th>상담제품</th><th>고객명</th><th>연락처</th><th>구매희망품목</th><th>구매희망일</th><th>상담제품</th><th>구매유형</th><th>예상금액</th><th>해피콜</th><th>판매여부</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
+      ${paging.pagerHtml}
     </div>
   `;
 }
