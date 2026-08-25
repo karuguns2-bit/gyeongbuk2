@@ -6475,13 +6475,114 @@ function moFmt(n, digits){
   if(n==null || isNaN(v)) return '-';
   return v.toLocaleString('ko-KR', {maximumFractionDigits: digits==null?1:digits, minimumFractionDigits:0}) + 'KK';
 }
-// 2026-08-25 추가: 인센티브 페이지의 제품별 상세 금액은 KK(백만원) 단위로는 "0KK" 처럼 보여
-// 체감이 안 되므로 "원" 단위로 그대로 풀어서 보여달라는 요청 — 파일 값(KK 단위) x 100만을
-// 반올림해서 천단위 콤마 + "원"으로 표시한다.
+// 2026-08-25 추가: 인센티브 페이지의 목표/총판/실판은 다른 지표들과 같은 KK(백만원) 단위라서
+// "원" 단위로 보여줄 땐 x100만이 필요하다.
 function moFmtWon(n){
   const v = Number(n);
   if(n==null || isNaN(v)) return '-';
   return Math.round(v*1000000).toLocaleString('ko-KR') + '원';
+}
+// 2026-08-25 수정: 실제 업로드된 파일로 확인해보니 "인센티브" 시트의 지급액 항목들
+// (Grade수당계/지점수당/스탠바이미수당/일시불수당·구독수당 제품별 금액/구독수당계/
+// 목표달성인센티브예상금액)은 목표·총판·실판과 달리 이미 "원" 단위 그대로 저장돼 있었다
+// (예: 일시불수당 TV=64500 → 64,500원이 맞고, x100만을 하면 646억원이 되어 버려서 틀림).
+// 그래서 이 항목들은 배율 없이 그대로 콤마+원만 붙인다.
+function moFmtWonRaw(n){
+  const v = Number(n);
+  if(n==null || isNaN(v)) return '-';
+  return Math.round(v).toLocaleString('ko-KR') + '원';
+}
+/* =========================================================================
+   2026-08-25 추가: "(인터비즈)26년 평가&인센티브 운영案(26년 8월~)_매니저용" PDF의
+   "대형마트 팀장 성과 평가 案"(2~3p) 세부 테이블을 그대로 코드화한 것.
+   항목마다 "지수 구간 내 평가 점수는 비례적으로 산정함"이라고 명시되어 있어, 구간 사이는
+   선형보간(interpolation)으로 점수를 계산한다. 최상위 구간 이상은 100점, 최하위 구간 미만은
+   각 항목의 "미만 시 O점" 규정대로 고정 점수(floor)를 준다.
+   ※ PDF에는 항목별 "점수"만 정의되어 있고, 총점(가중합) → 평가 Grade(S/A/B/C) 컷오프는
+   문서에 명시돼 있지 않다. 그래서 계산기는 총점까지만 자동 산출하고, Grade/리그별 인센티브
+   금액은 참고용 표로만 함께 보여준다(정확한 등급 컷오프를 알려주시면 자동 매칭도 추가 가능).
+   ========================================================================= */
+const EVAL_TABLES = {
+  saleGrowth:  { weight:0.35, floor:40, label:'판매신장률(전년동기比, 실판)', unit:'%p', table:[[15,100],[10,90],[5,80],[0,70],[-5,60],[-10,50]] },
+  compGap:     { weight:0.10, floor:40, label:'혼매유통 평균비 Gap', unit:'%p', table:[[3,100],[2,90],[1,80],[0,70],[-1,60],[-2,50]] },
+  compImprove: { weight:0.10, floor:40, label:'전년 누적比 개선도', unit:'%p', table:[[8,100],[6,90],[4,80],[2,70],[0,60],[-2,50]] },
+  highGap:     { weight:0.10, floor:40, label:'고수익제품 전체 평균비 Gap', unit:'%p', table:[[18,100],[12,90],[6,80],[0,70],[-6,60],[-12,50]] },
+  highImprove: { weight:0.10, floor:40, label:'고수익제품 전분기 누적 비중比 개선도', unit:'%p', table:[[12,100],[8,90],[4,80],[0,70],[-4,60],[-8,50]] },
+  subRate:     { weight:0.15, floor:40, label:'구독 목표 달성률', unit:'%', table:[[80,100],[75,90],[70,80],[65,70],[60,60],[55,50]] },
+  rpScore:     { weight:0.05, floor:50, label:'현장 R/P 절대 점수', unit:'점', table:[[100,100],[90,90],[80,80],[70,70],[60,60]] },
+  testScore:   { weight:0.05, floor:50, label:'온라인 Test 절대 점수', unit:'점', table:[[100,100],[90,90],[80,80],[70,70],[60,60]] }
+};
+// 인센티브 Table(PDF 2p) — 평가 Grade(행) x 리그(열) 조합별 지급액(원). 참고용으로만 표시.
+const EVAL_INCENTIVE_TABLE = {
+  leagues: ['S','A','B','C'],
+  grades: [
+    {grade:'S', amounts:{S:450000, A:400000, B:300000, C:200000}},
+    {grade:'A', amounts:{S:400000, A:300000, B:200000, C:150000}},
+    {grade:'B', amounts:{S:300000, A:200000, B:150000, C:100000}}
+  ]
+};
+function evalScoreFromTable(v, def){
+  if(v==null || v==='' || isNaN(Number(v))) return null;
+  const x = Number(v);
+  const table = def.table;
+  if(x >= table[0][0]) return 100;
+  for(let i=1;i<table.length;i++){
+    const [hiT, hiS] = table[i-1];
+    const [loT, loS] = table[i];
+    if(x >= loT){
+      const ratio = (x - loT) / (hiT - loT);
+      return Math.round((loS + ratio * (hiS - loS)) * 10) / 10;
+    }
+  }
+  return def.floor;
+}
+// 다음(더 높은) 구간까지 얼마나 더 필요한지. 이미 최상위 구간(100점) 이상이면 null.
+function evalNextTierGap(v, def){
+  if(v==null || v==='' || isNaN(Number(v))) return null;
+  const x = Number(v);
+  const table = def.table;
+  if(x >= table[0][0]) return null;
+  for(let i=0;i<table.length;i++){
+    if(x < table[i][0]){
+      return { need: table[i][0]-x, atScore: table[i][1] };
+    }
+  }
+  return null;
+}
+// 리그(Capa 기준 S/A/B) — PDF의 "Capa별 League" 배분(대형마트 S 30%/A 40%/B 30%)을 우리 팀
+// 14개 지점 안에서의 총판(g_tp_cur, Gross 실적) 상대 순위로 근사 산정한다(전사 데이터가 아닌
+// 우리 팀 내 상대 비교이므로 참고용).
+function evalLeagueOf(branchId, allRows){
+  const sorted = allRows.slice().sort((a,b)=>(b.m.g_tp_cur||0)-(a.m.g_tp_cur||0));
+  const idx = sorted.findIndex(r=>r.branchId===branchId);
+  if(idx<0) return null;
+  const n = sorted.length;
+  const pct = (idx+1)/n;
+  if(pct <= 0.30) return 'S';
+  if(pct <= 0.70) return 'A';
+  return 'B';
+}
+// evalCalcHtml()이 만든 입력칸(oninput)에서 호출된다. 지점(branchId)별로 8개 항목 입력값을
+// 읽어 항목별 점수·다음구간까지 필요한 변화·가중 총점을 실시간으로 다시 계산해 화면에 반영한다.
+function evalCalcUpdate(branchId){
+  let total = 0, totalWeight = 0;
+  Object.keys(EVAL_TABLES).forEach(k=>{
+    const def = EVAL_TABLES[k];
+    const inputEl = document.getElementById(`ec_${branchId}_${k}`);
+    const scoreEl = document.getElementById(`ecs_${branchId}_${k}`);
+    const gapEl = document.getElementById(`ecg_${branchId}_${k}`);
+    if(!inputEl) return;
+    const v = inputEl.value;
+    const score = evalScoreFromTable(v, def);
+    if(scoreEl) scoreEl.textContent = score!=null ? score+'점' : '-';
+    if(gapEl){
+      const gap = evalNextTierGap(v, def);
+      gapEl.textContent = gap ? `+${gap.need.toFixed(1)}${def.unit} → ${gap.atScore}점` : (score!=null ? '최고 구간' : '-');
+    }
+    if(score!=null){ total += score*def.weight; totalWeight += def.weight; }
+  });
+  const totalEl = document.getElementById(`ectotal_${branchId}`);
+  if(totalEl) totalEl.textContent = totalWeight>0 ? (Math.round(total*10)/10) : '-';
 }
 function moPct(n, digits){
   const v = Number(n);
@@ -7778,7 +7879,7 @@ function incProductGridHtml(items){
   return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:6px;margin-top:6px;">` +
     items.map(([label,val])=>`<div style="background:#f7f8fa;border-radius:8px;padding:6px 8px;">
       <div class="muted" style="font-size:10.5px;">${escapeHtml(label)}</div>
-      <div style="font-size:12.5px;font-weight:700;">${moFmtWon(val)}</div>
+      <div style="font-size:12.5px;font-weight:700;">${moFmtWonRaw(val)}</div>
     </div>`).join('') +
     `</div>`;
 }
@@ -7805,13 +7906,13 @@ function incBranchDetailRowsHtml(m){
     <tr><td>M&B 신장률(총판)</td><td>${moPct(m.inc_mbGrowth)}</td></tr>
     <tr><td>혼매채널 M&B 신장률(총판)</td><td>${moPct(m.inc_channelMbGrowth)}</td></tr>
     <tr><td>구독비중(총판)</td><td>${moPct(m.inc_subRatio)}</td></tr>
-    <tr><td>Grade 수당 계</td><td>${moFmtWon(m.inc_gradeSum)}</td></tr>
-    <tr><td>지점 수당</td><td>${moFmtWon(m.inc_branchAllowance)}</td></tr>
+    <tr><td>Grade 수당 계</td><td>${moFmtWonRaw(m.inc_gradeSum)}</td></tr>
+    <tr><td>지점 수당</td><td>${moFmtWonRaw(m.inc_branchAllowance)}</td></tr>
     <tr><td>스탠바이미 판매(실판)</td><td>${m.inc_standbyMeSp!=null?Math.round(m.inc_standbyMeSp).toLocaleString('ko-KR')+'대':'-'}</td></tr>
-    <tr><td>스탠바이미 수당</td><td>${moFmtWon(m.inc_standbyMeAmt)}</td></tr>
+    <tr><td>스탠바이미 수당</td><td>${moFmtWonRaw(m.inc_standbyMeAmt)}</td></tr>
     <tr><td colspan="2"><b>제품 수당(일시불)</b> <span class="muted" style="font-weight:400;font-size:11.5px;">· 제품군별, 원 단위</span>${incProductGridHtml(flatItems)}</td></tr>
-    <tr><td colspan="2"><b>구독 제품별 상세 금액</b> <span class="muted" style="font-weight:400;font-size:11.5px;">· 제품군별, 원 단위</span>${incProductGridHtml(subItems)}<div style="margin-top:8px;font-size:12.5px;">구독수당 계 <b>${moFmtWon(m.inc_subAllowanceTotal)}</b></div></td></tr>
-    <tr style="font-weight:700;"><td>목표달성인센티브(예상 금액)</td><td>${moFmtWon(m.inc_expectedAmt)}</td></tr>
+    <tr><td colspan="2"><b>구독 제품별 상세 금액</b> <span class="muted" style="font-weight:400;font-size:11.5px;">· 제품군별, 원 단위</span>${incProductGridHtml(subItems)}<div style="margin-top:8px;font-size:12.5px;">구독수당 계 <b>${moFmtWonRaw(m.inc_subAllowanceTotal)}</b></div></td></tr>
+    <tr style="font-weight:700;"><td>목표달성인센티브(예상 금액)</td><td>${moFmtWonRaw(m.inc_expectedAmt)}</td></tr>
   `;
 }
 // 2026-08-25 추가: [구독 Grade 수당] 업로드 파일 기준, 지점 소속 매니저(직원) 개인별 구독 판매
@@ -7821,7 +7922,24 @@ function incGradeRecordsForBranch(branchName){
   const entry = DB.subGradeIncentive.byBranchKey[metricsOverviewNormName(branchName)];
   return entry ? entry.records : null;
 }
-function incGradeTableHtml(records){
+// 2026-08-25 추가: 파일에 잘못 포함된 인원(예: 다른 지점으로 이동/퇴사 등) 등을 관리자가 직접
+// 빼낼 수 있도록 개별 레코드 삭제 기능을 둔다. branchNameRaw는 화면에 표시된 지점명 그대로 받아서
+// metricsOverviewNormName으로 다시 정규화해 매칭한다.
+function removeSubGradeRecord(branchNameRaw, empId){
+  if(SESSION.role!=='admin') return;
+  if(!DB.subGradeIncentive || !DB.subGradeIncentive.byBranchKey) return;
+  const key = metricsOverviewNormName(branchNameRaw);
+  const entry = DB.subGradeIncentive.byBranchKey[key];
+  if(!entry) return;
+  const before = entry.records.length;
+  entry.records = entry.records.filter(r=>r.empId!==empId);
+  if(entry.records.length===before) return;
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [구독 Grade 수당] 명단에서 ${branchNameRaw} 소속 인원(사번 ${empId})을 삭제했습니다.`);
+  renderTab('incentiveOverview');
+}
+function incGradeTableHtml(records, branchNameForDelete){
+  const isAdmin = SESSION.role==='admin';
   if(!records || records.length===0){
     return `<div class="muted" style="font-size:12.5px;margin-top:6px;">이 지점의 구독 Grade 수당 자료가 없습니다.</div>`;
   }
@@ -7829,18 +7947,63 @@ function incGradeTableHtml(records){
   const rows = records.slice().sort((a,b)=>(b.gradeAmt||0)-(a.gradeAmt||0)).map(r=>`
     <tr>
       <td>${escapeHtml(r.name||'-')}</td><td class="muted">${escapeHtml(r.role||'-')}</td>
-      <td>${r.subCount!=null?r.subCount+'대':'-'}</td><td>${escapeHtml(r.gradeLabel||'-')}</td>
+      <td>${r.subCount!=null?r.subCount+'대':'-'}</td>
       <td style="font-weight:700;">${(r.gradeAmt||0).toLocaleString('ko-KR')}원</td>
+      ${isAdmin && branchNameForDelete ? `<td><button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);padding:2px 8px;" onclick="if(confirm('${escapeHtml(r.name||'')} 님을 목록에서 삭제할까요?')) removeSubGradeRecord('${escapeHtml(branchNameForDelete)}','${r.empId}')">삭제</button></td>` : ''}
     </tr>`).join('');
   return `
     <div style="overflow-x:auto;margin-top:6px;">
     <table>
-      <thead><tr><th>이름</th><th>직책</th><th>구독총판</th><th>등급</th><th>시상금</th></tr></thead>
+      <thead><tr><th>이름</th><th>직책</th><th>구독총판</th><th>시상금</th>${isAdmin && branchNameForDelete ? '<th></th>' : ''}</tr></thead>
       <tbody>
         ${rows}
-        <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);"><td colspan="4">합계</td><td>${total.toLocaleString('ko-KR')}원</td></tr>
+        <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);"><td colspan="3">합계</td><td>${total.toLocaleString('ko-KR')}원</td>${isAdmin && branchNameForDelete ? '<td></td>' : ''}</tr>
       </tbody>
     </table>
+    </div>`;
+}
+// 2026-08-25 추가: 평가案 PDF 기반 항목별 점수 계산기 한 줄(입력칸+비중+점수+다음구간까지).
+// 자동으로 채울 수 있는 값(판매신장률/구독달성률)은 실적 데이터로 미리 채우고, 나머지(경쟁력·
+// 고수익·역량 항목)는 이 페이지에서 자동 산출할 데이터가 없어 직접 입력해야 한다.
+function evalCalcFieldRow(key, def, branchId, prefillVal){
+  const inputId = `ec_${branchId}_${key}`, scoreId = `ecs_${branchId}_${key}`, gapId = `ecg_${branchId}_${key}`;
+  return `<tr>
+    <td>${escapeHtml(def.label)}</td>
+    <td><input id="${inputId}" type="number" step="0.1" value="${prefillVal!=null?prefillVal:''}" placeholder="직접 입력" style="width:90px;" oninput="evalCalcUpdate('${branchId}')"> ${def.unit}</td>
+    <td>${(def.weight*100).toFixed(0)}%</td>
+    <td id="${scoreId}" style="font-weight:700;">-</td>
+    <td id="${gapId}" class="muted" style="font-size:11.5px;">-</td>
+  </tr>`;
+}
+function evalCalcHtml(branchId, r, allRows){
+  const m = r.m;
+  const prefill = {
+    saleGrowth: m.g_tp_yoy!=null ? Math.round(m.g_tp_yoy*10)/10 : null,
+    subRate: m.s_sp_rate!=null ? Math.round(m.s_sp_rate*10)/10 : null,
+    compGap: null, compImprove: null, highGap: null, highImprove: null, rpScore: null, testScore: null
+  };
+  const rows = Object.keys(EVAL_TABLES).map(k=>evalCalcFieldRow(k, EVAL_TABLES[k], branchId, prefill[k])).join('');
+  const league = evalLeagueOf(branchId, allRows);
+  const incTableHtml = `<div style="overflow-x:auto;"><table style="margin-top:10px;font-size:11.5px;">
+    <thead><tr><th>평가\\리그</th>${EVAL_INCENTIVE_TABLE.leagues.map(l=>`<th>${l}${l===league?' ★우리지점':''}</th>`).join('')}</tr></thead>
+    <tbody>${EVAL_INCENTIVE_TABLE.grades.map(g=>`<tr><td>${g.grade}</td>${EVAL_INCENTIVE_TABLE.leagues.map(l=>`<td>${g.amounts[l]!=null?g.amounts[l].toLocaleString('ko-KR')+'원':'-'}</td>`).join('')}</tr>`).join('')}</tbody>
+  </table></div>`;
+  return `
+    <div style="margin-top:6px;">
+      <div class="small-note" style="margin-bottom:8px;">판매신장률·구독달성률은 최근 실적으로 미리 채워뒀고, 나머지 항목은 직접 입력하면 항목별 점수·다음 구간까지 필요한 변화·총점이 자동으로 계산됩니다. ※ 평가 Grade(S/A/B/C) 총점 컷오프는 운영案 자료에 명시되어 있지 않아, 총점 계산까지만 자동이고 최종 Grade는 아래 참고표에서 직접 확인해 주세요.</div>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>항목</th><th>현재값</th><th>비중</th><th>점수</th><th>다음 구간까지</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>
+      <div class="card ai-box" style="margin-top:10px;">
+        <div class="ai-title">📊 예상 결과</div>
+        <div>가중 총점 <b id="ectotal_${branchId}" style="font-size:16px;">-</b> / 100점</div>
+        <div style="margin-top:4px;">Capa 리그(우리 팀 14개 지점 내 총판 상대순위 기준, 참고용): <b>${league||'-'}</b></div>
+      </div>
+      <div class="small-note" style="margin-top:8px;">📋 인센티브 Table(운영案 참고용)</div>
+      ${incTableHtml}
     </div>`;
 }
 function renderIncentiveOverview(){
@@ -7870,6 +8033,7 @@ function renderIncentiveOverview(){
     if(!myRow){
       return `${pageHeader}<div class="card"><div class="muted">소속 지점(${branchName(SESSION.branchId)})의 인센티브 자료를 찾지 못했습니다. 최신 파일이 반영됐는지 확인해 주세요.</div></div>`;
     }
+    setTimeout(()=>{ evalCalcUpdate(myRow.branchId); }, 0);
     return `
       ${pageHeader}
       <div class="card" style="border-left:4px solid var(--primary);margin-bottom:16px;">
@@ -7883,97 +8047,92 @@ function renderIncentiveOverview(){
       </div>
       <div class="card" style="margin-bottom:16px;">
         <h3>🏆 우리 지점 매니저별 구독 Grade 수당</h3>
-        ${incGradeTableHtml(incGradeRecordsForBranch(myRow.branchName))}
+        ${incGradeTableHtml(incGradeRecordsForBranch(myRow.branchName), myRow.branchName)}
       </div>
+      <details class="card" style="margin-bottom:16px;">
+        <summary style="cursor:pointer;font-weight:700;">📈 평가 점수 & 인센티브 예상 계산기</summary>
+        ${evalCalcHtml(myRow.branchId, myRow, allRows)}
+      </details>
       <div class="card ai-box">
         <div class="ai-title">📊 타 지점 합계 대비 비교</div>
-        <div>경북팀 전체(${rankTotalOf}개 지점) 목표달성인센티브(예상) 합계 <b>${moFmtWon(teamAgg.inc_expectedAmt)}</b> 중 우리 지점 <b>${moFmtWon(myRow.m.inc_expectedAmt)}</b> (${rankExpected?`${rankExpected}위/${rankTotalOf}`:'-'})</div>
+        <div>경북팀 전체(${rankTotalOf}개 지점) 목표달성인센티브(예상) 합계 <b>${moFmtWonRaw(teamAgg.inc_expectedAmt)}</b> 중 우리 지점 <b>${moFmtWonRaw(myRow.m.inc_expectedAmt)}</b> (${rankExpected?`${rankExpected}위/${rankTotalOf}`:'-'})</div>
         <div style="margin-top:6px;">경북팀 전체 총판 달성률 평균 <b>${moPct(teamAgg.g_tp_rate)}</b> 대비 우리 지점 총판 달성률 <b>${moPct(myRow.m.inc_tpRate)}</b> (${rankTpRate?`${rankTpRate}위/${rankTotalOf}`:'-'})</div>
         <div class="small-note" style="margin-top:8px;">※ 개인정보 보호를 위해 다른 지점의 개별 상세 수치는 표시되지 않고, 전체 합계·평균만 비교용으로 제공됩니다.</div>
       </div>
     `;
   }
 
-  // ---- 관리자/임원(admin/exec) 화면: 전 지점 상세 조회 ----
+  // ---- 관리자/임원(admin/exec) 화면: 관리자/지점을 따로 선택하지 않아도 전체 14개 지점의
+  // 상세(제품별 수당·Grade수당·평가 계산기 포함)를 한 페이지에 모두 펼쳐서 보여준다.
+  // details 태그로 접고 펼 수는 있지만 기본값은 열려 있다(선택 없이 바로 다 보이도록).
   const managers = moManagerList();
-  const selManager = state.incOverviewManager && managers.includes(state.incOverviewManager) ? state.incOverviewManager : null;
-  const branchesInScope = moBranchesOf(selManager);
-  const selBranch = state.incOverviewBranch && branchesInScope.some(r=>r.branchId===state.incOverviewBranch) ? state.incOverviewBranch : null;
-  const rowsForAgg = selBranch ? branchesInScope.filter(r=>r.branchId===selBranch) : branchesInScope;
-  const agg = moAggregate(rowsForAgg);
-  const selBranchRow = selBranch ? branchesInScope.find(r=>r.branchId===selBranch) : null;
-  const scopeLabel = selBranchRow ? selBranchRow.branchName : (selManager ? `${selManager} 관리자` : '경북팀 전체');
+  const expectedRankMap = {}; allRows.slice().sort((a,b)=>(b.m.inc_expectedAmt||0)-(a.m.inc_expectedAmt||0)).forEach((x,i)=>{ expectedRankMap[x.branchId]=i+1; });
+  const jumpLinks = managers.map(m=>`<a href="#incmgr-${escapeHtml(m)}" class="branch-pill" style="text-decoration:none;">${escapeHtml(m)}</a>`).join('');
 
-  const managerPills = `<span class="branch-pill ${!selManager?'active':''}" onclick="setIncOverviewManager(null)">전체</span>` +
-    managers.map(m=>`<span class="branch-pill ${m===selManager?'active':''}" onclick="setIncOverviewManager('${escapeHtml(m)}')">${escapeHtml(m)}</span>`).join('');
-  const branchSelectHtml = `<select style="width:150px;font-size:12px;" onchange="setIncOverviewBranch(this.value)">` +
-    `<option value="">전체 지점</option>` +
-    branchesInScope.map(r=>`<option value="${r.branchId}" ${r.branchId===selBranch?'selected':''}>${escapeHtml(r.branchName)}</option>`).join('') +
-    `</select>`;
-
-  if(selBranchRow){
-    return `
-      ${pageHeader}
-      <div class="card" style="margin-bottom:16px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-          <div>${managerPills}</div>
-          ${branchSelectHtml}
-        </div>
-      </div>
-      <div class="card" style="border-left:4px solid var(--primary);margin-bottom:16px;">
-        <div class="muted" style="font-size:12px;">${escapeHtml(selBranchRow.branchName)} · 관리자 ${escapeHtml(selBranchRow.manager||'-')} · 단위 원</div>
-        <h3 style="margin-top:4px;">지점 인센티브 상세</h3>
-        <div style="overflow-x:auto;margin-top:8px;">
-        <table><tbody>${incBranchDetailRowsHtml(selBranchRow.m)}</tbody></table>
-        </div>
-      </div>
-      <div class="card">
-        <h3>🏆 매니저별 구독 Grade 수당</h3>
-        ${incGradeTableHtml(incGradeRecordsForBranch(selBranchRow.branchName))}
-      </div>
-    `;
-  }
-
-  const expectedRankMap = {}; branchesInScope.slice().sort((a,b)=>(b.m.inc_expectedAmt||0)-(a.m.inc_expectedAmt||0)).forEach((x,i)=>{ expectedRankMap[x.branchId]=i+1; });
-  const trs = branchesInScope.map(r=>{
+  const trs = allRows.slice().sort((a,b)=>(b.m.inc_expectedAmt||0)-(a.m.inc_expectedAmt||0)).map(r=>{
     const m = r.m;
-    return `<tr style="cursor:pointer;" onclick="setIncOverviewBranch('${r.branchId}')">
-      <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
+    return `<tr>
+      <td><a href="#incbranch-${r.branchId}" style="text-decoration:none;color:inherit;">${escapeHtml(r.branchName)}</a></td><td class="muted">${escapeHtml(r.manager||'-')}</td>
       <td>${moFmtWon(m.inc_target)}</td>
       <td>${moFmtWon(m.inc_tp)}</td><td>${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}</td>
       <td>${moFmtWon(m.inc_sp)}</td><td>${moPct(m.inc_payRate)}</td>
       <td>${moYoy(m.inc_yoy)}</td><td>${moPct(m.inc_subRatio)}</td>
-      <td>${moFmtWon(m.inc_gradeSum)}</td>
-      <td style="font-weight:700;">${moFmtWon(m.inc_expectedAmt)} ${moBadgeRank(expectedRankMap[r.branchId], branchesInScope.length)}</td>
+      <td>${moFmtWonRaw(m.inc_gradeSum)}</td>
+      <td style="font-weight:700;">${moFmtWonRaw(m.inc_expectedAmt)} ${moBadgeRank(expectedRankMap[r.branchId], allRows.length)}</td>
     </tr>`;
   }).join('');
 
+  const branchDetailBlocks = managers.map(mgr=>{
+    const mgrBranches = moBranchesOf(mgr);
+    const mgrAgg = moAggregate(mgrBranches);
+    const branchCards = mgrBranches.map(r=>`
+      <details open id="incbranch-${r.branchId}" class="card" style="margin-bottom:12px;">
+        <summary style="cursor:pointer;font-weight:700;font-size:14px;">${escapeHtml(r.branchName)} <span class="muted" style="font-weight:400;font-size:12px;">· 목표달성인센티브(예상) ${moFmtWonRaw(r.m.inc_expectedAmt)} ${moBadgeRank(expectedRankMap[r.branchId], allRows.length)}</span></summary>
+        <div style="margin-top:10px;overflow-x:auto;">
+          <table><tbody>${incBranchDetailRowsHtml(r.m)}</tbody></table>
+        </div>
+        <div style="margin-top:14px;">
+          <div style="font-weight:700;font-size:13px;margin-bottom:4px;">🏆 매니저별 구독 Grade 수당</div>
+          ${incGradeTableHtml(incGradeRecordsForBranch(r.branchName), r.branchName)}
+        </div>
+        <details style="margin-top:14px;">
+          <summary style="cursor:pointer;font-weight:700;font-size:13px;">📈 평가 점수 & 인센티브 예상 계산기</summary>
+          ${evalCalcHtml(r.branchId, r, allRows)}
+        </details>
+      </details>`).join('');
+    return `
+      <div id="incmgr-${escapeHtml(mgr)}" class="card" style="margin-bottom:12px;background:#f5f6f8;">
+        <h3 style="margin:0;">👤 ${escapeHtml(mgr)} 관리자 <small class="muted" style="font-weight:400;">· ${mgrBranches.length}개 지점 · 목표달성인센티브(예상) 합계 ${moFmtWonRaw(mgrAgg.inc_expectedAmt)}</small></h3>
+      </div>
+      ${branchCards}`;
+  }).join('');
+
+  setTimeout(()=>{ allRows.forEach(r=>evalCalcUpdate(r.branchId)); }, 0);
   return `
     ${pageHeader}
     <div class="card" style="margin-bottom:16px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-        <div>${managerPills}</div>
-        ${branchSelectHtml}
-      </div>
+      <div class="muted" style="font-size:12px;margin-bottom:6px;">관리자 이름을 누르면 아래 해당 지점들로 바로 이동합니다(선택하지 않아도 전체 지점이 모두 표시됩니다).</div>
+      ${jumpLinks}
     </div>
-    <div class="card">
-      <h3>🏬 지점별 인센티브 현황 <small>${escapeHtml(scopeLabel)} · 단위 원 · 행을 클릭하면 상세로 이동</small></h3>
+    <div class="card" style="margin-bottom:16px;">
+      <h3>🏬 지점별 인센티브 현황 <small>경북팀 전체 · 단위 원 · 목표달성인센티브(예상) 순</small></h3>
       <div style="overflow-x:auto;">
       <table>
         <thead><tr><th>지점</th><th>관리자</th><th>목표</th><th>총판</th><th>총판 달성률</th><th>실판</th><th>지급률</th><th>전년比</th><th>구독비중</th><th>Grade수당계</th><th>목표달성인센티브(예상)</th></tr></thead>
         <tbody>
           ${trs || '<tr><td colspan="11" class="muted">데이터 없음</td></tr>'}
           <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
-            <td colspan="2">합계</td><td>${moFmtWon(agg.inc_target)}</td>
-            <td>${moFmtWon(agg.inc_tp)}</td><td>${moPct(agg.inc_tpRate)}</td>
-            <td>${moFmtWon(agg.inc_sp)}</td><td>${moPct(agg.inc_payRate)}</td>
-            <td>${moYoy(agg.inc_yoy)}</td><td>${moPct(agg.inc_subRatio)}</td>
-            <td>${moFmtWon(agg.inc_gradeSum)}</td><td>${moFmtWon(agg.inc_expectedAmt)}</td>
+            <td colspan="2">합계</td><td>${moFmtWon(teamAgg.inc_target)}</td>
+            <td>${moFmtWon(teamAgg.inc_tp)}</td><td>${moPct(teamAgg.inc_tpRate)}</td>
+            <td>${moFmtWon(teamAgg.inc_sp)}</td><td>${moPct(teamAgg.inc_payRate)}</td>
+            <td>${moYoy(teamAgg.inc_yoy)}</td><td>${moPct(teamAgg.inc_subRatio)}</td>
+            <td>${moFmtWonRaw(teamAgg.inc_gradeSum)}</td><td>${moFmtWonRaw(teamAgg.inc_expectedAmt)}</td>
           </tr>
         </tbody>
       </table>
       </div>
     </div>
+    ${branchDetailBlocks}
   `;
 }
 function setSalesEmp(val){ state.salesEmp = val; renderTab('sales'); }
