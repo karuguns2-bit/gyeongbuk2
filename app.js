@@ -1057,6 +1057,14 @@ function migrateDB(){
   // "지표 한 눈에 보기" 업로드 데이터(대형마트채널 지점Master 시트 스냅샷). 매번 올릴 때마다
   // 통째로 최신 스냅샷으로 교체된다(과거 값을 누적 보관하지 않음 — 필요해지면 이후 이력화 가능).
   if(!DB.metricsOverview) DB.metricsOverview = { asOfDate:null, rows:[], uploadedAt:null, uploadedBy:null, fileName:null };
+  // 2026-08-25 추가: "구독 판매 Grade 및 현장관리자 시상 컨테스트" 파일의 "지점별 구독 판매" 시트를
+  // 별도로 올려 [구독 실적] 페이지의 총판/실판/전년마감 데이터를 더 정확하고 자주 갱신할 수 있게
+  // 한다(목표는 계속 [지표 한 눈에 보기] 업로드분의 s_target을 사용). byKey는 지점명을
+  // metricsOverviewNormName으로 정규화한 키.
+  if(!DB.subSalesUpload) DB.subSalesUpload = { asOfDate:null, byKey:{}, uploadedAt:null, uploadedBy:null, fileName:null };
+  // 같은 파일의 "1. 매니저 구독 Grade" 시트: 매니저(직원) 개인별 구독 Grade 시상금 명단.
+  // branchKey는 metricsOverviewNormName 정규화 키, records는 그 지점 소속 직원별 배열.
+  if(!DB.subGradeIncentive) DB.subGradeIncentive = { asOfDate:null, byBranchKey:{}, uploadedAt:null, uploadedBy:null, fileName:null };
   // 장기 미사용 시 자동 전환되는 스크린세이버 사용 여부 (관리자가 시스템 관리에서 설정, 기본값 사용함)
   if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
   // 모바일 상품권 취합 등록 일시 정지 여부 (관리자가 필요 시 켜고 끔, 기본값은 등록 가능)
@@ -2971,6 +2979,22 @@ function renderSystemAdmin(){
       ${DB.metricsOverview && DB.metricsOverview.uploadedAt ? `<br>현재 반영된 자료: <b>${DB.metricsOverview.asOfDate||'-'}</b> 기준(D-1) · ${DB.metricsOverview.rows.length}개 지점 · ${escapeHtml(DB.metricsOverview.fileName||'')} (${DB.metricsOverview.uploadedBy||''} 업로드)` : '<br>아직 업로드된 자료가 없습니다.'}</div>
       <input type="file" id="metricsOverviewFileInput" accept=".xlsb,.xlsx,.xls" onchange="handleMetricsOverviewFile(event)">
       <div id="metricsOverviewUploadMsg" class="small-note"></div>
+    </div>
+
+<div class="card sysadmin-span2">
+      <h3>📱 구독 판매 실적(지점별) 파일 업로드 <small>("구독 판매 Grade 및 현장관리자 시상 컨테스트" 파일 · "지점별 구독 판매" 시트)</small></h3>
+      <div class="muted" style="margin-bottom:10px;">[구독 실적] 페이지의 총판/실판/전년마감 실적 수치를 이 파일 기준으로 갱신합니다(목표는 계속 [지표 한 눈에 보기] 업로드분을 사용). [지표 한 눈에 보기] 파일보다 더 자주 올라오는 경우 이 파일을 최신으로 올려주세요.
+      ${DB.subSalesUpload && DB.subSalesUpload.uploadedAt ? `<br>현재 반영된 자료: <b>${DB.subSalesUpload.asOfDate||'-'}</b> 기준 · ${Object.keys(DB.subSalesUpload.byKey||{}).length}개 지점 · ${escapeHtml(DB.subSalesUpload.fileName||'')} (${DB.subSalesUpload.uploadedBy||''} 업로드)` : '<br>아직 업로드된 자료가 없습니다.'}</div>
+      <input type="file" id="subSalesFileInput" accept=".xlsx,.xls" onchange="handleSubSalesFile(event)">
+      <div id="subSalesUploadMsg" class="small-note"></div>
+    </div>
+
+<div class="card sysadmin-span2">
+      <h3>🏆 구독 Grade 수당 파일 업로드 <small>(같은 파일의 "1. 매니저 구독 Grade" 시트)</small></h3>
+      <div class="muted" style="margin-bottom:10px;">매니저(직원) 개인별 구독 판매 Grade 시상금 명단을 올리면 [지점별 인센티브(참고용)] 페이지에서 지점별로 매니저 개별 Grade 수당을 조회할 수 있습니다.
+      ${DB.subGradeIncentive && DB.subGradeIncentive.uploadedAt ? `<br>현재 반영된 자료: <b>${DB.subGradeIncentive.asOfDate||'-'}</b> 기준 · ${Object.keys(DB.subGradeIncentive.byBranchKey||{}).length}개 지점 · ${escapeHtml(DB.subGradeIncentive.fileName||'')} (${DB.subGradeIncentive.uploadedBy||''} 업로드)` : '<br>아직 업로드된 자료가 없습니다.'}</div>
+      <input type="file" id="subGradeFileInput" accept=".xlsx,.xls" onchange="handleSubGradeFile(event)">
+      <div id="subGradeUploadMsg" class="small-note"></div>
     </div>
 
 <div class="card sysadmin-span2">
@@ -6140,11 +6164,26 @@ const METRICS_OVERVIEW_BLOCKS = {
   // 목표달성인센티브예상=15,스탠바이미실판=17,스탠바이미수당=18,Grade수당계=19,
   // 일시불수당(TV=21,냉장고=22,세탁기=23,에어컨=24)). 이 시트는 다른 3개 시트(Gross/구독/고수익)와
   // 달리 없어도 업로드 자체는 계속 진행되도록(선택 항목으로) 둔다.
+  // 2026-08-25 재확장: "판매달성금액 상세/제품 수당 일시불/구독 제품별 상세 금액을 다 보여달라"는
+  // 요청으로 헤더 행(엑셀 13~15행, idCol=1 기준)을 다시 전부 실측했다. 일시불 수당은 기존 4개
+  // (TV/냉장고/세탁기/에어컨, 21~24)뿐 아니라 에어케어~NT까지 총 15개 제품군이 25~35번 칸에
+  // 순서대로 있고, 36번 칸은 "지점 수당"(단일 값), 38~52번 칸은 "구독수당"을 15개 제품군별로
+  // 동일한 순서로 나열, 53번 칸이 그 "계"(구독수당 합계)다. 실측 당시(8/11 파일) 이 칸들이 전부
+  // 0이라 실데이터로 검증은 못 했지만 헤더 라벨은 명확했다(청소기/시네빔/신발관리기/워터케어/
+  // 쿠킹Dishwasher/오디오/DT/MNT/NT 등).
   incentive: { sheetMatch: s=>s.trim()==='인센티브', idCol:1, dataStartRow:17, metrics:[
     ['inc_target',6],['inc_tp',7],['inc_tpRate',8],['inc_sp',9],['inc_payRate',10],
     ['inc_yoy',11],['inc_mbGrowth',12],['inc_channelMbGrowth',13],['inc_subRatio',14],
     ['inc_expectedAmt',15],['inc_standbyMeSp',17],['inc_standbyMeAmt',18],['inc_gradeSum',19],
-    ['inc_flatTv',21],['inc_flatFridge',22],['inc_flatWasher',23],['inc_flatAircon',24]
+    ['inc_flatTv',21],['inc_flatFridge',22],['inc_flatWasher',23],['inc_flatAircon',24],
+    ['inc_flatAircare',25],['inc_flatClothingCare',26],['inc_flatCleaner',27],['inc_flatCineBeam',28],
+    ['inc_flatShoeCare',29],['inc_flatWaterCare',30],['inc_flatCooking',31],['inc_flatAudio',32],
+    ['inc_flatDt',33],['inc_flatMnt',34],['inc_flatNt',35],
+    ['inc_branchAllowance',36],
+    ['inc_subTv',38],['inc_subFridge',39],['inc_subWasher',40],['inc_subAircon',41],
+    ['inc_subAircare',42],['inc_subClothingCare',43],['inc_subCleaner',44],['inc_subCineBeam',45],
+    ['inc_subShoeCare',46],['inc_subWaterCare',47],['inc_subCooking',48],['inc_subAudio',49],
+    ['inc_subDt',50],['inc_subMnt',51],['inc_subNt',52],['inc_subAllowanceTotal',53]
   ]}
 };
 function metricsOverviewNormName(s){
@@ -6286,6 +6325,143 @@ function handleMetricsOverviewFile(evt){
   reader.readAsArrayBuffer(file);
 }
 /* =========================================================================
+   구독 판매 실적(지점별) 업로드 — "구독 판매 Grade 및 현장관리자 시상 컨테스트" 파일의
+   "지점별 구독 판매" 시트. [지표 한 눈에 보기] 업로드분보다 더 자주/정확하게 올라오는 파일이라
+   [구독 실적] 페이지의 총판/실판/전년마감 실적 수치는 이 파일을 우선 사용한다(목표는 계속
+   [지표 한 눈에 보기]의 s_target을 사용 — 이 파일에는 목표 칸이 없음).
+   2026-08-25 실측: 시트 사용범위가 B열부터 시작(offset=1). 4행이 헤더, 5행부터 데이터.
+   담당(팀=혼매경북팀 · 채널=이마트)으로 우리 지점만 골라낸다.
+   ========================================================================= */
+function parseSubSalesWorkbook(wb){
+  const sheetName = wb.SheetNames.find(s=>s.trim()==='지점별 구독 판매');
+  if(!sheetName) return { ok:false };
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+  const off = metricsOverviewSheetColOffset(ws);
+  const num = v => (typeof v==='number') ? v : (v==null || v===''? null : (isNaN(Number(v)) ? null : Number(v)));
+  const byKey = {};
+  for(let i=4; i<rows.length; i++){
+    const row = rows[i];
+    if(!row) continue;
+    const team = row[3-off]!=null ? String(row[3-off]).trim() : '';
+    const channel = row[2-off]!=null ? String(row[2-off]).trim() : '';
+    const branchNameRaw = row[4-off];
+    if(branchNameRaw==null || branchNameRaw==='') continue;
+    if(channel!=='이마트' || team!=='혼매경북팀') continue;
+    const key = metricsOverviewNormName(branchNameRaw);
+    if(!key) continue;
+    byKey[key] = {
+      branchNameRaw: String(branchNameRaw).trim(),
+      tp_cur: num(row[5-off]), tp_lyClose: num(row[25-off]), tp_qty: num(row[15-off]),
+      sp_cur: num(row[10-off]), sp_lyClose: num(row[29-off]), sp_qty: num(row[20-off])
+    };
+  }
+  return { ok:true, byKey };
+}
+function handleSubSalesFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const msgEl = document.getElementById('subSalesUploadMsg');
+  if(msgEl) msgEl.textContent = '파일을 읽는 중입니다...';
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const raw = new Uint8Array(e.target.result);
+      const wb = XLSX.read(raw, {type:'array'});
+      const parsed = parseSubSalesWorkbook(wb);
+      if(!parsed.ok){
+        showUploadResult('subSalesUploadMsg', false, '"지점별 구독 판매" 시트를 찾지 못했습니다. "구독 판매 Grade 및 현장관리자 시상 컨테스트" 파일이 맞는지 확인해 주세요.');
+        return;
+      }
+      const matchedCount = Object.keys(parsed.byKey).length;
+      if(matchedCount===0){
+        showUploadResult('subSalesUploadMsg', false, '우리 팀(혼매경북팀·이마트) 소속 지점을 찾지 못했습니다.');
+        return;
+      }
+      let asOfDate = metricsOverviewDateFromFileName(file.name);
+      if(!asOfDate){ const d = new Date(); asOfDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+      DB.subSalesUpload = { asOfDate, byKey: parsed.byKey, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name };
+      saveDB();
+      logActivity('update', `${SESSION.name}님(관리자)이 [구독 판매 실적] 파일을 업로드했습니다: ${file.name}`);
+      renderTab('systemAdmin');
+      showUploadResult('subSalesUploadMsg', true, `${asOfDate} 기준 ${matchedCount}개 지점 반영 완료`);
+    }catch(err){
+      showUploadResult('subSalesUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+/* =========================================================================
+   구독 Grade 수당 업로드 — 같은 파일의 "1. 매니저 구독 Grade" 시트. 직원(매니저) 개인별
+   구독 판매 대수에 따른 Grade 시상금 명단. 2026-08-25 실측: 시트 사용범위 A열부터(offset=0),
+   4행 헤더, 6행부터 데이터. "담당"이 "경북2담당"인 행만(우리 팀) 골라낸다.
+   ========================================================================= */
+function parseSubGradeWorkbook(wb){
+  const sheetName = wb.SheetNames.find(s=>s.trim()==='1. 매니저 구독 Grade');
+  if(!sheetName) return { ok:false };
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+  const off = metricsOverviewSheetColOffset(ws);
+  const num = v => (typeof v==='number') ? v : (v==null || v===''? null : (isNaN(Number(v)) ? null : Number(v)));
+  const byBranchKey = {};
+  for(let i=4; i<rows.length; i++){
+    const row = rows[i];
+    if(!row) continue;
+    const dept = row[2-off]!=null ? String(row[2-off]).trim() : '';
+    if(!dept.includes('경북2')) continue;
+    const branchNameRaw = row[4-off];
+    if(branchNameRaw==null || branchNameRaw==='') continue;
+    const key = metricsOverviewNormName(branchNameRaw);
+    if(!key) continue;
+    const rec = {
+      empId: row[5-off]!=null ? String(row[5-off]).trim() : '',
+      name: row[6-off]!=null ? String(row[6-off]).trim() : '',
+      role: row[9-off]!=null ? String(row[9-off]).trim() : '',
+      manager: row[10-off]!=null ? String(row[10-off]).trim() : '',
+      subCount: num(row[11-off]),
+      gradeLabel: row[12-off]!=null ? String(row[12-off]).trim() : '',
+      gradeAmt: num(row[13-off])
+    };
+    if(!byBranchKey[key]) byBranchKey[key] = { branchNameRaw: String(branchNameRaw).trim(), records:[] };
+    byBranchKey[key].records.push(rec);
+  }
+  return { ok:true, byBranchKey };
+}
+function handleSubGradeFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const msgEl = document.getElementById('subGradeUploadMsg');
+  if(msgEl) msgEl.textContent = '파일을 읽는 중입니다...';
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const raw = new Uint8Array(e.target.result);
+      const wb = XLSX.read(raw, {type:'array'});
+      const parsed = parseSubGradeWorkbook(wb);
+      if(!parsed.ok){
+        showUploadResult('subGradeUploadMsg', false, '"1. 매니저 구독 Grade" 시트를 찾지 못했습니다. "구독 판매 Grade 및 현장관리자 시상 컨테스트" 파일이 맞는지 확인해 주세요.');
+        return;
+      }
+      const branchCount = Object.keys(parsed.byBranchKey).length;
+      const empCount = Object.values(parsed.byBranchKey).reduce((a,b)=>a+b.records.length,0);
+      if(branchCount===0){
+        showUploadResult('subGradeUploadMsg', false, '우리 팀(경북2담당) 소속 인원을 찾지 못했습니다.');
+        return;
+      }
+      let asOfDate = metricsOverviewDateFromFileName(file.name);
+      if(!asOfDate){ const d = new Date(); asOfDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+      DB.subGradeIncentive = { asOfDate, byBranchKey: parsed.byBranchKey, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name };
+      saveDB();
+      logActivity('update', `${SESSION.name}님(관리자)이 [구독 Grade 수당] 파일을 업로드했습니다: ${file.name}`);
+      renderTab('systemAdmin');
+      showUploadResult('subGradeUploadMsg', true, `${asOfDate} 기준 ${branchCount}개 지점 · ${empCount}명 반영 완료`);
+    }catch(err){
+      showUploadResult('subGradeUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+/* =========================================================================
    지표 한 눈에 보기 (METRICS OVERVIEW) — 관리자별/지점별 GROSS·구독·고수익 대시보드
    ========================================================================= */
 /* =========================================================================
@@ -6298,6 +6474,14 @@ function moFmt(n, digits){
   const v = Number(n);
   if(n==null || isNaN(v)) return '-';
   return v.toLocaleString('ko-KR', {maximumFractionDigits: digits==null?1:digits, minimumFractionDigits:0}) + 'KK';
+}
+// 2026-08-25 추가: 인센티브 페이지의 제품별 상세 금액은 KK(백만원) 단위로는 "0KK" 처럼 보여
+// 체감이 안 되므로 "원" 단위로 그대로 풀어서 보여달라는 요청 — 파일 값(KK 단위) x 100만을
+// 반올림해서 천단위 콤마 + "원"으로 표시한다.
+function moFmtWon(n){
+  const v = Number(n);
+  if(n==null || isNaN(v)) return '-';
+  return Math.round(v*1000000).toLocaleString('ko-KR') + '원';
 }
 function moPct(n, digits){
   const v = Number(n);
@@ -6901,6 +7085,23 @@ function setSubOverviewBranch(id){
   state.subOverviewBranch = id || null;
   renderTab('subscription');
 }
+// 2026-08-25 추가: [구독 실적] 페이지는 목표(s_target)는 계속 [지표 한 눈에 보기] 업로드분을
+// 쓰되, 총판/실판/전년마감 실적 수치는 더 정확한 별도 파일(DB.subSalesUpload)이 있으면
+// 그 값으로 덮어써서 보여준다. 전년동기 칸은 더 이상 쓰지 않으므로 건드리지 않는다.
+// g_sp_cur(전체 실판)는 그대로 두어 구독비중(s_sp_ratio = 구독실판/전체실판)을 새 실판 값
+// 기준으로 다시 계산한다.
+function subMergedRow(r){
+  const upd = DB.subSalesUpload && DB.subSalesUpload.byKey ? DB.subSalesUpload.byKey[metricsOverviewNormName(r.branchName)] : null;
+  const m = Object.assign({}, r.m);
+  if(upd){
+    m.s_tp_cur = upd.tp_cur; m.s_tp_lyClose = upd.tp_lyClose; m.s_tp_qty = upd.tp_qty;
+    m.s_sp_cur = upd.sp_cur; m.s_sp_lyClose = upd.sp_lyClose; m.s_sp_qty = upd.sp_qty;
+    m.s_sp_ratio = (m.g_sp_cur>0 && upd.sp_cur!=null) ? upd.sp_cur/m.g_sp_cur*100 : null;
+  }
+  m.s_tp_rate = (m.s_target>0 && m.s_tp_cur!=null) ? m.s_tp_cur/m.s_target*100 : null;
+  m.s_sp_rate = (m.s_target>0 && m.s_sp_cur!=null) ? m.s_sp_cur/m.s_target*100 : null;
+  return Object.assign({}, r, {m});
+}
 function renderSubscription(){
   if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
     return `
@@ -6908,10 +7109,10 @@ function renderSubscription(){
     <div class="page-desc">관리자별·지점별 구독 목표/총판/실판/달성율/비중/전년 대비 실적을 한 화면에서 확인합니다.</div>
     <div class="card"><div class="muted">아직 업로드된 자료가 없습니다. [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일(지표 한 눈에 보기용)을 업로드하면 이 페이지에도 함께 반영됩니다.${SESSION.role==='admin'?` <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
   }
-  const allRows = DB.metricsOverview.rows;
+  const allRows = DB.metricsOverview.rows.map(subMergedRow);
   const managers = moManagerList();
   const selManager = state.subOverviewManager && managers.includes(state.subOverviewManager) ? state.subOverviewManager : null;
-  const branchesInScope = moBranchesOf(selManager);
+  const branchesInScope = (selManager ? moBranchesOf(selManager) : DB.metricsOverview.rows).map(subMergedRow);
   const selBranch = state.subOverviewBranch && branchesInScope.some(r=>r.branchId===state.subOverviewBranch) ? state.subOverviewBranch : null;
 
   const rowsForAgg = selBranch ? branchesInScope.filter(r=>r.branchId===selBranch) : branchesInScope;
@@ -6919,6 +7120,9 @@ function renderSubscription(){
   const teamAgg = moAggregate(allRows);
   const selBranchRow = selBranch ? branchesInScope.find(r=>r.branchId===selBranch) : null;
   const scopeLabel = selBranchRow ? selBranchRow.branchName : (selManager ? `${selManager} 관리자` : '경북팀 전체');
+  const dataSourceNote = DB.subSalesUpload && DB.subSalesUpload.uploadedAt
+    ? `총판/실판/전년마감 실적은 [구독 판매 실적] 업로드 파일 기준(<b>${DB.subSalesUpload.asOfDate}</b>), 목표는 [지표 한 눈에 보기] 업로드 파일(<b>${DB.metricsOverview.asOfDate}</b>) 기준입니다.`
+    : `아직 [구독 판매 실적] 파일이 업로드되지 않아 실적 수치는 [지표 한 눈에 보기] 업로드분을 그대로 표시합니다.`;
 
   const managerPills = `<span class="branch-pill ${!selManager?'active':''}" onclick="setSubOverviewManager(null)">전체</span>` +
     managers.map(m=>`<span class="branch-pill ${m===selManager?'active':''}" onclick="setSubOverviewManager('${escapeHtml(m)}')">${escapeHtml(m)}</span>`).join('');
@@ -6928,9 +7132,9 @@ function renderSubscription(){
     `</select>`;
 
   // 관리자별 요약 표 — 전체 보기(관리자/지점 미선택)일 때만 보여준다. 행을 클릭하면 해당 관리자
-  // 소속 지점 상세로 바로 이동한다.
+  // 소속 지점 상세로 바로 이동한다. 맨 아래 합계 행을 추가한다(경북팀 전체 총계).
   const managerTrs = managers.map(m=>{
-    const a = moAggregate(moBranchesOf(m));
+    const a = moAggregate(moBranchesOf(m).map(subMergedRow));
     return `<tr style="cursor:pointer;" onclick="setSubOverviewManager('${escapeHtml(m)}')">
       <td>${escapeHtml(m)}</td>
       <td>${moFmt(a.s_target)}</td>
@@ -6941,16 +7145,15 @@ function renderSubscription(){
     </tr>`;
   }).join('');
 
-  // 지점별 상세 표 — Gross 탭과 같은 구성(당월/전년마감/전년마감比/전년동기/전년동기比/달성률)을
-  // 총판/실판 각각에 대해 구독 지표로 그대로 적용한다.
+  // 지점별 상세 표 — 요청에 따라 전년동기 칸은 빼고, 총판/실판 각각 당월/전년마감/전년마감比/달성률만 보여준다.
   const sSpCurRankMap = {}; branchesInScope.slice().sort((a,b)=>(b.m.s_sp_cur||0)-(a.m.s_sp_cur||0)).forEach((x,i)=>{ sSpCurRankMap[x.branchId]=i+1; });
   const branchTrs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
     const m = r.m;
     return `<tr>
       <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
       <td>${moFmt(m.s_target)}</td>
-      <td>${moFmt(m.s_tp_cur)}</td><td class="muted">${moFmt(m.s_tp_lyClose)}</td><td>${moYoy(moCloseYoy(m.s_tp_cur, m.s_tp_lyClose))}</td><td class="muted">${moFmt(m.s_tp_lySame)}</td><td>${moYoy(m.s_tp_yoy)}</td><td>${moPct(m.s_tp_rate)} ${pctBadge(m.s_tp_rate||0)}</td>
-      <td>${moFmt(m.s_sp_cur)} ${moBadgeRank(sSpCurRankMap[r.branchId], branchesInScope.length)}</td><td class="muted">${moFmt(m.s_sp_lyClose)}</td><td>${moYoy(moCloseYoy(m.s_sp_cur, m.s_sp_lyClose))}</td><td class="muted">${moFmt(m.s_sp_lySame)}</td><td>${moYoy(m.s_sp_yoy)}</td><td>${moPct(m.s_sp_rate)} ${pctBadge(m.s_sp_rate||0)}</td>
+      <td>${moFmt(m.s_tp_cur)}</td><td class="muted">${moFmt(m.s_tp_lyClose)}</td><td>${moYoy(moCloseYoy(m.s_tp_cur, m.s_tp_lyClose))}</td><td>${moPct(m.s_tp_rate)} ${pctBadge(m.s_tp_rate||0)}</td>
+      <td>${moFmt(m.s_sp_cur)} ${moBadgeRank(sSpCurRankMap[r.branchId], branchesInScope.length)}</td><td class="muted">${moFmt(m.s_sp_lyClose)}</td><td>${moYoy(moCloseYoy(m.s_sp_cur, m.s_sp_lyClose))}</td><td>${moPct(m.s_sp_rate)} ${pctBadge(m.s_sp_rate||0)}</td>
       <td>${moPct(m.s_sp_ratio)}</td><td>${m.s_sp_qty!=null?Math.round(m.s_sp_qty).toLocaleString('ko-KR'):'-'}건</td>
     </tr>`;
   }).join('');
@@ -6959,7 +7162,7 @@ function renderSubscription(){
 
   const html = `
     <div class="page-title">구독 실적</div>
-    <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "구독" 시트 기준, 관리자별·지점별 목표/총판/실판/달성율/비중/전년 대비 실적입니다. 기준일자 <b>${DB.metricsOverview.asOfDate}</b>(D-1, 전일)</div>
+    <div class="page-desc">관리자별·지점별 구독 목표/총판/실판/달성율/비중/전년마감 대비 실적입니다. ${dataSourceNote}</div>
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
@@ -7000,7 +7203,17 @@ function renderSubscription(){
       <div style="overflow-x:auto;">
       <table>
         <thead><tr><th>관리자</th><th>목표</th><th>총판</th><th>총판 달성률</th><th>실판</th><th>실판 달성률</th><th>비중</th><th>총판 전년마감比</th><th>실판 전년마감比</th></tr></thead>
-        <tbody>${managerTrs || '<tr><td colspan="9" class="muted">데이터 없음</td></tr>'}</tbody>
+        <tbody>
+          ${managerTrs || '<tr><td colspan="9" class="muted">데이터 없음</td></tr>'}
+          <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
+            <td>합계</td>
+            <td>${moFmt(teamAgg.s_target)}</td>
+            <td>${moFmt(teamAgg.s_tp_cur)}</td><td>${moPct(teamAgg.s_tp_rate)}</td>
+            <td>${moFmt(teamAgg.s_sp_cur)}</td><td>${moPct(teamAgg.s_sp_rate)}</td>
+            <td>${moPct(teamAgg.s_sp_ratio)}</td>
+            <td>${moYoy(teamAgg.s_tp_closeYoy)}</td><td>${moYoy(teamAgg.s_sp_closeYoy)}</td>
+          </tr>
+        </tbody>
       </table>
       </div>
       <div class="small-note" style="margin-top:8px;">※ 관리자 행을 클릭하면 소속 지점별 상세로 이동합니다.</div>
@@ -7012,15 +7225,15 @@ function renderSubscription(){
       <table>
         <thead><tr>
           <th rowspan="2">지점</th><th rowspan="2">관리자</th><th rowspan="2">목표</th>
-          <th colspan="6">총판</th><th colspan="6">실판</th><th rowspan="2">비중</th><th rowspan="2">건수</th>
+          <th colspan="4">총판</th><th colspan="4">실판</th><th rowspan="2">비중</th><th rowspan="2">건수</th>
         </tr>
-        <tr><th>당월</th><th>전년마감</th><th>전년마감比</th><th>전년동기</th><th>전년동기比</th><th>달성률</th><th>당월</th><th>전년마감</th><th>전년마감比</th><th>전년동기</th><th>전년동기比</th><th>달성률</th></tr></thead>
+        <tr><th>당월</th><th>전년마감</th><th>전년마감比</th><th>달성률</th><th>당월</th><th>전년마감</th><th>전년마감比</th><th>달성률</th></tr></thead>
         <tbody>
-          ${branchTrs || '<tr><td colspan="17" class="muted">데이터 없음</td></tr>'}
+          ${branchTrs || '<tr><td colspan="13" class="muted">데이터 없음</td></tr>'}
           <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
             <td colspan="2">합계</td><td>${moFmt(agg.s_target)}</td>
-            <td>${moFmt(agg.s_tp_cur)}</td><td>${moFmt(agg.s_tp_lyClose)}</td><td>${moYoy(agg.s_tp_closeYoy)}</td><td>${moFmt(agg.s_tp_lySame)}</td><td>${moYoy(agg.s_tp_yoy)}</td><td>${moPct(agg.s_tp_rate)}</td>
-            <td>${moFmt(agg.s_sp_cur)}</td><td>${moFmt(agg.s_sp_lyClose)}</td><td>${moYoy(agg.s_sp_closeYoy)}</td><td>${moFmt(agg.s_sp_lySame)}</td><td>${moYoy(agg.s_sp_yoy)}</td><td>${moPct(agg.s_sp_rate)}</td>
+            <td>${moFmt(agg.s_tp_cur)}</td><td>${moFmt(agg.s_tp_lyClose)}</td><td>${moYoy(agg.s_tp_closeYoy)}</td><td>${moPct(agg.s_tp_rate)}</td>
+            <td>${moFmt(agg.s_sp_cur)}</td><td>${moFmt(agg.s_sp_lyClose)}</td><td>${moYoy(agg.s_sp_closeYoy)}</td><td>${moPct(agg.s_sp_rate)}</td>
             <td>${moPct(agg.s_sp_ratio)}</td><td>${Math.round(agg.s_sp_qty||0).toLocaleString('ko-KR')}건</td>
           </tr>
         </tbody>
@@ -7559,21 +7772,76 @@ function setIncOverviewBranch(id){
   state.incOverviewBranch = id || null;
   renderTab('incentiveOverview');
 }
+// 2026-08-25 추가: 제품군별 일시불/구독 수당을 작은 카드 그리드로 보여주는 헬퍼(15개 제품군씩이라
+// 표 행으로 하나씩 늘어놓으면 너무 길어져서, 값이 있든 없든 한 눈에 훑어볼 수 있게 카드형으로 배치).
+function incProductGridHtml(items){
+  return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:6px;margin-top:6px;">` +
+    items.map(([label,val])=>`<div style="background:#f7f8fa;border-radius:8px;padding:6px 8px;">
+      <div class="muted" style="font-size:10.5px;">${escapeHtml(label)}</div>
+      <div style="font-size:12.5px;font-weight:700;">${moFmtWon(val)}</div>
+    </div>`).join('') +
+    `</div>`;
+}
 function incBranchDetailRowsHtml(m){
+  const flatItems = [
+    ['TV', m.inc_flatTv], ['냉장고', m.inc_flatFridge], ['세탁기', m.inc_flatWasher], ['에어컨', m.inc_flatAircon],
+    ['에어케어', m.inc_flatAircare], ['의류관리기', m.inc_flatClothingCare], ['청소기', m.inc_flatCleaner],
+    ['시네빔', m.inc_flatCineBeam], ['신발관리기', m.inc_flatShoeCare], ['워터케어', m.inc_flatWaterCare],
+    ['쿠킹/Dishwasher', m.inc_flatCooking], ['오디오', m.inc_flatAudio], ['DT', m.inc_flatDt], ['MNT', m.inc_flatMnt], ['NT', m.inc_flatNt]
+  ];
+  const subItems = [
+    ['TV', m.inc_subTv], ['냉장고', m.inc_subFridge], ['세탁기', m.inc_subWasher], ['에어컨', m.inc_subAircon],
+    ['에어케어', m.inc_subAircare], ['의류관리기', m.inc_subClothingCare], ['청소기', m.inc_subCleaner],
+    ['시네빔', m.inc_subCineBeam], ['신발관리기', m.inc_subShoeCare], ['워터케어', m.inc_subWaterCare],
+    ['쿠킹/Dishwasher', m.inc_subCooking], ['오디오', m.inc_subAudio], ['DT', m.inc_subDt], ['MNT', m.inc_subMnt], ['NT', m.inc_subNt]
+  ];
   return `
-    <tr><td>목표</td><td>${moFmt(m.inc_target)}</td></tr>
-    <tr><td>총판</td><td>${moFmt(m.inc_tp)}</td></tr>
+    <tr><td>목표</td><td>${moFmtWon(m.inc_target)}</td></tr>
+    <tr><td>총판</td><td>${moFmtWon(m.inc_tp)}</td></tr>
     <tr><td>총판 달성률</td><td>${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}</td></tr>
-    <tr><td>실판</td><td>${moFmt(m.inc_sp)}</td></tr>
+    <tr><td>실판</td><td>${moFmtWon(m.inc_sp)}</td></tr>
     <tr><td>지급률</td><td>${moPct(m.inc_payRate)}</td></tr>
-    <tr><td>전년比</td><td>${moYoy(m.inc_yoy)}</td></tr>
+    <tr><td>전년比(총판)</td><td>${moYoy(m.inc_yoy)}</td></tr>
+    <tr><td>M&B 신장률(총판)</td><td>${moPct(m.inc_mbGrowth)}</td></tr>
+    <tr><td>혼매채널 M&B 신장률(총판)</td><td>${moPct(m.inc_channelMbGrowth)}</td></tr>
     <tr><td>구독비중(총판)</td><td>${moPct(m.inc_subRatio)}</td></tr>
-    <tr><td>Grade 수당 계</td><td>${moFmt(m.inc_gradeSum)}</td></tr>
-    <tr><td>스탠바이미 판매(실판)</td><td>${m.inc_standbyMeSp!=null?Math.round(m.inc_standbyMeSp).toLocaleString('ko-KR'):'-'}</td></tr>
-    <tr><td>스탠바이미 수당</td><td>${moFmt(m.inc_standbyMeAmt)}</td></tr>
-    <tr><td>일시불 수당(TV/냉장고/세탁기/에어컨)</td><td>${moFmt(m.inc_flatTv)} / ${moFmt(m.inc_flatFridge)} / ${moFmt(m.inc_flatWasher)} / ${moFmt(m.inc_flatAircon)}</td></tr>
-    <tr style="font-weight:700;"><td>목표달성인센티브(예상 금액)</td><td>${moFmt(m.inc_expectedAmt)}</td></tr>
+    <tr><td>Grade 수당 계</td><td>${moFmtWon(m.inc_gradeSum)}</td></tr>
+    <tr><td>지점 수당</td><td>${moFmtWon(m.inc_branchAllowance)}</td></tr>
+    <tr><td>스탠바이미 판매(실판)</td><td>${m.inc_standbyMeSp!=null?Math.round(m.inc_standbyMeSp).toLocaleString('ko-KR')+'대':'-'}</td></tr>
+    <tr><td>스탠바이미 수당</td><td>${moFmtWon(m.inc_standbyMeAmt)}</td></tr>
+    <tr><td colspan="2"><b>제품 수당(일시불)</b> <span class="muted" style="font-weight:400;font-size:11.5px;">· 제품군별, 원 단위</span>${incProductGridHtml(flatItems)}</td></tr>
+    <tr><td colspan="2"><b>구독 제품별 상세 금액</b> <span class="muted" style="font-weight:400;font-size:11.5px;">· 제품군별, 원 단위</span>${incProductGridHtml(subItems)}<div style="margin-top:8px;font-size:12.5px;">구독수당 계 <b>${moFmtWon(m.inc_subAllowanceTotal)}</b></div></td></tr>
+    <tr style="font-weight:700;"><td>목표달성인센티브(예상 금액)</td><td>${moFmtWon(m.inc_expectedAmt)}</td></tr>
   `;
+}
+// 2026-08-25 추가: [구독 Grade 수당] 업로드 파일 기준, 지점 소속 매니저(직원) 개인별 구독 판매
+// Grade 시상금 명단을 보여준다. branchName은 metricsOverviewNormName으로 정규화해서 매칭한다.
+function incGradeRecordsForBranch(branchName){
+  if(!DB.subGradeIncentive || !DB.subGradeIncentive.byBranchKey) return null;
+  const entry = DB.subGradeIncentive.byBranchKey[metricsOverviewNormName(branchName)];
+  return entry ? entry.records : null;
+}
+function incGradeTableHtml(records){
+  if(!records || records.length===0){
+    return `<div class="muted" style="font-size:12.5px;margin-top:6px;">이 지점의 구독 Grade 수당 자료가 없습니다.</div>`;
+  }
+  const total = records.reduce((a,r)=>a+(r.gradeAmt||0),0);
+  const rows = records.slice().sort((a,b)=>(b.gradeAmt||0)-(a.gradeAmt||0)).map(r=>`
+    <tr>
+      <td>${escapeHtml(r.name||'-')}</td><td class="muted">${escapeHtml(r.role||'-')}</td>
+      <td>${r.subCount!=null?r.subCount+'대':'-'}</td><td>${escapeHtml(r.gradeLabel||'-')}</td>
+      <td style="font-weight:700;">${(r.gradeAmt||0).toLocaleString('ko-KR')}원</td>
+    </tr>`).join('');
+  return `
+    <div style="overflow-x:auto;margin-top:6px;">
+    <table>
+      <thead><tr><th>이름</th><th>직책</th><th>구독총판</th><th>등급</th><th>시상금</th></tr></thead>
+      <tbody>
+        ${rows}
+        <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);"><td colspan="4">합계</td><td>${total.toLocaleString('ko-KR')}원</td></tr>
+      </tbody>
+    </table>
+    </div>`;
 }
 function renderIncentiveOverview(){
   const noticeHtml = renderCollectionNotice('incentiveOverviewNotice', 'incentiveOverview');
@@ -7605,7 +7873,7 @@ function renderIncentiveOverview(){
     return `
       ${pageHeader}
       <div class="card" style="border-left:4px solid var(--primary);margin-bottom:16px;">
-        <div class="muted" style="font-size:12px;">${escapeHtml(myRow.branchName)} · 단위 KK(백만원)</div>
+        <div class="muted" style="font-size:12px;">${escapeHtml(myRow.branchName)} · 단위 원</div>
         <h3 style="margin-top:4px;">내 지점 인센티브 상세</h3>
         <div style="overflow-x:auto;margin-top:8px;">
         <table>
@@ -7613,9 +7881,13 @@ function renderIncentiveOverview(){
         </table>
         </div>
       </div>
+      <div class="card" style="margin-bottom:16px;">
+        <h3>🏆 우리 지점 매니저별 구독 Grade 수당</h3>
+        ${incGradeTableHtml(incGradeRecordsForBranch(myRow.branchName))}
+      </div>
       <div class="card ai-box">
         <div class="ai-title">📊 타 지점 합계 대비 비교</div>
-        <div>경북팀 전체(${rankTotalOf}개 지점) 목표달성인센티브(예상) 합계 <b>${moFmt(teamAgg.inc_expectedAmt)}</b> 중 우리 지점 <b>${moFmt(myRow.m.inc_expectedAmt)}</b> (${rankExpected?`${rankExpected}위/${rankTotalOf}`:'-'})</div>
+        <div>경북팀 전체(${rankTotalOf}개 지점) 목표달성인센티브(예상) 합계 <b>${moFmtWon(teamAgg.inc_expectedAmt)}</b> 중 우리 지점 <b>${moFmtWon(myRow.m.inc_expectedAmt)}</b> (${rankExpected?`${rankExpected}위/${rankTotalOf}`:'-'})</div>
         <div style="margin-top:6px;">경북팀 전체 총판 달성률 평균 <b>${moPct(teamAgg.g_tp_rate)}</b> 대비 우리 지점 총판 달성률 <b>${moPct(myRow.m.inc_tpRate)}</b> (${rankTpRate?`${rankTpRate}위/${rankTotalOf}`:'-'})</div>
         <div class="small-note" style="margin-top:8px;">※ 개인정보 보호를 위해 다른 지점의 개별 상세 수치는 표시되지 않고, 전체 합계·평균만 비교용으로 제공됩니다.</div>
       </div>
@@ -7648,12 +7920,16 @@ function renderIncentiveOverview(){
           ${branchSelectHtml}
         </div>
       </div>
-      <div class="card" style="border-left:4px solid var(--primary);">
-        <div class="muted" style="font-size:12px;">${escapeHtml(selBranchRow.branchName)} · 관리자 ${escapeHtml(selBranchRow.manager||'-')} · 단위 KK(백만원)</div>
+      <div class="card" style="border-left:4px solid var(--primary);margin-bottom:16px;">
+        <div class="muted" style="font-size:12px;">${escapeHtml(selBranchRow.branchName)} · 관리자 ${escapeHtml(selBranchRow.manager||'-')} · 단위 원</div>
         <h3 style="margin-top:4px;">지점 인센티브 상세</h3>
         <div style="overflow-x:auto;margin-top:8px;">
         <table><tbody>${incBranchDetailRowsHtml(selBranchRow.m)}</tbody></table>
         </div>
+      </div>
+      <div class="card">
+        <h3>🏆 매니저별 구독 Grade 수당</h3>
+        ${incGradeTableHtml(incGradeRecordsForBranch(selBranchRow.branchName))}
       </div>
     `;
   }
@@ -7663,12 +7939,12 @@ function renderIncentiveOverview(){
     const m = r.m;
     return `<tr style="cursor:pointer;" onclick="setIncOverviewBranch('${r.branchId}')">
       <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
-      <td>${moFmt(m.inc_target)}</td>
-      <td>${moFmt(m.inc_tp)}</td><td>${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}</td>
-      <td>${moFmt(m.inc_sp)}</td><td>${moPct(m.inc_payRate)}</td>
+      <td>${moFmtWon(m.inc_target)}</td>
+      <td>${moFmtWon(m.inc_tp)}</td><td>${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}</td>
+      <td>${moFmtWon(m.inc_sp)}</td><td>${moPct(m.inc_payRate)}</td>
       <td>${moYoy(m.inc_yoy)}</td><td>${moPct(m.inc_subRatio)}</td>
-      <td>${moFmt(m.inc_gradeSum)}</td>
-      <td style="font-weight:700;">${moFmt(m.inc_expectedAmt)} ${moBadgeRank(expectedRankMap[r.branchId], branchesInScope.length)}</td>
+      <td>${moFmtWon(m.inc_gradeSum)}</td>
+      <td style="font-weight:700;">${moFmtWon(m.inc_expectedAmt)} ${moBadgeRank(expectedRankMap[r.branchId], branchesInScope.length)}</td>
     </tr>`;
   }).join('');
 
@@ -7681,18 +7957,18 @@ function renderIncentiveOverview(){
       </div>
     </div>
     <div class="card">
-      <h3>🏬 지점별 인센티브 현황 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원) · 행을 클릭하면 상세로 이동</small></h3>
+      <h3>🏬 지점별 인센티브 현황 <small>${escapeHtml(scopeLabel)} · 단위 원 · 행을 클릭하면 상세로 이동</small></h3>
       <div style="overflow-x:auto;">
       <table>
         <thead><tr><th>지점</th><th>관리자</th><th>목표</th><th>총판</th><th>총판 달성률</th><th>실판</th><th>지급률</th><th>전년比</th><th>구독비중</th><th>Grade수당계</th><th>목표달성인센티브(예상)</th></tr></thead>
         <tbody>
           ${trs || '<tr><td colspan="11" class="muted">데이터 없음</td></tr>'}
           <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
-            <td colspan="2">합계</td><td>${moFmt(agg.inc_target)}</td>
-            <td>${moFmt(agg.inc_tp)}</td><td>${moPct(agg.inc_tpRate)}</td>
-            <td>${moFmt(agg.inc_sp)}</td><td>${moPct(agg.inc_payRate)}</td>
+            <td colspan="2">합계</td><td>${moFmtWon(agg.inc_target)}</td>
+            <td>${moFmtWon(agg.inc_tp)}</td><td>${moPct(agg.inc_tpRate)}</td>
+            <td>${moFmtWon(agg.inc_sp)}</td><td>${moPct(agg.inc_payRate)}</td>
             <td>${moYoy(agg.inc_yoy)}</td><td>${moPct(agg.inc_subRatio)}</td>
-            <td>${moFmt(agg.inc_gradeSum)}</td><td>${moFmt(agg.inc_expectedAmt)}</td>
+            <td>${moFmtWon(agg.inc_gradeSum)}</td><td>${moFmtWon(agg.inc_expectedAmt)}</td>
           </tr>
         </tbody>
       </table>
