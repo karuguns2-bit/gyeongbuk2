@@ -457,6 +457,19 @@
   tr:last-child td{border-bottom:none;}
   tbody tr{transition:background .1s ease;}
   tbody tr:hover{background:#fafbfc;}
+  /* 값 한두 단어짜리 표(지점별 인센티브 현황, 매니저별 Grade수당 등)는 기본 padding(11px 13px)이
+     과해서 오른쪽에 빈 공간이 많이 남아 보인다. 이런 표에 .tbl-compact를 붙이면 셀 패딩을
+     줄여 표를 더 촘촘하게 만든다. (2026.08) */
+  .tbl-compact th,.tbl-compact td{padding:6px 10px;}
+  /* 지점 인센티브 상세처럼 "라벨 1개 + 값 1개"만 있는 넓은 표는 표 형태 대신 라벨:값 칩을
+     grid로 촘촘히 배치해서 빈 공간을 없앤다(제품 수당 그리드와 같은 톤). (2026.08) */
+  .inc-kv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;}
+  .inc-kv{background:#f7f8fa;border-radius:8px;padding:7px 10px;}
+  .inc-kv .k{font-size:10.5px;color:var(--text-sub);}
+  .inc-kv .v{font-size:13px;font-weight:700;margin-top:2px;}
+  .inc-kv-total{margin-top:10px;padding:10px 14px;border-radius:10px;background:#eef4ff;font-size:13.5px;font-weight:700;display:flex;justify-content:space-between;align-items:center;}
+  body.dark-mode .inc-kv{background:#26282e;}
+  body.dark-mode .inc-kv-total{background:#1c2a3d;}
 
   /* overflow-x만 auto로 두면 브라우저가 overflow-y도 auto로 취급해버려 표 자체가
      별도의 스크롤 상자가 되고, 그 안의 sticky 헤더는 페이지 스크롤이 아니라 이 상자

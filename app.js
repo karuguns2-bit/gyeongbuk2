@@ -7804,23 +7804,41 @@ function incBranchDetailRowsHtml(m){
     ['시네빔', m.inc_subCineBeam], ['신발관리기', m.inc_subShoeCare], ['워터케어', m.inc_subWaterCare],
     ['쿠킹/Dishwasher', m.inc_subCooking], ['오디오', m.inc_subAudio], ['DT', m.inc_subDt], ['MNT', m.inc_subMnt], ['NT', m.inc_subNt]
   ];
+  // 2026-08-25 수정: 라벨:값 한 쌍짜리 넓은 표(<table>)는 오른쪽에 빈 공간이 많이 남아
+  // "표마다 여백이 너무 많다"는 지적을 받아서, 제품 수당 그리드와 같은 톤의 촘촘한
+  // 라벨:값 칩 grid(.inc-kv-grid)로 바꿨다. 표 태그를 쓰지 않으므로 이 함수를 호출하는
+  // 쪽에서도 <table><tbody>로 감싸지 않고 그대로 출력한다.
+  const kv = [
+    ['목표', moFmtWon(m.inc_target)],
+    ['총판', moFmtWon(m.inc_tp)],
+    ['총판 달성률', `${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}`],
+    ['실판', moFmtWon(m.inc_sp)],
+    ['지급률', moPct(m.inc_payRate)],
+    ['전년比(총판)', moYoy(m.inc_yoy)],
+    ['M&B 신장률(총판)', moPct(m.inc_mbGrowth)],
+    ['혼매채널 M&B 신장률(총판)', moPct(m.inc_channelMbGrowth)],
+    ['구독비중(총판)', moPct(m.inc_subRatio)],
+    ['Grade 수당 계', moFmtWonRaw(m.inc_gradeSum)],
+    ['지점 수당', moFmtWonRaw(m.inc_branchAllowance)],
+    ['스탠바이미 판매(실판)', m.inc_standbyMeSp!=null?Math.round(m.inc_standbyMeSp).toLocaleString('ko-KR')+'대':'-'],
+    ['스탠바이미 수당', moFmtWonRaw(m.inc_standbyMeAmt)]
+  ];
+  const kvHtml = `<div class="inc-kv-grid">` +
+    kv.map(([k,v])=>`<div class="inc-kv"><div class="k">${escapeHtml(k)}</div><div class="v">${v}</div></div>`).join('') +
+    `</div>`;
   return `
-    <tr><td>목표</td><td>${moFmtWon(m.inc_target)}</td></tr>
-    <tr><td>총판</td><td>${moFmtWon(m.inc_tp)}</td></tr>
-    <tr><td>총판 달성률</td><td>${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}</td></tr>
-    <tr><td>실판</td><td>${moFmtWon(m.inc_sp)}</td></tr>
-    <tr><td>지급률</td><td>${moPct(m.inc_payRate)}</td></tr>
-    <tr><td>전년比(총판)</td><td>${moYoy(m.inc_yoy)}</td></tr>
-    <tr><td>M&B 신장률(총판)</td><td>${moPct(m.inc_mbGrowth)}</td></tr>
-    <tr><td>혼매채널 M&B 신장률(총판)</td><td>${moPct(m.inc_channelMbGrowth)}</td></tr>
-    <tr><td>구독비중(총판)</td><td>${moPct(m.inc_subRatio)}</td></tr>
-    <tr><td>Grade 수당 계</td><td>${moFmtWonRaw(m.inc_gradeSum)}</td></tr>
-    <tr><td>지점 수당</td><td>${moFmtWonRaw(m.inc_branchAllowance)}</td></tr>
-    <tr><td>스탠바이미 판매(실판)</td><td>${m.inc_standbyMeSp!=null?Math.round(m.inc_standbyMeSp).toLocaleString('ko-KR')+'대':'-'}</td></tr>
-    <tr><td>스탠바이미 수당</td><td>${moFmtWonRaw(m.inc_standbyMeAmt)}</td></tr>
-    <tr><td colspan="2"><b>제품 수당(일시불)</b> <span class="muted" style="font-weight:400;font-size:11.5px;">· 제품군별, 원 단위</span>${incProductGridHtml(flatItems)}<div style="margin-top:8px;font-size:12.5px;">일시불수당 계 <b>${moFmtWonRaw(flatItems.reduce((a,[,v])=>a+(v||0),0))}</b></div></td></tr>
-    <tr><td colspan="2"><b>구독 제품별 상세 금액</b> <span class="muted" style="font-weight:400;font-size:11.5px;">· 제품군별, 원 단위</span>${incProductGridHtml(subItems)}<div style="margin-top:8px;font-size:12.5px;">구독수당 계 <b>${moFmtWonRaw(m.inc_subAllowanceTotal)}</b></div></td></tr>
-    <tr style="font-weight:700;"><td>목표달성인센티브(예상 금액)</td><td>${moFmtWonRaw(m.inc_expectedAmt)}</td></tr>
+    ${kvHtml}
+    <div style="margin-top:12px;">
+      <b>제품 수당(일시불)</b> <span class="muted" style="font-weight:400;font-size:11.5px;">· 제품군별, 원 단위</span>
+      ${incProductGridHtml(flatItems)}
+      <div style="margin-top:8px;font-size:12.5px;">일시불수당 계 <b>${moFmtWonRaw(flatItems.reduce((a,[,v])=>a+(v||0),0))}</b></div>
+    </div>
+    <div style="margin-top:12px;">
+      <b>구독 제품별 상세 금액</b> <span class="muted" style="font-weight:400;font-size:11.5px;">· 제품군별, 원 단위</span>
+      ${incProductGridHtml(subItems)}
+      <div style="margin-top:8px;font-size:12.5px;">구독수당 계 <b>${moFmtWonRaw(m.inc_subAllowanceTotal)}</b></div>
+    </div>
+    <div class="inc-kv-total"><span>목표달성인센티브(예상 금액)</span><span>${moFmtWonRaw(m.inc_expectedAmt)}</span></div>
   `;
 }
 // 2026-08-25 추가: [구독 Grade 수당] 업로드 파일 기준, 지점 소속 매니저(직원) 개인별 구독 판매
@@ -7861,7 +7879,7 @@ function incGradeTableHtml(records, branchNameForDelete){
     </tr>`).join('');
   return `
     <div style="overflow-x:auto;margin-top:6px;">
-    <table>
+    <table class="tbl-compact">
       <thead><tr><th>이름</th><th>직책</th><th>구독총판</th><th>시상금</th>${isAdmin && branchNameForDelete ? '<th></th>' : ''}</tr></thead>
       <tbody>
         ${rows}
@@ -7899,16 +7917,14 @@ function renderIncentiveOverview(){
     }
     return `
       ${pageHeader}
-      <div class="card" style="border-left:4px solid var(--primary);margin-bottom:16px;">
+      <div class="card" style="border-left:4px solid var(--primary);margin-bottom:10px;">
         <div class="muted" style="font-size:12px;">${escapeHtml(myRow.branchName)} · 단위 원</div>
         <h3 style="margin-top:4px;">내 지점 인센티브 상세</h3>
-        <div style="overflow-x:auto;margin-top:8px;">
-        <table>
-          <tbody>${incBranchDetailRowsHtml(myRow.m)}</tbody>
-        </table>
+        <div style="margin-top:8px;">
+        ${incBranchDetailRowsHtml(myRow.m)}
         </div>
       </div>
-      <div class="card" style="margin-bottom:16px;">
+      <div class="card" style="margin-bottom:10px;">
         <h3>🏆 우리 지점 매니저별 구독 Grade 수당</h3>
         ${incGradeTableHtml(incGradeRecordsForBranch(myRow.branchName), myRow.branchName)}
       </div>
@@ -7943,17 +7959,17 @@ function renderIncentiveOverview(){
   if(selBranchRow){
     return `
       ${pageHeader}
-      <div class="card" style="margin-bottom:16px;">
+      <div class="card" style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
           <div>${managerPills}</div>
           ${branchSelectHtml}
         </div>
       </div>
-      <div class="card" style="border-left:4px solid var(--primary);margin-bottom:16px;">
+      <div class="card" style="border-left:4px solid var(--primary);margin-bottom:10px;">
         <div class="muted" style="font-size:12px;">${escapeHtml(selBranchRow.branchName)} · 관리자 ${escapeHtml(selBranchRow.manager||'-')} · 단위 원</div>
         <h3 style="margin-top:4px;">지점 인센티브 상세</h3>
-        <div style="overflow-x:auto;margin-top:8px;">
-        <table><tbody>${incBranchDetailRowsHtml(selBranchRow.m)}</tbody></table>
+        <div style="margin-top:8px;">
+        ${incBranchDetailRowsHtml(selBranchRow.m)}
         </div>
       </div>
       <div class="card">
@@ -7979,7 +7995,7 @@ function renderIncentiveOverview(){
 
   return `
     ${pageHeader}
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card" style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div>${managerPills}</div>
         ${branchSelectHtml}
@@ -7988,7 +8004,7 @@ function renderIncentiveOverview(){
     <div class="card">
       <h3>🏬 지점별 인센티브 현황 <small>${escapeHtml(scopeLabel)} · 단위 원 · 행을 클릭하면 상세로 이동</small></h3>
       <div style="overflow-x:auto;">
-      <table>
+      <table class="tbl-compact">
         <thead><tr><th>지점</th><th>관리자</th><th>목표</th><th>총판</th><th>총판 달성률</th><th>실판</th><th>지급률</th><th>전년比</th><th>구독비중</th><th>Grade수당계</th><th>목표달성인센티브(예상)</th></tr></thead>
         <tbody>
           ${trs || '<tr><td colspan="11" class="muted">데이터 없음</td></tr>'}
