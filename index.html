@@ -439,7 +439,17 @@
   .badge.bad{background:#fdecec;color:var(--bad);}
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
-  th,td{padding:11px 13px;text-align:left;border-bottom:1px solid #eef0f2;}
+  /* 한 셀에만 여러 줄 내용(뱃지+버튼, 긴 메모 등)이 들어가면 표 기본값(vertical-align:middle)
+     때문에 같은 행의 다른(한 줄짜리) 셀 글씨가 세로 중앙으로 밀려 보이는 문제가 있어,
+     모든 표에서 셀 내용은 위쪽 기준으로 정렬한다. (2026.08) */
+  th,td{padding:11px 13px;text-align:left;border-bottom:1px solid #eef0f2;vertical-align:top;}
+  /* 값이 한 단어/숫자 정도로 짧은 컬럼(날짜, 구분, 유형 등)은 컬럼 폭이 좁으면 줄바꿈되어
+     행 높이가 들쭉날쭉해 보이므로 줄바꿈을 막아 한 줄로 고정한다. */
+  td.nowrap-cell,th.nowrap-cell{white-space:nowrap;}
+  /* 상담 메모처럼 자유롭게 길게 입력되는 텍스트는 3줄로 잘라 보여주고 전체 내용은
+     마우스를 올리면(title 속성) 볼 수 있게 해서, 긴 메모 하나 때문에 표 전체 행이
+     과도하게 늘어나는 것을 막는다. */
+  td.clamp-cell{max-width:220px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;}
   /* 등록건수가 많아 스크롤이 길어져도 표 머리글이 항상 보이도록 고정(틀고정)한다.
      .main이 화면 전체의 세로 스크롤 컨테이너이므로 top:0 기준으로 sticky 처리하면
      모든 취합/목록 표에 공통 적용된다. (2026.08) */

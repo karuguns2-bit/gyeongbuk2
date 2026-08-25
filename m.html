@@ -386,7 +386,9 @@
   .badge.bad{background:#fdecec;color:var(--bad);}
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
-  th,td{padding:11px 13px;text-align:left;border-bottom:1px solid #eef0f2;}
+  th,td{padding:11px 13px;text-align:left;border-bottom:1px solid #eef0f2;vertical-align:top;}
+  td.nowrap-cell,th.nowrap-cell{white-space:nowrap;}
+  td.clamp-cell{max-width:220px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;}
   /* 등록건수가 많아 스크롤이 길어져도 표 머리글이 항상 보이도록 고정(틀고정)한다.
      .main이 화면 전체의 세로 스크롤 컨테이너이므로 top:0 기준으로 sticky 처리하면
      모든 취합/목록 표에 공통 적용된다. (2026.08) */

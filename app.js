@@ -12980,20 +12980,20 @@ function renderProspects(){
     return `
     <tr>
       ${repCellsHtml}
-      <td>${p.visitDate||'-'}</td>
-      <td>${escapeHtml(p.visitTime||'-')}</td>
-      <td>${escapeHtml(p.customerAgeGroup||'-')}</td>
-      <td>${escapeHtml(p.visitUnit||'-')}</td>
-      <td>${escapeHtml(p.visitChannel||'-')}</td>
-      <td>${escapeHtml(p.productCategory||'-')}</td>
-      <td>${escapeHtml(p.customerName)}</td>
-      <td>${escapeHtml(p.phone)}</td>
-      <td>${escapeHtml(p.desiredItem||'-')}</td>
-      <td>${p.desiredDate||'-'}</td>
-      <td>${escapeHtml(p.consultProduct||'-')}</td>
-      <td>${p.purchaseType ? `<span class="badge ${p.purchaseType==='구독'?'warn':''}">${p.purchaseType}</span>` : '-'}</td>
-      <td>${p.expectedAmountWon!=null ? fmtWon(p.expectedAmountWon) : '-'}</td>
-      <td>
+      <td class="nowrap-cell">${p.visitDate||'-'}</td>
+      <td class="nowrap-cell">${escapeHtml(p.visitTime||'-')}</td>
+      <td class="nowrap-cell">${escapeHtml(p.customerAgeGroup||'-')}</td>
+      <td class="nowrap-cell">${escapeHtml(p.visitUnit||'-')}</td>
+      <td class="nowrap-cell">${escapeHtml(p.visitChannel||'-')}</td>
+      <td class="nowrap-cell">${escapeHtml(p.productCategory||'-')}</td>
+      <td class="nowrap-cell">${escapeHtml(p.customerName)}</td>
+      <td class="nowrap-cell">${escapeHtml(p.phone)}</td>
+      <td class="nowrap-cell">${escapeHtml(p.desiredItem||'-')}</td>
+      <td class="nowrap-cell">${p.desiredDate||'-'}</td>
+      <td class="clamp-cell" ${p.consultProduct ? `title="${escapeHtml(p.consultProduct)}"` : ''}>${escapeHtml(p.consultProduct||'-')}</td>
+      <td class="nowrap-cell">${p.purchaseType ? `<span class="badge ${p.purchaseType==='구독'?'warn':''}">${p.purchaseType}</span>` : '-'}</td>
+      <td class="nowrap-cell">${p.expectedAmountWon!=null ? fmtWon(p.expectedAmountWon) : '-'}</td>
+      <td class="nowrap-cell">
         <span class="badge ${p.happyCall==='실행'?'good':'bad'}">${p.happyCall}</span>
         ${canManage ? `<button class="btn btn-sm" style="margin-left:4px;" onclick="updateProspectField('${p.id}','happyCall','${p.happyCall==='실행'?'미실행':'실행'}')">${p.happyCall==='실행'?'미실행으로 변경':'실행으로 변경'}</button>` : ''}
       </td>
@@ -13072,7 +13072,7 @@ function renderProspects(){
       ${paging.barHtml}
       <div class="table-scroll">
       <table>
-        <thead><tr>${isAdmin?'<th>담당자</th><th>지점</th>':''}<th>방문일자</th><th>방문시간</th><th>고객구분</th><th>방문단위</th><th>방문경로</th><th>상담제품</th><th>고객명</th><th>연락처</th><th>구매희망품목</th><th>구매희망일</th><th>상담제품</th><th>구매유형</th><th>예상금액</th><th>해피콜</th><th>판매여부</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${isAdmin?'<th class="nowrap-cell">담당자</th><th class="nowrap-cell">지점</th>':''}<th class="nowrap-cell">방문일자</th><th class="nowrap-cell">방문시간</th><th class="nowrap-cell">고객구분</th><th class="nowrap-cell">방문단위</th><th class="nowrap-cell">방문경로</th><th class="nowrap-cell">상담제품(대분류)</th><th class="nowrap-cell">고객명</th><th class="nowrap-cell">연락처</th><th class="nowrap-cell">구매희망품목</th><th class="nowrap-cell">구매희망일</th><th>상담제품(상세)</th><th class="nowrap-cell">구매유형</th><th class="nowrap-cell">예상금액</th><th class="nowrap-cell">해피콜</th><th class="nowrap-cell">판매여부</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
