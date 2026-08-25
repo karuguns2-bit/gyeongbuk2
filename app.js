@@ -1322,7 +1322,7 @@ const LAST_TAB_STORAGE_KEY = 'lg_kpi_last_tab';
 // renderTab()이 실제로 처리하는 탭 키 전체 목록 - 새로고침 복원 시 저장된 값이 이 중 하나가
 // 아니면(예: 옛 버전에서 남은 값, 조작된 값) 안전하게 홈으로 대체한다.
 const VALID_TABS = ['home','systemAdmin','accountManagement','metricsOverview','goals','notices','materials',
-  'infoReports','subscription','subB2bSales','sales','inventory','collectPhoto','collectGiftcard','collectContest',
+  'infoReports','subscription','subB2bSales','sales','incentiveOverview','inventory','collectPhoto','collectGiftcard','collectContest',
   'subTierContest','mistakeNote','issueCase','bestPractice','policyQuiz','eduHq','eduInhouse','eduEtc','eduVideo',
   'eduTest','eduAiRp','kakaoFriends','prospects','suggestions'];
 
@@ -1641,6 +1641,7 @@ const NAV_LABELS = {
   subscription: '구독 실적',
   subB2bSales: '구독 소상공인 판매건 등록',
   sales: '실적/제품 분석',
+  incentiveOverview: '지점별 인센티브(참고용)',
   notices: '공지사항',
   materials: '각종 자료',
   infoReports: '정보보고',
@@ -1789,6 +1790,7 @@ function renderTab(tab){
   if(tab==='subscription') main.innerHTML = renderSubscription();
   if(tab==='subB2bSales') main.innerHTML = renderSubB2bSales();
   if(tab==='sales') main.innerHTML = renderSales();
+  if(tab==='incentiveOverview') main.innerHTML = renderIncentiveOverview();
   if(tab==='inventory') main.innerHTML = renderInventory();
   if(tab==='collectPhoto') main.innerHTML = renderCollectPhoto();
   if(tab==='collectGiftcard') main.innerHTML = renderCollectGiftcard();
@@ -1801,9 +1803,9 @@ function renderTab(tab){
   // 본부(평택)교육/사내교육/기타교육 3개 탭 어디로 들어와도(예전 즐겨찾기/마지막 탭 기억 등)
   // 항상 통합된 같은 화면을 보여준다.
   if(tab==='eduHq' || tab==='eduInhouse' || tab==='eduEtc') main.innerHTML = renderEduSchedule();
-  if(tab==='eduVideo') main.innerHTML = renderEduCompletion('video');
-  if(tab==='eduTest') main.innerHTML = renderEduCompletion('test');
-  if(tab==='eduAiRp') main.innerHTML = renderEduCompletion('aiRp');
+  // 화상교육/월간test/AI R/P 3개 탭(pill로 전환하던 방식) 어디로 들어와도 항상 통합된
+  // 하나의 화면(한눈에 완료/미완료를 체크할 수 있는 표)을 보여준다. (2026.08)
+  if(tab==='eduVideo' || tab==='eduTest' || tab==='eduAiRp') main.innerHTML = renderEduCompletionAll();
   if(tab==='kakaoFriends') main.innerHTML = renderKakaoFriends();
   if(tab==='prospects') main.innerHTML = renderProspects();
   if(tab==='suggestions') main.innerHTML = renderSuggestions();
@@ -6115,21 +6117,34 @@ const METRICS_OVERVIEW_BLOCKS = {
     ['g_tp_lyClose',22],['g_tp_lySame',23],['g_tp_cur',24],['g_tp_rate',25],['g_tp_yoy',27],
     ['g_sp_lyClose',28],['g_sp_lySame',29],['g_sp_cur',30],['g_sp_rate',31],['g_sp_yoy',33]
   ]},
+  // 2026-08-25 추가: "구독 실적" 페이지(관리자별/지점별 목표·총판·실판·달성율·비중·전년마감比)를
+  // 이 파일 기반으로 새로 만들면서, 총판/실판 블록 각각의 전년 마감/동기 원본 값(lyClose/lySame)과
+  // 파일에 이미 계산되어 있는 전년동기比(raw) 칸도 함께 읽어온다. Gross 블록과 동일한 방식으로
+  // "전년 마감比"는 파일의 원본 칸을 쓰지 않고 lyClose 기준으로 화면에서 다시 계산한다(실측 완료:
+  // 총판 lyClose=42,lySame=43,당월=45,달성률=46,전년동기比=48 / 실판 lyClose=58,lySame=59,당월=61,
+  // 달성률=62,전년동기比=64,비중=67, 수량 당월=71).
   sub: { sheetMatch: s=>s.trim()==='구독', idCol:36, dataStartRow:9, metrics:[
     ['s_target',41],
-    ['s_tp_cur',45],['s_tp_rate',46],
-    ['s_sp_cur',61],['s_sp_rate',62],['s_sp_ratio',67],['s_sp_qty',71]
+    ['s_tp_lyClose',42],['s_tp_lySame',43],['s_tp_cur',45],['s_tp_rate',46],['s_tp_yoy',48],
+    ['s_sp_lyClose',58],['s_sp_lySame',59],['s_sp_cur',61],['s_sp_rate',62],['s_sp_yoy',64],['s_sp_ratio',67],['s_sp_qty',71]
   ]},
   high: { sheetMatch: s=>s.trim()==='고수익', idCol:18, dataStartRow:9, metrics:[
     ['h_tp_pool',23],['h_tp_high',24],['h_tp_highRatio',25],
     ['h_sp_pool',30],['h_sp_high',31],['h_sp_highRatio',32]
   ]},
-  // 2026-08-13 추가: "인센티브" 시트의 "◆ 지점별 인센티브" 표에서 "목표달성인센티브(예상 금액)" 칸만
-  // 가져온다(GROSS(CC포함) 탭에 구독목표/구독총판과 나란히 보여주기 위함 — 구독목표/구독총판은
-  // 이미 '구독' 시트에서 s_target/s_tp_cur로 파싱되고 있어 별도 추가가 필요 없다). 이 시트는 다른
-  // 3개 시트(Gross/구독/고수익)와 달리 없어도 업로드 자체는 계속 진행되도록(선택 항목으로) 둔다.
+  // 2026-08-13 추가, 2026-08-25 확장: "인센티브" 시트의 "◆ 지점별 인센티브" 표. 처음엔 GROSS(CC포함)
+  // 탭에 나란히 보여줄 "목표달성인센티브(예상 금액)" 칸만 가져왔는데, [지점별 인센티브(참고용)]
+  // 페이지를 새로 만들면서 표에 있는 나머지 칸(목표/총판/실판/달성률/지급률/전년比/Grade수당/
+  // 제품군별 일시불 수당)도 함께 가져오도록 확장했다(실측 완료: idCol=1 기준 목표=6,총판=7,
+  // 달성률=8,실판=9,지급률=10,전년比=11,M&B신장률=12,혼매채널M&B신장률=13,구독비중=14,
+  // 목표달성인센티브예상=15,스탠바이미실판=17,스탠바이미수당=18,Grade수당계=19,
+  // 일시불수당(TV=21,냉장고=22,세탁기=23,에어컨=24)). 이 시트는 다른 3개 시트(Gross/구독/고수익)와
+  // 달리 없어도 업로드 자체는 계속 진행되도록(선택 항목으로) 둔다.
   incentive: { sheetMatch: s=>s.trim()==='인센티브', idCol:1, dataStartRow:17, metrics:[
-    ['inc_expectedAmt',15]
+    ['inc_target',6],['inc_tp',7],['inc_tpRate',8],['inc_sp',9],['inc_payRate',10],
+    ['inc_yoy',11],['inc_mbGrowth',12],['inc_channelMbGrowth',13],['inc_subRatio',14],
+    ['inc_expectedAmt',15],['inc_standbyMeSp',17],['inc_standbyMeAmt',18],['inc_gradeSum',19],
+    ['inc_flatTv',21],['inc_flatFridge',22],['inc_flatWasher',23],['inc_flatAircon',24]
   ]}
 };
 function metricsOverviewNormName(s){
@@ -6339,8 +6354,9 @@ function moManagerList(){
 // 지점 배열을 합산해서 관리자/전체 단위 집계값을 만든다 (달성률·신장률·비중은 합산된 원시값으로 재계산 — 지점별 %를 단순평균하면 왜곡되므로 반드시 분자/분모를 합산 후 계산)
 function moAggregate(rows){
   const s = { g_target:0, g_tp_cur:0, g_tp_lySame:0, g_tp_lyClose:0, g_sp_cur:0, g_sp_lySame:0, g_sp_lyClose:0,
-    s_target:0, s_tp_cur:0, s_sp_cur:0, s_sp_qty:0,
-    h_tp_pool:0, h_tp_high:0, h_sp_pool:0, h_sp_high:0, inc_expectedAmt:0, branchCount: rows.length };
+    s_target:0, s_tp_cur:0, s_tp_lySame:0, s_tp_lyClose:0, s_sp_cur:0, s_sp_lySame:0, s_sp_lyClose:0, s_sp_qty:0,
+    h_tp_pool:0, h_tp_high:0, h_sp_pool:0, h_sp_high:0,
+    inc_target:0, inc_tp:0, inc_sp:0, inc_gradeSum:0, inc_expectedAmt:0, branchCount: rows.length };
   rows.forEach(r=>{
     const m = r.m || {};
     Object.keys(s).forEach(k=>{ if(k!=='branchCount' && typeof m[k]==='number') s[k] += m[k]; });
@@ -6354,10 +6370,18 @@ function moAggregate(rows){
     g_sp_yoy: s.g_sp_lySame>0 ? (s.g_sp_cur-s.g_sp_lySame)/s.g_sp_lySame*100 : null,
     g_sp_closeYoy: s.g_sp_lyClose>0 ? (s.g_sp_cur-s.g_sp_lyClose)/s.g_sp_lyClose*100 : null,
     s_tp_rate: s.s_target>0 ? s.s_tp_cur/s.s_target*100 : null,
+    s_tp_yoy: s.s_tp_lySame>0 ? (s.s_tp_cur-s.s_tp_lySame)/s.s_tp_lySame*100 : null,
+    s_tp_closeYoy: s.s_tp_lyClose>0 ? (s.s_tp_cur-s.s_tp_lyClose)/s.s_tp_lyClose*100 : null,
     s_sp_rate: s.s_target>0 ? s.s_sp_cur/s.s_target*100 : null,
+    s_sp_yoy: s.s_sp_lySame>0 ? (s.s_sp_cur-s.s_sp_lySame)/s.s_sp_lySame*100 : null,
+    s_sp_closeYoy: s.s_sp_lyClose>0 ? (s.s_sp_cur-s.s_sp_lyClose)/s.s_sp_lyClose*100 : null,
     s_sp_ratio: s.g_sp_cur>0 ? s.s_sp_cur/s.g_sp_cur*100 : null,
     h_tp_highRatio: s.h_tp_pool>0 ? s.h_tp_high/s.h_tp_pool*100 : null,
-    h_sp_highRatio: s.h_sp_pool>0 ? s.h_sp_high/s.h_sp_pool*100 : null
+    h_sp_highRatio: s.h_sp_pool>0 ? s.h_sp_high/s.h_sp_pool*100 : null,
+    // 인센티브 지급률/전년比/구독비중은 지점마다 다른 기준(구간별 요율 등)으로 산정되어 단순
+    // 합산/평균이 의미가 없으므로, 팀 전체 합계 행에서는 목표 대비 총판 달성률만 재계산해서
+    // 보여주고 나머지는 표시하지 않는다(moPct/moYoy가 null을 자동으로 "-"로 표시).
+    inc_tpRate: s.inc_target>0 ? s.inc_tp/s.inc_target*100 : null
   };
 }
 function setMetricsOverviewManager(mgr){
@@ -6661,7 +6685,7 @@ function renderMetricsOverview(){
         <td>${moFmt(m.g_target)}</td>
         <td>${moFmt(m.g_tp_cur)} ${moBadgeRank(gTpCurRankMap[r.branchId], branchListRaw.length)}</td><td class="muted">${moFmt(m.g_tp_lyClose)}</td><td>${moYoy(moCloseYoy(m.g_tp_cur, m.g_tp_lyClose))}</td><td>${moFmt(m.g_tp_lySame)}</td><td>${moYoy(m.g_tp_yoy)}</td><td>${moPct(m.g_tp_rate)} ${moBadgeRank(gTpRateRankMap[r.branchId], branchListRaw.length)}</td>
         <td>${moFmt(m.g_sp_cur)}</td><td class="muted">${moFmt(m.g_sp_lyClose)}</td><td>${moYoy(moCloseYoy(m.g_sp_cur, m.g_sp_lyClose))}</td><td>${moFmt(m.g_sp_lySame)}</td><td>${moYoy(m.g_sp_yoy)}</td><td>${moPct(m.g_sp_rate)} ${pctBadge(m.g_sp_rate||0)}</td>
-        <td>${moFmt(m.s_target)}</td><td>${moFmt(m.s_tp_cur)}</td><td>${moFmt(m.inc_expectedAmt)}</td>
+        <td>${moFmt(m.s_target)}</td><td>${moFmt(m.s_tp_cur)}</td>
       </tr>`;
     }).join('');
     const chartRows = branchListRaw.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
@@ -6672,21 +6696,21 @@ function renderMetricsOverview(){
         <table>
           <thead><tr>
             <th rowspan="2">지점</th><th rowspan="2">관리자</th><th rowspan="2">목표</th>
-            <th colspan="6">총판</th><th colspan="6">실판</th><th colspan="3">구독/인센티브</th>
+            <th colspan="6">총판</th><th colspan="6">실판</th><th colspan="2">구독</th>
           </tr>
-          <tr><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th><th>구독목표</th><th>구독총판</th><th>목표달성금액(예상)</th></tr></thead>
+          <tr><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th><th>당월</th><th>전년마감</th><th>전년마감비</th><th>전년동기</th><th>전년동기비</th><th>달성률</th><th>구독목표</th><th>구독총판</th></tr></thead>
           <tbody>
-            ${trs || '<tr><td colspan="18" class="muted">데이터 없음</td></tr>'}
+            ${trs || '<tr><td colspan="17" class="muted">데이터 없음</td></tr>'}
             <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
               <td colspan="2">합계</td><td>${moFmt(agg.g_target)}</td>
               <td>${moFmt(agg.g_tp_cur)}</td><td>${moFmt(agg.g_tp_lyClose)}</td><td>${moYoy(agg.g_tp_closeYoy)}</td><td>${moFmt(agg.g_tp_lySame)}</td><td>${moYoy(agg.g_tp_yoy)}</td><td>${moPct(agg.g_tp_rate)}</td>
               <td>${moFmt(agg.g_sp_cur)}</td><td>${moFmt(agg.g_sp_lyClose)}</td><td>${moYoy(agg.g_sp_closeYoy)}</td><td>${moFmt(agg.g_sp_lySame)}</td><td>${moYoy(agg.g_sp_yoy)}</td><td>${moPct(agg.g_sp_rate)}</td>
-              <td>${moFmt(agg.s_target)}</td><td>${moFmt(agg.s_tp_cur)}</td><td>${moFmt(agg.inc_expectedAmt)}</td>
+              <td>${moFmt(agg.s_target)}</td><td>${moFmt(agg.s_tp_cur)}</td>
             </tr>
           </tbody>
         </table>
         </div>
-        <div class="small-note" style="margin-top:8px;">※ 구독목표/구독총판은 [구독] 시트, 목표달성금액(예상)은 [인센티브] 시트의 "목표달성인센티브(예상 금액)" 기준입니다.</div>
+        <div class="small-note" style="margin-top:8px;">※ 구독목표/구독총판은 [구독] 시트 기준입니다. 인센티브(목표달성 예상금액 등)는 [지점별 인센티브(참고용)] 페이지에서 확인할 수 있습니다.</div>
       </div>
       <div class="card" style="margin-top:16px;">
         <h3>지점별 총판 달성률 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 14개 지점'}</small></h3>
@@ -6862,31 +6886,155 @@ function updateSubscriptionChannelField(period, idx, field, value){
   c[field] = (field==='channel') ? value : (Number(value)||0);
   saveDB();
 }
-// 외부 구독 실적 대시보드(chatgpt.site)를 우리 데이터로 흉내내는 대신, 그 사이트를 페이지 안에
-// iframe으로 그대로 띄운다. 이렇게 하면 그쪽 담당자가 사이트를 갱신할 때마다 우리가 별도로
-// 동기화하지 않아도 열 때마다 항상 그 시점의 최신 화면이 그대로 보인다 (완전한 실시간 연동).
-function subscriptionExternalDashboardHtml(){
-  return `
-    <div class="card" style="margin-bottom:16px;padding:0;overflow:hidden;">
-      <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-        <div>
-          <div style="font-weight:700;">📊 구독 실적 대시보드</div>
-          <div class="small-note" style="margin-top:2px;">외부 사이트를 그대로 표시합니다 · 사이트 담당자가 갱신하면 새로고침 시 자동으로 최신 내용이 반영됩니다.</div>
-        </div>
-        <a href="https://lg-subscription-dashboard.muddy-eel-2899.chatgpt.site/" target="_blank" rel="noopener noreferrer" class="btn btn-sm">새 탭에서 크게 보기 ↗</a>
-      </div>
-      <iframe src="https://lg-subscription-dashboard.muddy-eel-2899.chatgpt.site/" style="width:100%;height:1400px;border:none;display:block;" loading="lazy" title="구독 실적 대시보드"></iframe>
-    </div>`;
-}
-// 이 페이지에서 예전에 쓰던 관리자별 요약/채널 요약/상세표(computeSubscriptionView 기반 자체 표)는
-// 사용자 요청으로 모두 제거하고, 아래 외부 대시보드 임베드 하나만 남긴다.
-// (computeSubscriptionView/getSubscriptionData 등 데이터 함수 자체는 "목표 관리" 페이지의 추천 목표
+// 2026-08-25: 예전에는 외부 사이트(chatgpt.site)를 iframe으로 그대로 띄웠지만, 그 사이트 연결을
+// 없애고 [지표 한 눈에 보기] 업로드 파일의 "구독" 시트 데이터를 우리 쪽에서 직접 관리자별/지점별로
+// 정리해서 보여주도록 바꿨다. [지표 한 눈에 보기] 페이지의 moFmt/moPct/moYoy/moAggregate 등 표시·집계
+// 헬퍼를 그대로 재사용해서 같은 톤으로 보이게 한다.
+// (computeSubscriptionView/getSubscriptionData 등 예전 데이터 함수는 "목표 관리" 페이지의 추천 목표
 //  계산 등 다른 화면에서 계속 쓰이므로 그대로 둔다 — 이 페이지의 표시 방식만 바뀐 것.)
+function setSubOverviewManager(mgr){
+  state.subOverviewManager = mgr || null;
+  state.subOverviewBranch = null;
+  renderTab('subscription');
+}
+function setSubOverviewBranch(id){
+  state.subOverviewBranch = id || null;
+  renderTab('subscription');
+}
 function renderSubscription(){
-  return `
+  if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
+    return `
     <div class="page-title">구독 실적</div>
-    ${subscriptionExternalDashboardHtml()}
+    <div class="page-desc">관리자별·지점별 구독 목표/총판/실판/달성율/비중/전년 대비 실적을 한 화면에서 확인합니다.</div>
+    <div class="card"><div class="muted">아직 업로드된 자료가 없습니다. [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일(지표 한 눈에 보기용)을 업로드하면 이 페이지에도 함께 반영됩니다.${SESSION.role==='admin'?` <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
+  }
+  const allRows = DB.metricsOverview.rows;
+  const managers = moManagerList();
+  const selManager = state.subOverviewManager && managers.includes(state.subOverviewManager) ? state.subOverviewManager : null;
+  const branchesInScope = moBranchesOf(selManager);
+  const selBranch = state.subOverviewBranch && branchesInScope.some(r=>r.branchId===state.subOverviewBranch) ? state.subOverviewBranch : null;
+
+  const rowsForAgg = selBranch ? branchesInScope.filter(r=>r.branchId===selBranch) : branchesInScope;
+  const agg = moAggregate(rowsForAgg);
+  const teamAgg = moAggregate(allRows);
+  const selBranchRow = selBranch ? branchesInScope.find(r=>r.branchId===selBranch) : null;
+  const scopeLabel = selBranchRow ? selBranchRow.branchName : (selManager ? `${selManager} 관리자` : '경북팀 전체');
+
+  const managerPills = `<span class="branch-pill ${!selManager?'active':''}" onclick="setSubOverviewManager(null)">전체</span>` +
+    managers.map(m=>`<span class="branch-pill ${m===selManager?'active':''}" onclick="setSubOverviewManager('${escapeHtml(m)}')">${escapeHtml(m)}</span>`).join('');
+  const branchSelectHtml = `<select style="width:150px;font-size:12px;" onchange="setSubOverviewBranch(this.value)">` +
+    `<option value="">전체 지점</option>` +
+    branchesInScope.map(r=>`<option value="${r.branchId}" ${r.branchId===selBranch?'selected':''}>${escapeHtml(r.branchName)}</option>`).join('') +
+    `</select>`;
+
+  // 관리자별 요약 표 — 전체 보기(관리자/지점 미선택)일 때만 보여준다. 행을 클릭하면 해당 관리자
+  // 소속 지점 상세로 바로 이동한다.
+  const managerTrs = managers.map(m=>{
+    const a = moAggregate(moBranchesOf(m));
+    return `<tr style="cursor:pointer;" onclick="setSubOverviewManager('${escapeHtml(m)}')">
+      <td>${escapeHtml(m)}</td>
+      <td>${moFmt(a.s_target)}</td>
+      <td>${moFmt(a.s_tp_cur)}</td><td>${moPct(a.s_tp_rate)} ${pctBadge(a.s_tp_rate||0)}</td>
+      <td>${moFmt(a.s_sp_cur)}</td><td>${moPct(a.s_sp_rate)} ${pctBadge(a.s_sp_rate||0)}</td>
+      <td>${moPct(a.s_sp_ratio)}</td>
+      <td>${moYoy(a.s_tp_closeYoy)}</td><td>${moYoy(a.s_sp_closeYoy)}</td>
+    </tr>`;
+  }).join('');
+
+  // 지점별 상세 표 — Gross 탭과 같은 구성(당월/전년마감/전년마감比/전년동기/전년동기比/달성률)을
+  // 총판/실판 각각에 대해 구독 지표로 그대로 적용한다.
+  const sSpCurRankMap = {}; branchesInScope.slice().sort((a,b)=>(b.m.s_sp_cur||0)-(a.m.s_sp_cur||0)).forEach((x,i)=>{ sSpCurRankMap[x.branchId]=i+1; });
+  const branchTrs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
+    const m = r.m;
+    return `<tr>
+      <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
+      <td>${moFmt(m.s_target)}</td>
+      <td>${moFmt(m.s_tp_cur)}</td><td class="muted">${moFmt(m.s_tp_lyClose)}</td><td>${moYoy(moCloseYoy(m.s_tp_cur, m.s_tp_lyClose))}</td><td class="muted">${moFmt(m.s_tp_lySame)}</td><td>${moYoy(m.s_tp_yoy)}</td><td>${moPct(m.s_tp_rate)} ${pctBadge(m.s_tp_rate||0)}</td>
+      <td>${moFmt(m.s_sp_cur)} ${moBadgeRank(sSpCurRankMap[r.branchId], branchesInScope.length)}</td><td class="muted">${moFmt(m.s_sp_lyClose)}</td><td>${moYoy(moCloseYoy(m.s_sp_cur, m.s_sp_lyClose))}</td><td class="muted">${moFmt(m.s_sp_lySame)}</td><td>${moYoy(m.s_sp_yoy)}</td><td>${moPct(m.s_sp_rate)} ${pctBadge(m.s_sp_rate||0)}</td>
+      <td>${moPct(m.s_sp_ratio)}</td><td>${m.s_sp_qty!=null?Math.round(m.s_sp_qty).toLocaleString('ko-KR'):'-'}건</td>
+    </tr>`;
+  }).join('');
+
+  const chartRows = branchesInScope.map(r=>({key:r.branchId,label:r.branchName,v:r.m.s_sp_rate})).sort((a,b)=>(b.v||0)-(a.v||0));
+
+  const html = `
+    <div class="page-title">구독 실적</div>
+    <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "구독" 시트 기준, 관리자별·지점별 목표/총판/실판/달성율/비중/전년 대비 실적입니다. 기준일자 <b>${DB.metricsOverview.asOfDate}</b>(D-1, 전일)</div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>${managerPills}</div>
+        ${branchSelectHtml}
+      </div>
+    </div>
+
+    <div class="card" style="border-left:4px solid var(--primary);margin-bottom:16px;">
+      <div class="muted" style="font-size:12px;">${escapeHtml(scopeLabel)} 요약 · 단위 KK(백만원)</div>
+      <div class="mo-kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+        <div class="card stat-tile stat-tile-blue" style="min-width:150px;flex:1;">
+          <div class="stat-tile-sub">구독 총판</div>
+          <div class="stat-tile-num" style="font-size:19px;">${moFmt(agg.s_tp_cur)}</div>
+          <div class="stat-tile-sub" style="margin-top:2px;">달성률 ${moPct(agg.s_tp_rate)} · 전년마감比 ${moYoy(agg.s_tp_closeYoy)}</div>
+        </div>
+        <div class="card stat-tile stat-tile-pink" style="min-width:150px;flex:1;">
+          <div class="stat-tile-sub">구독 실판</div>
+          <div class="stat-tile-num" style="font-size:19px;">${moFmt(agg.s_sp_cur)}</div>
+          <div class="stat-tile-sub" style="margin-top:2px;">달성률 ${moPct(agg.s_sp_rate)} · 전년마감比 ${moYoy(agg.s_sp_closeYoy)}</div>
+        </div>
+        <div class="card stat-tile stat-tile-amber" style="min-width:150px;flex:1;">
+          <div class="stat-tile-sub">전체 판매 대비 구독 비중(실판)</div>
+          <div class="stat-tile-num" style="font-size:19px;">${moPct(agg.s_sp_ratio)}</div>
+          <div class="stat-tile-sub" style="margin-top:2px;">경북팀 평균 대비 ${moGap(agg.s_sp_ratio - teamAgg.s_sp_ratio)}</div>
+        </div>
+        <div class="card stat-tile ${(agg.s_sp_rate||0)>=100?'stat-tile-green':(agg.s_sp_rate||0)>=80?'stat-tile-amber':'stat-tile-pink'}" style="min-width:150px;flex:1;">
+          <div class="stat-tile-sub">실판 목표 달성률</div>
+          <div class="stat-tile-num" style="font-size:19px;">${moPct(agg.s_sp_rate)}</div>
+          <div class="progress-bar" style="margin-top:4px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(agg.s_sp_rate||0,100)}%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    ${(!selManager && !selBranch) ? `
+    <div class="card" style="margin-bottom:16px;">
+      <h3>👤 관리자별 구독 실적</h3>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>관리자</th><th>목표</th><th>총판</th><th>총판 달성률</th><th>실판</th><th>실판 달성률</th><th>비중</th><th>총판 전년마감比</th><th>실판 전년마감比</th></tr></thead>
+        <tbody>${managerTrs || '<tr><td colspan="9" class="muted">데이터 없음</td></tr>'}</tbody>
+      </table>
+      </div>
+      <div class="small-note" style="margin-top:8px;">※ 관리자 행을 클릭하면 소속 지점별 상세로 이동합니다.</div>
+    </div>` : ''}
+
+    <div class="card">
+      <h3>🏬 지점별 구독 실적 상세 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th rowspan="2">지점</th><th rowspan="2">관리자</th><th rowspan="2">목표</th>
+          <th colspan="6">총판</th><th colspan="6">실판</th><th rowspan="2">비중</th><th rowspan="2">건수</th>
+        </tr>
+        <tr><th>당월</th><th>전년마감</th><th>전년마감比</th><th>전년동기</th><th>전년동기比</th><th>달성률</th><th>당월</th><th>전년마감</th><th>전년마감比</th><th>전년동기</th><th>전년동기比</th><th>달성률</th></tr></thead>
+        <tbody>
+          ${branchTrs || '<tr><td colspan="17" class="muted">데이터 없음</td></tr>'}
+          <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
+            <td colspan="2">합계</td><td>${moFmt(agg.s_target)}</td>
+            <td>${moFmt(agg.s_tp_cur)}</td><td>${moFmt(agg.s_tp_lyClose)}</td><td>${moYoy(agg.s_tp_closeYoy)}</td><td>${moFmt(agg.s_tp_lySame)}</td><td>${moYoy(agg.s_tp_yoy)}</td><td>${moPct(agg.s_tp_rate)}</td>
+            <td>${moFmt(agg.s_sp_cur)}</td><td>${moFmt(agg.s_sp_lyClose)}</td><td>${moYoy(agg.s_sp_closeYoy)}</td><td>${moFmt(agg.s_sp_lySame)}</td><td>${moYoy(agg.s_sp_yoy)}</td><td>${moPct(agg.s_sp_rate)}</td>
+            <td>${moPct(agg.s_sp_ratio)}</td><td>${Math.round(agg.s_sp_qty||0).toLocaleString('ko-KR')}건</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <h3>지점별 구독 실판 달성률 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 '+branchesInScope.length+'개 지점'}</small></h3>
+      <div style="position:relative;height:${Math.max(160, chartRows.length*32)}px;"><canvas id="subOverviewChart"></canvas></div>
+    </div>
   `;
+  moRenderChart('subOverviewChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%'));
+  return html;
 }
 function rateBadgeKK(rate){
   if(rate==null) return `<span class="badge">-</span>`;
@@ -7393,6 +7541,163 @@ function renderSales(){
       ${salesMainContentHtml}
     </div>
     ${salesCompCardHtml}
+  `;
+}
+// =========================================================================
+// 지점별 인센티브(참고용) — [지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트("◆ 지점별
+// 인센티브" 표) 기반. 매니저(staff)는 본인 소속 지점의 상세 내역 + 전체(타 지점 포함) 합계만
+// 비교용으로 볼 수 있고, 관리자·임원(admin/exec)은 지점별 상세를 전부 조회할 수 있다.
+// 등록/수정/삭제 가능한 "인센티브 운영안" 공지는 기존 renderCollectionNotice 컴포넌트를 그대로
+// 재사용한다(별도 공지 게시판을 새로 만들지 않고, 키만 새로 부여).
+// =========================================================================
+function setIncOverviewManager(mgr){
+  state.incOverviewManager = mgr || null;
+  state.incOverviewBranch = null;
+  renderTab('incentiveOverview');
+}
+function setIncOverviewBranch(id){
+  state.incOverviewBranch = id || null;
+  renderTab('incentiveOverview');
+}
+function incBranchDetailRowsHtml(m){
+  return `
+    <tr><td>목표</td><td>${moFmt(m.inc_target)}</td></tr>
+    <tr><td>총판</td><td>${moFmt(m.inc_tp)}</td></tr>
+    <tr><td>총판 달성률</td><td>${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}</td></tr>
+    <tr><td>실판</td><td>${moFmt(m.inc_sp)}</td></tr>
+    <tr><td>지급률</td><td>${moPct(m.inc_payRate)}</td></tr>
+    <tr><td>전년比</td><td>${moYoy(m.inc_yoy)}</td></tr>
+    <tr><td>구독비중(총판)</td><td>${moPct(m.inc_subRatio)}</td></tr>
+    <tr><td>Grade 수당 계</td><td>${moFmt(m.inc_gradeSum)}</td></tr>
+    <tr><td>스탠바이미 판매(실판)</td><td>${m.inc_standbyMeSp!=null?Math.round(m.inc_standbyMeSp).toLocaleString('ko-KR'):'-'}</td></tr>
+    <tr><td>스탠바이미 수당</td><td>${moFmt(m.inc_standbyMeAmt)}</td></tr>
+    <tr><td>일시불 수당(TV/냉장고/세탁기/에어컨)</td><td>${moFmt(m.inc_flatTv)} / ${moFmt(m.inc_flatFridge)} / ${moFmt(m.inc_flatWasher)} / ${moFmt(m.inc_flatAircon)}</td></tr>
+    <tr style="font-weight:700;"><td>목표달성인센티브(예상 금액)</td><td>${moFmt(m.inc_expectedAmt)}</td></tr>
+  `;
+}
+function renderIncentiveOverview(){
+  const noticeHtml = renderCollectionNotice('incentiveOverviewNotice', 'incentiveOverview');
+  if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
+    return `
+    <div class="page-title">지점별 인센티브(참고용)</div>
+    <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트 기준 지점별 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다.</div>
+    ${noticeHtml}
+    <div class="card"><div class="muted">아직 업로드된 자료가 없습니다.${SESSION.role==='admin'?` [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다. <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
+  }
+  const allRows = DB.metricsOverview.rows;
+  const teamAgg = moAggregate(allRows);
+  const canBrowseAll = canSwitchBranch(); // 관리자·임원: 전 지점 상세 조회 가능
+
+  const pageHeader = `
+    <div class="page-title">지점별 인센티브(참고용)</div>
+    <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트("◆ 지점별 인센티브" 표) 기준 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다. 기준일자 <b>${DB.metricsOverview.asOfDate}</b>(D-1, 전일)</div>
+    ${noticeHtml}`;
+
+  if(!canBrowseAll){
+    // ---- 매니저(staff) 화면: 본인 지점 상세 + 전체(타 지점 포함) 합계 비교만 제공 ----
+    const myRow = allRows.find(r=>r.branchId===SESSION.branchId);
+    const rankTotalOf = allRows.length;
+    const rankExpected = myRow ? moRankOf(allRows.map(r=>({key:r.branchId, val:r.m.inc_expectedAmt})), x=>x.val, SESSION.branchId) : null;
+    const rankTpRate = myRow ? moRankOf(allRows.map(r=>({key:r.branchId, val:r.m.inc_tpRate})), x=>x.val, SESSION.branchId) : null;
+    if(!myRow){
+      return `${pageHeader}<div class="card"><div class="muted">소속 지점(${branchName(SESSION.branchId)})의 인센티브 자료를 찾지 못했습니다. 최신 파일이 반영됐는지 확인해 주세요.</div></div>`;
+    }
+    return `
+      ${pageHeader}
+      <div class="card" style="border-left:4px solid var(--primary);margin-bottom:16px;">
+        <div class="muted" style="font-size:12px;">${escapeHtml(myRow.branchName)} · 단위 KK(백만원)</div>
+        <h3 style="margin-top:4px;">내 지점 인센티브 상세</h3>
+        <div style="overflow-x:auto;margin-top:8px;">
+        <table>
+          <tbody>${incBranchDetailRowsHtml(myRow.m)}</tbody>
+        </table>
+        </div>
+      </div>
+      <div class="card ai-box">
+        <div class="ai-title">📊 타 지점 합계 대비 비교</div>
+        <div>경북팀 전체(${rankTotalOf}개 지점) 목표달성인센티브(예상) 합계 <b>${moFmt(teamAgg.inc_expectedAmt)}</b> 중 우리 지점 <b>${moFmt(myRow.m.inc_expectedAmt)}</b> (${rankExpected?`${rankExpected}위/${rankTotalOf}`:'-'})</div>
+        <div style="margin-top:6px;">경북팀 전체 총판 달성률 평균 <b>${moPct(teamAgg.g_tp_rate)}</b> 대비 우리 지점 총판 달성률 <b>${moPct(myRow.m.inc_tpRate)}</b> (${rankTpRate?`${rankTpRate}위/${rankTotalOf}`:'-'})</div>
+        <div class="small-note" style="margin-top:8px;">※ 개인정보 보호를 위해 다른 지점의 개별 상세 수치는 표시되지 않고, 전체 합계·평균만 비교용으로 제공됩니다.</div>
+      </div>
+    `;
+  }
+
+  // ---- 관리자/임원(admin/exec) 화면: 전 지점 상세 조회 ----
+  const managers = moManagerList();
+  const selManager = state.incOverviewManager && managers.includes(state.incOverviewManager) ? state.incOverviewManager : null;
+  const branchesInScope = moBranchesOf(selManager);
+  const selBranch = state.incOverviewBranch && branchesInScope.some(r=>r.branchId===state.incOverviewBranch) ? state.incOverviewBranch : null;
+  const rowsForAgg = selBranch ? branchesInScope.filter(r=>r.branchId===selBranch) : branchesInScope;
+  const agg = moAggregate(rowsForAgg);
+  const selBranchRow = selBranch ? branchesInScope.find(r=>r.branchId===selBranch) : null;
+  const scopeLabel = selBranchRow ? selBranchRow.branchName : (selManager ? `${selManager} 관리자` : '경북팀 전체');
+
+  const managerPills = `<span class="branch-pill ${!selManager?'active':''}" onclick="setIncOverviewManager(null)">전체</span>` +
+    managers.map(m=>`<span class="branch-pill ${m===selManager?'active':''}" onclick="setIncOverviewManager('${escapeHtml(m)}')">${escapeHtml(m)}</span>`).join('');
+  const branchSelectHtml = `<select style="width:150px;font-size:12px;" onchange="setIncOverviewBranch(this.value)">` +
+    `<option value="">전체 지점</option>` +
+    branchesInScope.map(r=>`<option value="${r.branchId}" ${r.branchId===selBranch?'selected':''}>${escapeHtml(r.branchName)}</option>`).join('') +
+    `</select>`;
+
+  if(selBranchRow){
+    return `
+      ${pageHeader}
+      <div class="card" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div>${managerPills}</div>
+          ${branchSelectHtml}
+        </div>
+      </div>
+      <div class="card" style="border-left:4px solid var(--primary);">
+        <div class="muted" style="font-size:12px;">${escapeHtml(selBranchRow.branchName)} · 관리자 ${escapeHtml(selBranchRow.manager||'-')} · 단위 KK(백만원)</div>
+        <h3 style="margin-top:4px;">지점 인센티브 상세</h3>
+        <div style="overflow-x:auto;margin-top:8px;">
+        <table><tbody>${incBranchDetailRowsHtml(selBranchRow.m)}</tbody></table>
+        </div>
+      </div>
+    `;
+  }
+
+  const expectedRankMap = {}; branchesInScope.slice().sort((a,b)=>(b.m.inc_expectedAmt||0)-(a.m.inc_expectedAmt||0)).forEach((x,i)=>{ expectedRankMap[x.branchId]=i+1; });
+  const trs = branchesInScope.map(r=>{
+    const m = r.m;
+    return `<tr style="cursor:pointer;" onclick="setIncOverviewBranch('${r.branchId}')">
+      <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
+      <td>${moFmt(m.inc_target)}</td>
+      <td>${moFmt(m.inc_tp)}</td><td>${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}</td>
+      <td>${moFmt(m.inc_sp)}</td><td>${moPct(m.inc_payRate)}</td>
+      <td>${moYoy(m.inc_yoy)}</td><td>${moPct(m.inc_subRatio)}</td>
+      <td>${moFmt(m.inc_gradeSum)}</td>
+      <td style="font-weight:700;">${moFmt(m.inc_expectedAmt)} ${moBadgeRank(expectedRankMap[r.branchId], branchesInScope.length)}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    ${pageHeader}
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>${managerPills}</div>
+        ${branchSelectHtml}
+      </div>
+    </div>
+    <div class="card">
+      <h3>🏬 지점별 인센티브 현황 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원) · 행을 클릭하면 상세로 이동</small></h3>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>지점</th><th>관리자</th><th>목표</th><th>총판</th><th>총판 달성률</th><th>실판</th><th>지급률</th><th>전년比</th><th>구독비중</th><th>Grade수당계</th><th>목표달성인센티브(예상)</th></tr></thead>
+        <tbody>
+          ${trs || '<tr><td colspan="11" class="muted">데이터 없음</td></tr>'}
+          <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
+            <td colspan="2">합계</td><td>${moFmt(agg.inc_target)}</td>
+            <td>${moFmt(agg.inc_tp)}</td><td>${moPct(agg.inc_tpRate)}</td>
+            <td>${moFmt(agg.inc_sp)}</td><td>${moPct(agg.inc_payRate)}</td>
+            <td>${moYoy(agg.inc_yoy)}</td><td>${moPct(agg.inc_subRatio)}</td>
+            <td>${moFmt(agg.inc_gradeSum)}</td><td>${moFmt(agg.inc_expectedAmt)}</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </div>
   `;
 }
 function setSalesEmp(val){ state.salesEmp = val; renderTab('sales'); }
@@ -11617,16 +11922,6 @@ function eduScheduleCalendarHtml(cat){
       ${filterDate ? `<div class="small-note" style="margin-top:10px;">📌 <b>${filterDate}</b> 일정만 보는 중 · <span style="color:var(--primary);cursor:pointer;text-decoration:underline;" onclick="toggleEduCalFilterDate('${cat}','${filterDate}')">전체 보기</span></div>` : `<div class="small-note" style="margin-top:10px;">날짜를 클릭하면 해당 날짜 일정만 볼 수 있습니다.</div>`}
     </div>`;
 }
-// 2026-08-24: 본부(평택)교육/사내교육/기타교육 3개로 나뉘어 있던 페이지를 한 페이지로
-// 통합했다 - pill로 카테고리를 전환하는 대신, 한 목록·한 달력에 전부 함께 표시하고
-// 등록/수정 시 "구분" 항목으로 어느 카테고리인지 고른다.
-function eduCompletionCatPills(activeCat){
-  return `<div style="margin-bottom:14px;">
-    <span class="branch-pill ${activeCat==='video'?'active':''}" onclick="renderTab('eduVideo')">화상교육</span>
-    <span class="branch-pill ${activeCat==='test'?'active':''}" onclick="renderTab('eduTest')">월간test</span>
-    <span class="branch-pill ${activeCat==='aiRp'?'active':''}" onclick="renderTab('eduAiRp')">AI R/P</span>
-  </div>`;
-}
 const EDU_SCHEDULE_CAT_SELECT_OPTIONS = [
   {value:'hq', label:'본부(평택)교육'},
   {value:'inhouse', label:'사내교육'},
@@ -11845,23 +12140,13 @@ function eduCompletionRecordFor(cat, empId){
   return (DB.eduCompletion[cat]||[]).find(r=>r.empId===empId);
 }
 // video/test는 "이수" 개념, AI R/P는 "실행" 개념이라 문구를 분리해 자연스러운 한국어로 표시
-function eduCompletionWording(cat){
-  if(cat==='aiRp'){
-    return { done:'실행완료', notDone:'미실행', pageTitle:'AI R/P 실행 완료 여부', rateWord:'실행율',
-      doneCountWord:'실행 완료', uploadTitle:'실행 현황 파일 업로드', uploadDesc:'사번/이름/실행여부(구분)' };
-  }
-  return { done:'이수완료', notDone:'미이수', pageTitle:`${eduCategoryLabel(cat)} 이수율 확인`, rateWord:'이수율',
-    doneCountWord:'이수 완료', uploadTitle:'이수 현황 파일 업로드', uploadDesc:'사번/이름/이수여부(구분)' };
-}
-function renderEduCompletion(cat){
-  // 화상교육은 "기준날짜 + 회차별(1~4차) 교육명/이수여부"가 포함된 신규 서식 파일이
-  // 한 번이라도 업로드되면, 이후로는 회차별 상세를 한눈에 보여주는 전용 화면을 사용한다.
-  if(cat==='video' && DB.eduVideoRich && DB.eduVideoRich.sessions && DB.eduVideoRich.sessions.length>0){
-    return renderEduVideoRich();
-  }
+// 2026-08-25: 화상교육/월간test/AI R/P 3개로 나뉘어 pill로 전환하던 페이지를, 직원 한 명당
+// 한 줄로 3개 항목의 완료/미완료 여부를 한눈에 볼 수 있는 표 하나로 통합했다. 화상교육이
+// 회차별(1~4차) 상세 파일로 업로드된 경우에는 회차별 컬럼도 오른쪽에 함께 붙여서 보여준다.
+function renderEduCompletionAll(){
   const isAdmin = SESSION.role==='admin';
-  // 조회 범위(전 지점 전환)는 관리자·임원 모두 가능하지만, showToggleBtn(AI R/P 실행여부 수동
-  // 전환) 등 실제 변경 권한은 isAdmin 그대로 유지해서 임원은 조회만 할 수 있게 한다.
+  // 조회 범위(전 지점 전환)는 관리자·임원 모두 가능하지만, AI R/P 실행여부 수동 전환 등
+  // 실제 변경 권한은 isAdmin 그대로 유지해서 임원은 조회만 할 수 있게 한다.
   const canBrowseAll = canSwitchBranch();
   const myBranch = SESSION.branchId || DB.branches[0].id;
   const scopeBranch = canBrowseAll ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : null) : myBranch;
@@ -11869,64 +12154,106 @@ function renderEduCompletion(cat){
   let staffList = DB.users.filter(u=>u.role==='staff');
   if(scopeBranch) staffList = staffList.filter(u=>u.branchId===scopeBranch);
 
+  const richVideo = (DB.eduVideoRich && DB.eduVideoRich.sessions && DB.eduVideoRich.sessions.length>0) ? DB.eduVideoRich : null;
+  const videoSessions = richVideo ? richVideo.sessions : [];
+
   const records = staffList.map(u=>{
-    const rec = eduCompletionRecordFor(cat, u.empId);
+    let videoHasData, videoDone, videoSummary, videoSessionStatus = {};
+    if(richVideo){
+      const rec = (richVideo.records||[]).find(r=>r.empId===u.empId);
+      videoSessions.forEach(s=>{ videoSessionStatus[s.no] = rec ? (rec.sessionStatus[s.no]||null) : null; });
+      const incomplete = videoSessions.filter(s=>videoSessionStatus[s.no]==='미이수');
+      videoHasData = !!rec;
+      videoDone = rec ? incomplete.length===0 : false;
+      videoSummary = !rec ? null : (incomplete.length>0 ? `${incomplete.map(s=>s.no+'차').join(',')} 미이수` : '전체 이수');
+    } else {
+      const rec = eduCompletionRecordFor('video', u.empId);
+      videoHasData = !!rec;
+      videoDone = rec ? !!rec.completed : false;
+      videoSummary = null;
+    }
+    const testRec = eduCompletionRecordFor('test', u.empId);
+    const aiRec = eduCompletionRecordFor('aiRp', u.empId);
+    const testDone = testRec ? !!testRec.completed : false;
+    const aiDone = aiRec ? !!aiRec.completed : false;
+
+    const incompleteLabels = [];
+    if(!videoDone) incompleteLabels.push('화상교육');
+    if(!testDone) incompleteLabels.push('월간test');
+    if(!aiDone) incompleteLabels.push('AI R/P');
+    const allDone = incompleteLabels.length===0;
+
     return { empId:u.empId, name:u.name, branchId:u.branchId,
-      completed: rec ? !!rec.completed : false,
-      completedDate: rec ? rec.completedDate : null,
-      period: rec ? rec.period : null,
-      submitCount: rec && rec.submitCount!=null ? rec.submitCount : null,
-      score: rec && rec.score!=null ? rec.score : null };
-  }).sort((a,b)=> a.completed===b.completed ? a.name.localeCompare(b.name) : (a.completed?1:-1));
+      videoHasData, videoDone, videoSummary, videoSessionStatus,
+      testDone, aiDone, allDone, incompleteLabels };
+  }).sort((a,b)=> a.allDone===b.allDone ? a.name.localeCompare(b.name) : (a.allDone?1:-1));
 
   const total = records.length;
-  const doneCount = records.filter(r=>r.completed).length;
-  const rate = total>0 ? (doneCount/total*100) : 0;
+  const allDoneCount = records.filter(r=>r.allDone).length;
+  const videoDoneCount = records.filter(r=>r.videoDone).length;
+  const testDoneCount = records.filter(r=>r.testDone).length;
+  const aiDoneCount = records.filter(r=>r.aiDone).length;
+  const overallRate = total>0 ? (allDoneCount/total*100) : 0;
 
   const branchPills = canBrowseAll ? `<div style="margin-bottom:14px;">` +
-    DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); renderTab('${eduTabName(cat)}')">${b.name}</span>`).join('') +
-    `<span class="branch-pill ${!scopeBranch?'active':''}" onclick="state.viewBranchId='ALL'; renderTab('${eduTabName(cat)}')">전체 보기</span>` +
+    DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); renderTab('eduVideo')">${b.name}</span>`).join('') +
+    `<span class="branch-pill ${!scopeBranch?'active':''}" onclick="state.viewBranchId='ALL'; renderTab('eduVideo')">전체 보기</span>` +
     `</div>` : '';
 
-  const w = eduCompletionWording(cat);
-  // 화상교육/월간test는 업로드 파일 데이터를 신뢰하는 것이 원칙이므로, 관리자가 수동으로
-  // 이수/미이수를 뒤집는 버튼을 제공하지 않는다(값이 잘못됐다면 최신 파일을 다시 올려서 갱신).
-  // AI R/P "실행여부"는 파일 업로드가 아닌 관리자 수기 관리 항목이라 토글 버튼을 그대로 유지한다.
-  const showToggleBtn = isAdmin && cat==='aiRp';
-  const showAiRpCols = cat==='aiRp';
-  const rows = records.map(r=>`
-    <tr>
+  const sessionHeaders = videoSessions.map(s=>`<th>${s.no}차<br><span class="muted" style="font-weight:400;font-size:11px;">${escapeHtml(s.title)}</span></th>`).join('');
+  // AI R/P "실행여부"는 파일 업로드가 아닌 관리자 수기 관리 항목이라 토글 버튼을 그대로 유지한다
+  // (화상교육/월간test는 업로드 파일 데이터를 신뢰하는 것이 원칙이라 수동 전환 버튼이 없다).
+  const showAiToggle = isAdmin;
+
+  const rows = records.map(r=>{
+    const videoCell = richVideo
+      ? (!r.videoHasData ? `<span class="muted">데이터 없음</span>` : (r.videoDone ? `<span class="badge good">전체 이수</span>` : `<span class="badge bad">${escapeHtml(r.videoSummary)}</span>`))
+      : (r.videoDone ? `<span class="badge good">이수완료</span>` : `<span class="badge bad">미이수</span>`);
+    const sessionCells = videoSessions.map(s=>{
+      const v = r.videoSessionStatus[s.no];
+      if(v==='이수' || v==='완료') return `<td><span class="badge good">${v}</span></td>`;
+      if(v==='미이수') return `<td><span class="badge bad">미이수</span></td>`;
+      return `<td><span class="muted">-</span></td>`;
+    }).join('');
+    const testCell = r.testDone ? `<span class="badge good">이수완료</span>` : `<span class="badge bad">미이수</span>`;
+    const aiCell = (r.aiDone ? `<span class="badge good">실행완료</span>` : `<span class="badge bad">미실행</span>`)
+      + (showAiToggle ? ` <button class="btn btn-sm" style="margin-left:4px;" onclick="toggleEduCompletion('aiRp','${r.empId}')">${r.aiDone?'미실행으로 변경':'실행완료로 변경'}</button>` : '');
+    const overallCell = r.allDone ? `<span class="badge good">전체 완료</span>` : `<span class="badge bad">${r.incompleteLabels.join(', ')} 필요</span>`;
+    return `<tr>
       <td>${branchName(r.branchId)}</td>
       <td>${r.name} <span class="muted">(${r.empId})</span></td>
-      <td>${r.completed ? `<span class="badge good">${w.done}</span>` : `<span class="badge bad">${w.notDone}</span>`}</td>
-      <td class="muted">${r.completedDate||'-'}</td>
-      ${showAiRpCols ? `<td class="muted">${r.submitCount!=null ? r.submitCount+'회' : '-'}</td>` : ''}
-      ${showAiRpCols ? `<td class="muted">${r.score!=null ? r.score : '-'}</td>` : ''}
-      ${showToggleBtn ? `<td><button class="btn btn-sm" onclick="toggleEduCompletion('${cat}','${r.empId}')">${r.completed?`${w.notDone}로 변경`:`${w.done}로 변경`}</button></td>` : ''}
-    </tr>`).join('') || `<tr><td colspan="${4+(showAiRpCols?2:0)+(showToggleBtn?1:0)}" class="muted">대상자가 없습니다.</td></tr>`;
+      <td>${overallCell}</td>
+      <td>${videoCell}</td>
+      ${sessionCells}
+      <td>${testCell}</td>
+      <td>${aiCell}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="${6+videoSessions.length}" class="muted">대상자가 없습니다.</td></tr>`;
 
   const uploadHtml = isAdmin ? `
     <div class="card" style="margin-bottom:16px;">
-      <div class="small-note">📋 ${w.uploadTitle} 업로드는 <b>[시스템 관리]</b> 메뉴로 이동했습니다.</div>
+      <div class="small-note">📋 화상교육/월간test/AI R/P 이수 현황 파일 업로드는 <b>[시스템 관리]</b> 메뉴로 이동했습니다.</div>
     </div>` : '';
 
   return `
-    ${eduCompletionCatPills(cat)}
-    <div class="page-title">${w.pageTitle}</div>
-    <div class="page-desc">혼매경북팀(경북2담당) 소속 인원 기준 ${eduCategoryLabel(cat)} 현황입니다.</div>
-    ${cat==='aiRp' ? renderCollectionNotice('eduAiRp', eduTabName(cat)) : ''}
+    <div class="page-title">교육 이수율 확인</div>
+    <div class="page-desc">혼매경북팀(경북2담당) 소속 인원 기준으로 화상교육·월간test·AI R/P 이수 현황을 한 화면에서 한눈에 확인할 수 있습니다.${richVideo ? ` (화상교육 기준날짜: <b>${richVideo.refDate}</b>)` : ''}</div>
+    ${renderCollectionNotice('eduAiRp', 'eduVideo')}
     ${branchPills}
     <div class="card ai-box" style="margin-bottom:16px;">
-      <div class="ai-title">📊 ${w.rateWord} 현황</div>
-      <div>전체 <b>${total}명</b> 중 ${w.doneCountWord} <b>${doneCount}명</b> — ${w.rateWord} <b>${rate.toFixed(1)}%</b></div>
-      ${(total-doneCount)>0 ? `<div style="margin-top:6px;">${w.notDone} <b>${total-doneCount}명</b>: ${records.filter(r=>!r.completed).map(r=>r.name).join(', ')}</div>` : ''}
+      <div class="ai-title">📊 이수 현황 요약</div>
+      <div>전체 <b>${total}명</b> 중 3개 항목 모두 완료 <b>${allDoneCount}명</b> — 종합 이수율 <b>${overallRate.toFixed(1)}%</b></div>
+      <div style="margin-top:6px;">화상교육 <b>${videoDoneCount}/${total}</b> · 월간test <b>${testDoneCount}/${total}</b> · AI R/P <b>${aiDoneCount}/${total}</b></div>
+      ${records.filter(r=>!r.allDone).length>0 ? `<div style="margin-top:6px;">미완료 항목이 있는 인원: ${records.filter(r=>!r.allDone).map(r=>`${r.name}(${r.incompleteLabels.join(',')})`).join(', ')}</div>` : ''}
     </div>
     ${uploadHtml}
     <div class="card">
+      <div class="table-scroll">
       <table>
-        <thead><tr><th>지점</th><th>이름</th><th>${w.rateWord.includes('실행')?'실행여부':'이수여부'}</th><th>${w.rateWord.includes('실행')?'실행일':'이수일'}</th>${showAiRpCols?'<th>제출횟수</th><th>총점</th>':''}${showToggleBtn?'<th></th>':''}</tr></thead>
+        <thead><tr><th>지점</th><th>이름(사번)</th><th>종합상태</th><th>화상교육</th>${sessionHeaders}<th>월간test</th><th>AI R/P</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
     </div>
   `;
 }
@@ -12219,96 +12546,6 @@ function handleEduVideoRichFile(evt){
   };
   reader.readAsArrayBuffer(file);
 }
-function renderEduVideoRich(){
-  const isAdmin = SESSION.role==='admin';
-  // 조회 범위(전 지점 전환)는 관리자·임원 모두 가능하지만, uploadHtml(파일 업로드 링크) 등
-  // 실제 변경 권한은 isAdmin 그대로 유지해서 임원은 조회만 할 수 있게 한다.
-  const canBrowseAll = canSwitchBranch();
-  const myBranch = SESSION.branchId || DB.branches[0].id;
-  const scopeBranch = canBrowseAll ? (state.viewBranchId && state.viewBranchId!=='ALL' ? state.viewBranchId : null) : myBranch;
-  const rich = DB.eduVideoRich;
-  const sessions = rich.sessions;
-
-  let staffList = DB.users.filter(u=>u.role==='staff');
-  if(scopeBranch) staffList = staffList.filter(u=>u.branchId===scopeBranch);
-
-  const records = staffList.map(u=>{
-    const rec = (rich.records||[]).find(r=>r.empId===u.empId);
-    const sessionStatus = {};
-    sessions.forEach(s=>{ sessionStatus[s.no] = rec ? (rec.sessionStatus[s.no]||null) : null; });
-    const incompleteSessions = sessions.filter(s=>sessionStatus[s.no]==='미이수');
-    const final = rec ? rec.final : null;
-    return { empId:u.empId, name:u.name, branchId:u.branchId, sessionStatus, incompleteSessions, final, hasData: !!rec };
-  }).sort((a,b)=>{
-    const aBad = a.incompleteSessions.length>0, bBad = b.incompleteSessions.length>0;
-    if(aBad!==bBad) return aBad ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-
-  const total = records.length;
-  const fullyDoneCount = records.filter(r=>r.hasData && r.incompleteSessions.length===0).length;
-  const rate = total>0 ? (fullyDoneCount/total*100) : 0;
-
-  const branchPills = canBrowseAll ? `<div style="margin-bottom:14px;">` +
-    DB.branches.map(b=>`<span class="branch-pill ${b.id===scopeBranch?'active':''}" onclick="setViewBranch('${b.id}'); renderTab('eduVideo')">${b.name}</span>`).join('') +
-    `<span class="branch-pill ${!scopeBranch?'active':''}" onclick="state.viewBranchId='ALL'; renderTab('eduVideo')">전체 보기</span>` +
-    `</div>` : '';
-
-  // 회차별 컬럼은 "이수"/"미이수", 최종 컬럼은 "완료"/"미이수"로 표기되어 어휘가 다르다.
-  // 두 어휘 모두 있는 그대로("완료"면 완료라고) 보여주되, 배지 색상만 통일한다.
-  const statusBadge = (v)=>{
-    if(v==='이수' || v==='완료') return `<span class="badge good">${v}</span>`;
-    if(v==='미이수') return `<span class="badge bad">미이수</span>`;
-    return `<span class="muted">-</span>`;
-  };
-
-  const sessionHeaders = sessions.map(s=>`<th>${s.no}차<br><span class="muted" style="font-weight:400;font-size:11px;">${escapeHtml(s.title)}</span></th>`).join('');
-
-  const rows = records.map(r=>{
-    const summaryHtml = !r.hasData
-      ? `<span class="muted">데이터 없음</span>`
-      : (r.incompleteSessions.length>0
-        ? `<span class="badge bad">${r.incompleteSessions.map(s=>s.no+'차').join(', ')} 미이수</span>`
-        : `<span class="badge good">전체 이수</span>`);
-    const cells = sessions.map(s=>`<td>${statusBadge(r.sessionStatus[s.no])}</td>`).join('');
-    return `<tr>
-      <td>${branchName(r.branchId)}</td>
-      <td>${r.name} <span class="muted">(${r.empId})</span></td>
-      <td>${summaryHtml}</td>
-      <td>${statusBadge(r.final)}</td>
-      ${cells}
-    </tr>`;
-  }).join('') || `<tr><td colspan="${4+sessions.length}" class="muted">대상자가 없습니다.</td></tr>`;
-
-  const incompleteRecords = records.filter(r=>r.incompleteSessions.length>0);
-  const noDataNames = records.filter(r=>!r.hasData).map(r=>r.name);
-
-  const uploadHtml = isAdmin ? `
-    <div class="card" style="margin-bottom:16px;">
-      <div class="small-note">📋 화상교육 이수율 파일 업로드는 <b>[시스템 관리]</b> 메뉴로 이동했습니다.</div>
-    </div>` : '';
-
-  return `
-    ${eduCompletionCatPills('video')}
-    <div class="page-title">화상교육 이수율 확인</div>
-    <div class="page-desc">혼매경북팀(경북2담당) 소속 인원 기준 화상교육 현황입니다. (기준날짜: <b>${rich.refDate}</b>)</div>
-    ${branchPills}
-    <div class="card ai-box" style="margin-bottom:16px;">
-      <div class="ai-title">📊 이수율 현황 (기준날짜: ${rich.refDate})</div>
-      <div>전체 <b>${total}명</b> 중 전 회차 이수 <b>${fullyDoneCount}명</b> — 이수율 <b>${rate.toFixed(1)}%</b></div>
-      ${incompleteRecords.length>0 ? `<div style="margin-top:6px;">회차별 미이수자: ${incompleteRecords.map(r=>`${r.name}(${r.incompleteSessions.map(s=>s.no+'차').join(',')})`).join(', ')}</div>` : ''}
-      ${noDataNames.length>0 ? `<div style="margin-top:6px;" class="muted">데이터 없음: ${noDataNames.join(', ')}</div>` : ''}
-    </div>
-    ${uploadHtml}
-    <div class="card" style="overflow-x:auto;">
-      <table>
-        <thead><tr><th>지점</th><th>이름(사번)</th><th>미이수 요약</th><th>최종</th>${sessionHeaders}</tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  `;
-}
-
 // ---- 로그인 알림: 2일 전 교육 일정 안내 + 미이수 알림 ----
 function computeEduReminders(){
   if(!SESSION || SESSION.role!=='staff') return [];
@@ -13550,13 +13787,10 @@ function applyReadOnlyLockdown(){
   });
   main.querySelectorAll('input[type=file]').forEach(inp=>{ inp.disabled = true; inp.title = msg; });
 }
-// 구독 실적 페이지는 외부 대시보드를 iframe으로 그대로 띄우는 화면이라 우리 쪽 표를 내보낼
-// 대상 자체가 없고, 화면 우상단에 고정(position:fixed)된 엑셀/PDF 버튼이 iframe 내부의 자체
-// 헤더(실적 월 선택, 새로고침 버튼 등)와 겹쳐 화면이 깨져 보이는 문제가 있어 이 탭에서는 숨긴다.
 function updateExportToolbarVisibility(tab){
   const el = document.getElementById('exportToolbar');
   if(!el) return;
-  el.style.display = (tab==='subscription') ? 'none' : '';
+  el.style.display = '';
   const isPhotoAdmin = (tab==='collectPhoto' && SESSION && SESSION.role==='admin');
   const photoBtn = document.getElementById('execPhotoDownloadBtn');
   if(photoBtn) photoBtn.style.display = isPhotoAdmin ? '' : 'none';
