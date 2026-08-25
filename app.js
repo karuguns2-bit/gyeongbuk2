@@ -12012,6 +12012,56 @@ function parseEduCompletionRows(rows){
   }
   return out;
 }
+// 월간test (세일즈톡 TEST 응시현황) 파일의 "Raw(매니저)" 시트 전용 파서.
+// 이 시트는 제목행 2줄 + 빈 행 다음에 실제 헤더가 오고("ID"/"사원명" 열로 앵커),
+// 응시/미응시 결과가 담긴 열은 헤더 텍스트가 비어있는 대신 "완료"/"미응시자" 값으로
+// 채워져 있어 값 빈도 기반으로 해당 열을 찾는다(다음 달 파일에서 열 위치가 살짝
+// 바뀌어도 흔들리지 않도록 하기 위함).
+function findEduTestStatusCol(rows, headerRowIdx, excludeCols){
+  const STATUS_TOKENS = new Set(['완료','미응시자','응시','미응시','이수','미이수']);
+  const counts = {};
+  const scanEnd = Math.min(rows.length, headerRowIdx+300);
+  for(let r=headerRowIdx+1; r<scanEnd; r++){
+    const row = rows[r]; if(!row) continue;
+    row.forEach((v,c)=>{
+      if(excludeCols.includes(c)) return;
+      const s = String(v==null?'':v).trim();
+      if(STATUS_TOKENS.has(s)) counts[c] = (counts[c]||0)+1;
+    });
+  }
+  let bestCol = -1, bestCount = 0;
+  Object.keys(counts).forEach(c=>{ if(counts[c]>bestCount){ bestCount=counts[c]; bestCol=Number(c); } });
+  return bestCol;
+}
+function parseEduTestRawManagerRows(rows){
+  if(!rows || rows.length<2) return [];
+  let headerRowIdx = -1, empIdCol = -1, nameCol = -1;
+  for(let r=0; r<Math.min(rows.length, 10); r++){
+    const row = (rows[r]||[]).map(c=>String(c==null?'':c).trim());
+    const idIdx = row.findIndex(c=>c==='ID');
+    const nameIdx = row.findIndex(c=>c==='사원명');
+    if(idIdx>=0 && nameIdx>=0){ headerRowIdx = r; empIdCol = idIdx; nameCol = nameIdx; break; }
+  }
+  if(headerRowIdx<0) return [];
+  const statusCol = findEduTestStatusCol(rows, headerRowIdx, [empIdCol, nameCol]);
+  const out = [];
+  for(let r=headerRowIdx+1; r<rows.length; r++){
+    const row = rows[r]; if(!row) continue;
+    const rawId = row[empIdCol];
+    if(rawId==null || rawId==='') continue;
+    const empId = bareEmpId(rawId);
+    const user = DB.users.find(u=>u.empId===empId && u.role==='staff');
+    if(!user) continue; // 혼매경북팀/경북2담당 소속(DB.users)이 아니면 자동 제외
+    const rawStatus = statusCol>=0 ? String(row[statusCol]==null?'':row[statusCol]).trim() : '';
+    const completed = rawStatus==='완료' || rawStatus==='응시' || rawStatus==='이수';
+    out.push({
+      empId, name: (row[nameCol]!=null && String(row[nameCol]).trim()!=='') ? String(row[nameCol]).trim() : user.name,
+      branchId: user.branchId, period: null,
+      completed, completedDate: completed ? todayStr() : null
+    });
+  }
+  return out;
+}
 function handleEduCompletionFile(evt, cat){
   const file = evt.target.files && evt.target.files[0];
   if(!file) return;
@@ -12020,9 +12070,20 @@ function handleEduCompletionFile(evt, cat){
     try {
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, {type:'array'});
-      const sheetName = wb.SheetNames[0];
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
-      const parsed = cat==='aiRp' ? parseEduAiRpRows(rows) : parseEduCompletionRows(rows);
+      let parsed = null;
+      if(cat==='test'){
+        // 월간test 파일은 "Raw(매니저)" 시트에 담당자 단위 원본 응시/미응시 데이터가 있음
+        const rawSheetName = wb.SheetNames.find(n=>/raw\s*\(\s*매니저\s*\)/i.test(n));
+        if(rawSheetName){
+          const rawRows = XLSX.utils.sheet_to_json(wb.Sheets[rawSheetName], {header:1, defval:null, raw:true});
+          parsed = parseEduTestRawManagerRows(rawRows);
+        }
+      }
+      if(!parsed || parsed.length===0){
+        const sheetName = wb.SheetNames[0];
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
+        parsed = cat==='aiRp' ? parseEduAiRpRows(rows) : parseEduCompletionRows(rows);
+      }
       DB.eduCompletion[cat] = parsed;
       touchTabContent(eduTabName(cat));
       saveDB();
