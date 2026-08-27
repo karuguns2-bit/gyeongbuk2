@@ -8355,6 +8355,41 @@ function renderInventory(){
     <div class="page-title">재고 조회</div>
     <div class="page-desc">전 지점 공유 · 관리자와 지점 매니저 모두 전 지점 재고를 동일하게 조회 가능 · 행사(행)/진열(진) 재고만 표시 · 통합 보드.xlsx &quot;재고장&quot; 시트 기준(관리자가 새 파일을 업로드해도 아래 구분/구분(상태)/제품 상태/진열일자는 직접 수정 전까지 값이 유지됩니다).</div>
 
+    <div class="card" style="margin-bottom:16px;padding:18px 20px;">
+      <div class="grid grid-4 stat-grid-4" style="gap:10px;">
+        <div class="card stat-tile stat-tile-blue" style="padding:14px 16px;">
+          <div class="stat-tile-label">검색 결과</div>
+          <div class="stat-tile-num">${rows.length.toLocaleString('ko-KR')}건</div>
+          <div class="stat-tile-sub">현재 필터 기준</div>
+        </div>
+        <div class="card stat-tile stat-tile-purple" style="padding:14px 16px;">
+          <div class="stat-tile-label">합계 수량</div>
+          <div class="stat-tile-num">${fmtNum(totalQty)}</div>
+          <div class="stat-tile-sub">검색 결과 기준</div>
+        </div>
+        <div class="card stat-tile stat-tile-pink" style="padding:14px 16px;">
+          <div class="stat-tile-label">합계 재고금액</div>
+          <div class="stat-tile-num" style="font-size:20px;">${totalAmt>0?fmtWon(totalAmt):'-'}</div>
+          <div class="stat-tile-sub">검색 결과 기준</div>
+        </div>
+        <div class="card stat-tile stat-tile-amber" style="padding:14px 16px;">
+          <div class="stat-tile-label">전체 행사/진열/핸디 재고</div>
+          <div class="stat-tile-num">${taggedInventory.length.toLocaleString('ko-KR')}건</div>
+          <div class="stat-tile-sub">${clearanceCountInView>0 ? `🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건 (검색 결과 내)` : '전체 매장 합산'}</div>
+        </div>
+      </div>
+      ${clearanceStats ? `
+      <div style="margin-top:12px;padding:12px 16px;border-radius:14px;background:#e7f9ee;">
+        <div class="flex-between" style="align-items:baseline;flex-wrap:wrap;gap:6px;">
+          <div style="font-size:13px;font-weight:700;color:#1a9c56;">🔥 소진 진행 현황 <span style="font-weight:400;opacity:.8;">· 기준일(시작일) ${clearanceStats.date}</span></div>
+          <div style="font-size:13px;font-weight:800;color:#1a9c56;">소진완료 ${clearanceStats.depleted}대 / ${clearanceStats.total}건 (${clearanceStats.pct}%)</div>
+        </div>
+        <div style="margin-top:8px;background:#c9ecd6;border-radius:8px;height:8px;overflow:hidden;">
+          <div style="width:${Math.min(100,clearanceStats.pct)}%;background:#1a9c56;height:100%;border-radius:8px;"></div>
+        </div>
+      </div>` : ''}
+    </div>
+
     <div class="inv-layout">
       <div class="inv-sidebar">
         <div class="card inv-filter-card" style="margin-bottom:16px;">
@@ -8406,7 +8441,6 @@ function renderInventory(){
             <div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>
           </div>
         </div>
-        <div class="small-note">검색 결과 ${rows.length.toLocaleString('ko-KR')}건 · 합계 수량 ${fmtNum(totalQty)} · 합계 재고금액 ${totalAmt>0?fmtWon(totalAmt):'-'} · 전체 행사/진열/핸디 재고 ${taggedInventory.length.toLocaleString('ko-KR')}건 중${clearanceCountInView>0 ? ` · 🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건` : ''}${clearanceStats ? ` · 소진 카운팅 기준일(시작일) <b>${clearanceStats.date}</b> · 소진완료 <b>${clearanceStats.depleted}대</b> / ${clearanceStats.total}건 (소진율 <b>${clearanceStats.pct}%</b>)` : ''}</div>
       </div>
 
       <div class="inv-main">
