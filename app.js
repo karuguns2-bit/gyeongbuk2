@@ -2598,10 +2598,12 @@ function renderHome(){
           ${attBranchSelectorHtml}
         </div>
         ${attDateNavHtml}
-        <table style="margin-top:10px;">
+        <div class="table-scroll" style="margin-top:10px;">
+        <table>
           <thead><tr><th>이름</th><th>사번</th><th>상태</th><th>출근</th><th>퇴근</th></tr></thead>
           <tbody>${attRows}</tbody>
         </table>
+        </div>
       </div>`,
     aiFeedback: `
       <div class="card">
