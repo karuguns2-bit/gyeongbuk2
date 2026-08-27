@@ -8901,8 +8901,15 @@ function renderCollectGiftcard(){
   const scoped = collectListScope(DB.giftcardRequests);
   const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const budget = DB.giftcardBudgetWon || 0;
-  const used = giftcardUsedWon();
-  const remain = budget - used;
+  // 2026-08-27 수정: 예전에는 사용 금액(usedRaw)이 총 사용 가능 금액을 넘어도 그대로,
+  // 잔여 금액은 마이너스로 끝없이 표시됐다("누적되는 것처럼 보인다"는 지적). 화면에 보이는
+  // 사용 금액/잔여 금액은 총 사용 가능 금액 한도 안에서만 나오도록 상한을 둔다
+  // (사용 금액은 예산을 넘지 않고, 잔여 금액은 0 밑으로 내려가지 않음). 실제 등록된 금액
+  // 합계(usedRaw)가 예산을 넘어선 경우에는 별도 경고 문구로만 알려준다.
+  const usedRaw = giftcardUsedWon();
+  const used = Math.min(usedRaw, budget);
+  const remain = Math.max(budget - usedRaw, 0);
+  const overBudget = usedRaw > budget;
   const gcAllSelected = sorted.length>0 && sorted.every(r=>state.gcSelectedIds.has(r.id));
   const rows = sorted.map(r=>{
     const canEdit = canEditGiftcardRequest(r);
@@ -8978,7 +8985,8 @@ function renderCollectGiftcard(){
           <div style="font-weight:700;font-size:15px;color:${remain<0?'var(--bad)':'var(--primary)'}">${fmtWon(remain)}</div>
         </div>
       </div>
-      <div class="small-note">건이 등록될 때마다 사용 금액에 반영되어 잔여 금액이 실시간으로 차감됩니다.</div>
+      <div class="small-note">건이 등록될 때마다 사용 금액에 반영되어 잔여 금액이 실시간으로 차감됩니다. 사용 금액·잔여 금액은 총 사용 가능 금액 한도 안에서만 표시됩니다.</div>
+      ${overBudget ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:8px 10px;margin-top:6px;font-weight:600;">⚠ 실제 등록된 금액 합계는 ${fmtWon(usedRaw)}로 총 사용 가능 금액을 초과했습니다. 총 사용 가능 금액을 올리거나 건을 확인해 주세요.</div>` : ''}
     </div>
 
     <div class="card" style="margin-bottom:16px;">
