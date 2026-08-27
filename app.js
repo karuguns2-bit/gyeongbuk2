@@ -841,6 +841,19 @@ async function pushDBToServer(retryCount){
   }
 }
 
+// 백그라운드 폴링/충돌 병합 후 화면을 통째로 다시 그리면, 마침 그 순간 공지사항 등
+// 글을 작성 중이던 사용자의 입력 내용이 사라지는 문제가 있었다(문의: "공지사항 창... 작성하다보면
+// 갑자기 사라지는 현상"). 예전에는 <input>/<textarea>/<select>에 포커스가 있을 때만 재렌더링을
+// 건너뛰었는데, 공지사항 본문 편집기는 그 셋이 아니라 contenteditable div라서 이 보호를
+// 피해가고 있었다. contenteditable 여부도 함께 확인해 실제로 뭔가 입력 중일 때는 항상
+// 재렌더링을 건너뛰도록 한다.
+function isUserActivelyTyping(){
+  const el = (typeof document!=='undefined') ? document.activeElement : null;
+  if(!el) return false;
+  const tag = el.tagName;
+  return tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT' || !!el.isContentEditable;
+}
+
 async function handleSaveConflict(){
   try{
     const { data, error } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
@@ -853,7 +866,7 @@ async function handleSaveConflict(){
     DB_VERSION = mergedVersion;
     DB_BASELINE = cloneDBSnapshot(DB);
     cacheDBLocally();
-    if(SESSION) renderTab(state.tab);
+    if(SESSION && !isUserActivelyTyping()) renderTab(state.tab);
     // 병합한 결과를 실제로 서버에 한 번 더 저장 시도한다 - 여기까지 왔다는 건 이미 여러 번
     // 재시도했다는 뜻이라, 이 마지막 시도가 성공하면 조용히 끝나고 실패할 때만 안내한다.
     try{
@@ -899,8 +912,7 @@ async function pollDbForRemoteChanges(){
       DB_VERSION = full.version;
       DB_BASELINE = cloneDBSnapshot(full.data);
       cacheDBLocally();
-      const activeTag = (typeof document!=='undefined' && document.activeElement) ? document.activeElement.tagName : '';
-      if(activeTag !== 'INPUT' && activeTag !== 'TEXTAREA' && activeTag !== 'SELECT'){
+      if(!isUserActivelyTyping()){
         renderTab(state.tab);
       }
     }
