@@ -1051,6 +1051,7 @@ function migrateDB(){
   if(!DB.bestPractices) DB.bestPractices = [];
   if(!DB.issueCases) DB.issueCases = [];
   if(!DB.suggestions) DB.suggestions = [];
+  DB.suggestions.forEach(s=>{ if(!s.comments) s.comments = []; });
   if(!DB.contestGifts) DB.contestGifts = [];
   // 로니 런칭 기념 사은품 한정수량이 12건→24건으로 늘어나며 문구도 함께 바뀌었으므로,
   // 기존에 "(12건 선착순 한정)" 문구로 등록돼 있던 건들도 새 문구 기준으로 계속 집계·표시되도록
@@ -1362,6 +1363,7 @@ function defaultUiPrefs(){
     density: 'comfortable',   // 'comfortable' | 'compact'
     hiddenHomeWidgets: [],    // HOME_WIDGETS 중 숨긴 위젯 key 목록
     homeWidgetOrder: [],      // HOME_WIDGETS key 순서(비어있으면 기본 순서)
+    homeStatusWidgetCollapsed: false, // 홈 화면 우하단 시계/접속인원/알림 팝업창 접어두기 여부
     pinnedNav: [],            // 즐겨찾기로 고정한 탭 key 목록
     recentSearches: [],       // 최근 검색어(최신순)
     savedFilters: {}          // { pageKey: [{name, filter, savedAt}] }
@@ -1639,7 +1641,16 @@ function refreshNavBadges(){
   });
 }
 
+// 내부 탭이 아니라 외부 사이트로 바로 연결되어야 하는 메뉴 항목들.
+// (예: 구독 오답노트 → 통합 링크 허브 바로가기로 이름을 바꾸고 외부 앱으로 직결)
+const EXTERNAL_NAV_LINKS = {
+  mistakeNote: 'https://interbiz-link.vercel.app/'
+};
 function navigateToTab(tab){
+  if(EXTERNAL_NAV_LINKS[tab]){
+    window.open(EXTERNAL_NAV_LINKS[tab], '_blank');
+    return;
+  }
   document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
   const target = document.querySelector('.nav-item[data-tab="'+tab+'"]');
   if(target) target.classList.add('active');
@@ -1674,7 +1685,7 @@ const NAV_LABELS = {
   collectGiftcard: '모바일 상품권 취합',
   collectContest: '구독연동사은품 취합',
   subTierContest: '기타 사은품 취합',
-  mistakeNote: '구독 오답노트',
+  mistakeNote: '통합 링크 허브 바로가기',
   issueCase: '이슈제품 판매 성공 사례',
   bestPractice: '우수 활동 사례 공유',
   policyQuiz: '금주 주말 정책 숙지도 점검',
@@ -2651,23 +2662,42 @@ function renderHome(){
 
     ${renderHomeWidgetSection(homeWidgetHtmlByKey)}
 
-    <div id="homeStatusWidget" style="position:fixed;bottom:20px;right:20px;z-index:60;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:14px 16px;width:230px;">
-      <div style="font-weight:700;font-size:12.5px;color:var(--text-sub);" id="homeClockDate">-</div>
-      <div style="font-size:21px;font-weight:800;color:var(--primary);margin-bottom:10px;letter-spacing:.5px;" id="homeClockTime">-</div>
-      <div class="flex-between" style="padding-top:9px;border-top:1px solid var(--border);font-size:12.5px;">
-        <span class="muted">현재 접속 인원</span>
-        <b id="homeOnlineCount">${cachedOnlineCount!=null ? cachedOnlineCount+'명' : '-'}</b>
-      </div>
-      <div style="padding-top:9px;margin-top:9px;border-top:1px solid var(--border);">
-        <div class="flex-between" style="cursor:pointer;font-size:12.5px;" onclick="toggleHomeNotifList()">
-          <span class="muted">🔔 알림 <span id="homeNotifBadge" style="${homeNotifBadgeStyle(cachedNotifItems)}">${homeNotifUnreadCount(cachedNotifItems)}</span></span>
-          <span id="homeNotifToggleIcon" class="muted">▾</span>
+    <div id="homeStatusWidget" style="position:fixed;bottom:20px;right:20px;z-index:60;">
+      <div id="homeStatusWidgetCollapsedBtn" title="시계/알림 펼치기" onclick="toggleHomeStatusWidget()" style="display:${isHomeStatusWidgetCollapsed()?'flex':'none'};align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:#fff;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.15);cursor:pointer;font-size:20px;">🕐</div>
+      <div id="homeStatusWidgetBody" style="display:${isHomeStatusWidgetCollapsed()?'none':'block'};background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:14px 16px;width:230px;">
+        <div class="flex-between" style="align-items:flex-start;">
+          <div style="font-weight:700;font-size:12.5px;color:var(--text-sub);" id="homeClockDate">-</div>
+          <span title="접어두기" onclick="toggleHomeStatusWidget()" style="cursor:pointer;color:var(--text-sub);font-size:13px;padding:0 2px;line-height:1;">✕</span>
         </div>
-        <div id="homeNotifList" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto;">${homeNotifListHtml(cachedNotifItems)}</div>
-        ${browserNotifPromptHtml()}
+        <div style="font-size:21px;font-weight:800;color:var(--primary);margin-bottom:10px;letter-spacing:.5px;" id="homeClockTime">-</div>
+        <div class="flex-between" style="padding-top:9px;border-top:1px solid var(--border);font-size:12.5px;">
+          <span class="muted">현재 접속 인원</span>
+          <b id="homeOnlineCount">${cachedOnlineCount!=null ? cachedOnlineCount+'명' : '-'}</b>
+        </div>
+        <div style="padding-top:9px;margin-top:9px;border-top:1px solid var(--border);">
+          <div class="flex-between" style="cursor:pointer;font-size:12.5px;" onclick="toggleHomeNotifList()">
+            <span class="muted">🔔 알림 <span id="homeNotifBadge" style="${homeNotifBadgeStyle(cachedNotifItems)}">${homeNotifUnreadCount(cachedNotifItems)}</span></span>
+            <span id="homeNotifToggleIcon" class="muted">▾</span>
+          </div>
+          <div id="homeNotifList" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto;">${homeNotifListHtml(cachedNotifItems)}</div>
+          ${browserNotifPromptHtml()}
+        </div>
       </div>
     </div>
   `;
+}
+function isHomeStatusWidgetCollapsed(){
+  return !!(state.uiPrefs && state.uiPrefs.homeStatusWidgetCollapsed);
+}
+function toggleHomeStatusWidget(){
+  if(!state.uiPrefs) state.uiPrefs = defaultUiPrefs();
+  state.uiPrefs.homeStatusWidgetCollapsed = !state.uiPrefs.homeStatusWidgetCollapsed;
+  saveUiPrefs();
+  const btn = document.getElementById('homeStatusWidgetCollapsedBtn');
+  const body = document.getElementById('homeStatusWidgetBody');
+  const collapsed = state.uiPrefs.homeStatusWidgetCollapsed;
+  if(btn) btn.style.display = collapsed ? 'flex' : 'none';
+  if(body) body.style.display = collapsed ? 'none' : 'block';
 }
 // 알림 API를 지원하고 아직 허용/거부 여부를 묻지 않은 브라우저에서만 "알림 받기" 안내를
 // 보여준다 - 이미 허용했거나 거부한 경우, 혹은 지원하지 않는 브라우저(구형 iOS Safari 등)에서는
@@ -11973,6 +12003,18 @@ function renderSuggestions(){
       </div>
     </div>`;
 
+  function commentsHtml(s){
+    const items = (s.comments||[]).map(c=>`
+      <div style="margin-top:8px;padding:8px 10px;background:var(--bg);border-radius:8px;border-left:3px solid var(--primary);">
+        <div class="flex-between" style="align-items:baseline;">
+          <b style="font-size:12.5px;color:var(--primary);">💬 관리자 답변 · ${escapeHtml(c.authorName||'관리자')}</b>
+          <span class="muted" style="font-size:11px;">${(c.createdAt||'').slice(0,16).replace('T',' ')}</span>
+        </div>
+        <div style="white-space:pre-wrap;line-height:1.5;font-size:13px;margin-top:4px;">${escapeHtml(c.content)}</div>
+      </div>`).join('');
+    return items ? `<div style="margin-top:8px;">${items}</div>` : '';
+  }
+
   let adminSection = '';
   if(isAdmin){
     const sorted = [...DB.suggestions].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -11985,6 +12027,13 @@ function renderSuggestions(){
         <div style="white-space:pre-wrap;line-height:1.6;">${escapeHtml(s.content)}</div>
         ${s.attachmentDataUrl ? `<div style="margin-top:8px;">${noticeAttachmentHtml({dataUrl:s.attachmentDataUrl, name:s.attachmentName}, 60, null)}</div>` : ''}
         <div class="muted" style="font-size:11.5px;margin-top:8px;">${s.createdAt.slice(0,16).replace('T',' ')}</div>
+        ${commentsHtml(s)}
+        <div class="form-row" style="margin-top:10px;">
+          <div class="field" style="flex:1;min-width:220px;">
+            <textarea id="sgComment_${s.id}" rows="2" style="width:100%;" placeholder="답변/댓글을 입력하세요."></textarea>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="addSuggestionComment('${s.id}')">답변 등록</button>
+        </div>
       </div>`).join('') || `<div class="muted">등록된 건의사항이 없습니다.</div>`;
 
     adminSection = `
@@ -11995,12 +12044,52 @@ function renderSuggestions(){
       ${posts}`;
   }
 
+  // 관리자가 아닌 사용자도 본인이 등록한 건의사항과 그에 대한 관리자 답변은 확인할 수 있게 한다.
+  let mySection = '';
+  if(!isAdmin){
+    const mine = DB.suggestions.filter(s=>s.authorEmpId===SESSION.empId).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+    if(mine.length){
+      const rows = mine.map(s=>`
+        <div class="card" style="margin-bottom:12px;">
+          <div class="flex-between" style="margin-bottom:6px;">
+            <div><b>${branchName(s.branchId)}</b></div>
+            <span class="muted" style="font-size:11.5px;">${s.createdAt.slice(0,16).replace('T',' ')}</span>
+          </div>
+          <div style="white-space:pre-wrap;line-height:1.6;">${escapeHtml(s.content)}</div>
+          ${s.attachmentDataUrl ? `<div style="margin-top:8px;">${noticeAttachmentHtml({dataUrl:s.attachmentDataUrl, name:s.attachmentName}, 60, null)}</div>` : ''}
+          ${commentsHtml(s) || `<div class="muted" style="font-size:12px;margin-top:8px;">아직 관리자 답변이 없습니다.</div>`}
+        </div>`).join('');
+      mySection = `
+        <h3 style="margin-top:22px;">내가 등록한 건의사항</h3>
+        ${rows}`;
+    }
+  }
+
   return `
     <div class="page-title">현장 건의사항</div>
     <div class="page-desc">현장 애로사항 및 기타 건의사항을 자유롭게 올려주세요.${isAdmin ? '' : ' 등록한 내용은 관리자만 확인할 수 있는 비공개 게시판입니다.'}</div>
     ${formHtml}
     ${adminSection}
+    ${mySection}
   `;
+}
+function addSuggestionComment(id){
+  if(SESSION.role!=='admin') return;
+  const el = document.getElementById('sgComment_'+id);
+  const content = el ? el.value.trim() : '';
+  if(!content){ alert('답변 내용을 입력해 주세요.'); return; }
+  const target = DB.suggestions.find(x=>x.id===id);
+  if(!target) return;
+  if(!target.comments) target.comments = [];
+  target.comments.push({
+    id: 'sgc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    content,
+    authorEmpId: SESSION.empId, authorName: SESSION.name,
+    createdAt: new Date().toISOString()
+  });
+  touchTabContent('suggestions');
+  saveDB();
+  renderTab('suggestions');
 }
 function submitSuggestion(){
   const branchId = document.getElementById('sgBranch').value;
@@ -12013,7 +12102,8 @@ function submitSuggestion(){
       id: 'sg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       branchId, content,
       attachmentDataUrl: attachmentDataUrl||null, attachmentName: attachmentName||null,
-      authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString()
+      authorEmpId: SESSION.empId, authorName: SESSION.name, createdAt: new Date().toISOString(),
+      comments: []
     });
     touchTabContent('suggestions');
     saveDB();
@@ -13456,7 +13546,7 @@ const PROSPECT_PURCHASE_TYPE_OPTIONS = ['구독', '일시불'];
 const PROSPECT_VISIT_TIME_OPTIONS = ['오전', '오후'];
 const PROSPECT_AGE_GROUP_OPTIONS = ['20대', '30대', '40대', '50대', '60대↑'];
 const PROSPECT_VISIT_UNIT_OPTIONS = ['가족단위', '부부', '1인', '지인동행', '기타'];
-const PROSPECT_VISIT_CHANNEL_OPTIONS = ['워크인', '전단지(POP,현수막)', '카플친', '당근', '온라인DB', '이업종 연계(식품관,테넌트)', '대형마트 방송', '행사장'];
+const PROSPECT_VISIT_CHANNEL_OPTIONS = ['워크인', '전단지(POP,현수막)', '카플친', '당근', '온라인DB', '이업종 연계(식품관,테넌트)', '대형마트 방송', '행사장', '기존 구매고객', '단골 고객', '지인소개'];
 const PROSPECT_PRODUCT_CATEGORY_OPTIONS = ['대형가전', '소형가전', 'PC', '혼수', '이사'];
 function myProspects(){
   return (DB.prospects||[]).filter(p=>p.empId===SESSION.empId);
