@@ -13481,6 +13481,10 @@ function visibleProspects(){
   let list = DB.prospects||[];
   if(state.prospectFilterBranchId) list = list.filter(p=>p.branchId===state.prospectFilterBranchId);
   if(state.prospectFilterEmpId) list = list.filter(p=>p.empId===state.prospectFilterEmpId);
+  // 관리자/임원 전용 달력 기간 조회 — 방문일자(visitDate) 기준. 방문일자가 비어있는 건은
+  // 기간을 지정한 상태에서는 어느 날짜에 속하는지 알 수 없으므로 결과에서 제외한다.
+  if(state.prospectFilterDateFrom) list = list.filter(p=>p.visitDate && p.visitDate >= state.prospectFilterDateFrom);
+  if(state.prospectFilterDateTo) list = list.filter(p=>p.visitDate && p.visitDate <= state.prospectFilterDateTo);
   return list;
 }
 function setProspectFilterBranch(branchId){
@@ -13490,6 +13494,22 @@ function setProspectFilterBranch(branchId){
 }
 function setProspectFilterEmp(empId){
   state.prospectFilterEmpId = empId || null;
+  renderTab('prospects');
+}
+function setProspectFilterDate(which, val){
+  if(which==='from') state.prospectFilterDateFrom = val || null;
+  else state.prospectFilterDateTo = val || null;
+  // 시작일이 종료일보다 뒤로 가는 등 앞뒤가 뒤바뀐 경우 조용히 맞바꿔서 항상 유효한 기간이 되게 한다.
+  if(state.prospectFilterDateFrom && state.prospectFilterDateTo && state.prospectFilterDateFrom > state.prospectFilterDateTo){
+    const tmp = state.prospectFilterDateFrom;
+    state.prospectFilterDateFrom = state.prospectFilterDateTo;
+    state.prospectFilterDateTo = tmp;
+  }
+  renderTab('prospects');
+}
+function clearProspectFilterDate(){
+  state.prospectFilterDateFrom = null;
+  state.prospectFilterDateTo = null;
   renderTab('prospects');
 }
 // 값별 등록 건수를 집계해 "A건(B건), C건(D건)" 형태로 이어붙인다(값이 없는 건은 제외).
@@ -13547,17 +13567,29 @@ function renderProspects(){
 
   const adminFilterHtml = isAdmin ? `
     <div class="card" style="margin-bottom:16px;">
-      <h3>지점 / 담당자별 조회 <small>(관리자 전용)</small></h3>
+      <h3>지점 / 담당자별 조회 <small>(관리자·임원 전용)</small></h3>
       <div style="margin-bottom:10px;">
         <span class="branch-pill ${!state.prospectFilterBranchId?'active':''}" onclick="setProspectFilterBranch('')">전체 지점</span>
         ${DB.branches.map(b=>`<span class="branch-pill ${state.prospectFilterBranchId===b.id?'active':''}" onclick="setProspectFilterBranch('${b.id}')">${b.name}</span>`).join('')}
       </div>
-      <div class="field" style="max-width:220px;">
-        <label>담당자</label>
-        <select id="prospectFilterEmp" onchange="setProspectFilterEmp(this.value)">
-          <option value="">전체 담당자</option>
-          ${prospectRepOptions(state.prospectFilterBranchId).map(r=>`<option value="${r.empId}" ${state.prospectFilterEmpId===r.empId?'selected':''}>${escapeHtml(r.name)}</option>`).join('')}
-        </select>
+      <div class="form-row">
+        <div class="field" style="max-width:220px;">
+          <label>담당자</label>
+          <select id="prospectFilterEmp" onchange="setProspectFilterEmp(this.value)">
+            <option value="">전체 담당자</option>
+            ${prospectRepOptions(state.prospectFilterBranchId).map(r=>`<option value="${r.empId}" ${state.prospectFilterEmpId===r.empId?'selected':''}>${escapeHtml(r.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>방문일자 조회 기간</label>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <input type="date" id="prospectFilterDateFrom" value="${state.prospectFilterDateFrom||''}" onchange="setProspectFilterDate('from', this.value)" style="width:150px">
+            <span class="muted">~</span>
+            <input type="date" id="prospectFilterDateTo" value="${state.prospectFilterDateTo||''}" onchange="setProspectFilterDate('to', this.value)" style="width:150px">
+            ${(state.prospectFilterDateFrom || state.prospectFilterDateTo) ? `<button class="btn btn-sm" onclick="clearProspectFilterDate()">기간 초기화</button>` : ''}
+          </div>
+          <div class="small-note" style="margin-top:4px;">달력 아이콘을 눌러 날짜를 선택하면 방문일자 기준으로 조회됩니다. 비워두면 전체 기간이 조회됩니다.</div>
+        </div>
       </div>
     </div>` : '';
 
