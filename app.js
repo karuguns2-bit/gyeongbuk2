@@ -1067,17 +1067,40 @@ function migrateDB(){
   if(!DB.workSchedule) DB.workSchedule = { byEmpDate:{}, uploads:[] };
   if(!DB.workSchedule.byEmpDate) DB.workSchedule.byEmpDate = {};
   if(!DB.workSchedule.uploads) DB.workSchedule.uploads = [];
-  // "지표 한 눈에 보기" 업로드 데이터(대형마트채널 지점Master 시트 스냅샷). 매번 올릴 때마다
-  // 통째로 최신 스냅샷으로 교체된다(과거 값을 누적 보관하지 않음 — 필요해지면 이후 이력화 가능).
-  if(!DB.metricsOverview) DB.metricsOverview = { asOfDate:null, rows:[], uploadedAt:null, uploadedBy:null, fileName:null };
+  // "지표 한 눈에 보기" 업로드 데이터(대형마트채널 지점Master 시트 스냅샷).
+  // 2026-09-01 변경: 예전에는 파일을 새로 올릴 때마다 통째로 최신 스냅샷으로 교체되어 이전 달
+  // 자료가 사라졌다 — 9월부터 매달 새 실적 파일을 올릴 예정이라, asOfDate의 "월"(YYYY-MM)을
+  // 키로 여러 달 자료를 함께 누적 보관(byPeriod)하고 화면에서 조회할 달을 선택할 수 있게 한다.
+  // 이미 저장돼 있던 기존(구버전) 단일 스냅샷은 자동으로 byPeriod[해당월]로 옮겨서 데이터 손실
+  // 없이 이전한다(예: 배포 시점에 이미 올라가 있던 8월 자료).
+  if(!DB.metricsOverview) DB.metricsOverview = { byPeriod:{} };
+  if(!DB.metricsOverview.byPeriod){
+    const old = DB.metricsOverview;
+    const period = old.asOfDate ? String(old.asOfDate).slice(0,7) : null;
+    DB.metricsOverview = { byPeriod:{} };
+    if(period && old.rows && old.rows.length>0) DB.metricsOverview.byPeriod[period] = old;
+  }
   // 2026-08-25 추가: "구독 판매 Grade 및 현장관리자 시상 컨테스트" 파일의 "지점별 구독 판매" 시트를
   // 별도로 올려 [구독 실적] 페이지의 총판/실판/전년마감 데이터를 더 정확하고 자주 갱신할 수 있게
   // 한다(목표는 계속 [지표 한 눈에 보기] 업로드분의 s_target을 사용). byKey는 지점명을
-  // metricsOverviewNormName으로 정규화한 키.
-  if(!DB.subSalesUpload) DB.subSalesUpload = { asOfDate:null, byKey:{}, uploadedAt:null, uploadedBy:null, fileName:null };
+  // metricsOverviewNormName으로 정규화한 키. (2026-09-01: metricsOverview와 동일하게 월별 누적 보관)
+  if(!DB.subSalesUpload) DB.subSalesUpload = { byPeriod:{} };
+  if(!DB.subSalesUpload.byPeriod){
+    const old = DB.subSalesUpload;
+    const period = old.asOfDate ? String(old.asOfDate).slice(0,7) : null;
+    DB.subSalesUpload = { byPeriod:{} };
+    if(period && old.byKey && Object.keys(old.byKey).length>0) DB.subSalesUpload.byPeriod[period] = old;
+  }
   // 같은 파일의 "1. 매니저 구독 Grade" 시트: 매니저(직원) 개인별 구독 Grade 시상금 명단.
   // branchKey는 metricsOverviewNormName 정규화 키, records는 그 지점 소속 직원별 배열.
-  if(!DB.subGradeIncentive) DB.subGradeIncentive = { asOfDate:null, byBranchKey:{}, uploadedAt:null, uploadedBy:null, fileName:null };
+  // (2026-09-01: metricsOverview와 동일하게 월별 누적 보관)
+  if(!DB.subGradeIncentive) DB.subGradeIncentive = { byPeriod:{} };
+  if(!DB.subGradeIncentive.byPeriod){
+    const old = DB.subGradeIncentive;
+    const period = old.asOfDate ? String(old.asOfDate).slice(0,7) : null;
+    DB.subGradeIncentive = { byPeriod:{} };
+    if(period && old.byBranchKey && Object.keys(old.byBranchKey).length>0) DB.subGradeIncentive.byPeriod[period] = old;
+  }
   // 장기 미사용 시 자동 전환되는 스크린세이버 사용 여부 (관리자가 시스템 관리에서 설정, 기본값 사용함)
   if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
   // 모바일 상품권 취합 등록 일시 정지 여부 (관리자가 필요 시 켜고 끔, 기본값은 등록 가능)
@@ -3019,8 +3042,8 @@ function renderSystemAdmin(){
 
 <div class="card sysadmin-span2">
       <h3>📊 지표 한 눈에 보기 파일 업로드 <small>("일일실적 현황" 파일 · MASTER/Gross(CC포함)/구독/고수익 시트 포함 .xlsb/.xlsx)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"(인터비즈) 일일실적 현황" 파일을 그대로 올리면 됩니다. 파일명의 날짜를 기준일자(D-1, 전일)로 자동 인식하고, Gross(CC포함)/구독/고수익 시트에서 우리 팀 소속 지점(이마트 채널)만 자동으로 골라내어 [지표 한 눈에 보기] 페이지의 관리자별·지점별 GROSS 총판/실판, 구독, 고수익(HIGH-END) 비중 지표를 최신 스냅샷으로 한 번에 갱신합니다. 올릴 때마다 이전 스냅샷을 덮어쓰고 최신 값으로 교체됩니다.<br>※ 파일 용량이 커서(약 20~30MB) 읽어오는 데 30초 이상 걸릴 수 있습니다. 업로드 중 메시지가 뜨면 창을 벗어나지 말고 잠시 기다려 주세요.
-      ${DB.metricsOverview && DB.metricsOverview.uploadedAt ? `<br>현재 반영된 자료: <b>${DB.metricsOverview.asOfDate||'-'}</b> 기준(D-1) · ${DB.metricsOverview.rows.length}개 지점 · ${escapeHtml(DB.metricsOverview.fileName||'')} (${DB.metricsOverview.uploadedBy||''} 업로드)` : '<br>아직 업로드된 자료가 없습니다.'}</div>
+      <div class="muted" style="margin-bottom:10px;">"(인터비즈) 일일실적 현황" 파일을 그대로 올리면 됩니다. 파일명의 날짜를 기준일자(D-1, 전일)로 자동 인식하고, Gross(CC포함)/구독/고수익 시트에서 우리 팀 소속 지점(이마트 채널)만 자동으로 골라내어 [지표 한 눈에 보기] 페이지의 관리자별·지점별 GROSS 총판/실판, 구독, 고수익(HIGH-END) 비중 지표를 갱신합니다. 같은 달 안에서 다시 올리면 그 달 자료만 최신 값으로 갱신되고, 다른 달(예: 9월) 파일을 올리면 이전 달(8월) 자료는 지워지지 않고 그대로 보관되어 화면에서 달을 선택해 다시 볼 수 있습니다.<br>※ 파일 용량이 커서(약 20~30MB) 읽어오는 데 30초 이상 걸릴 수 있습니다. 업로드 중 메시지가 뜨면 창을 벗어나지 말고 잠시 기다려 주세요.
+      ${moUploadStatusHtml(DB.metricsOverview.byPeriod, d=>d.rows.length+'개 지점', ' 기준(D-1)')}</div>
       <input type="file" id="metricsOverviewFileInput" accept=".xlsb,.xlsx,.xls" onchange="handleMetricsOverviewFile(event)">
       <div id="metricsOverviewUploadMsg" class="small-note"></div>
     </div>
@@ -3028,7 +3051,7 @@ function renderSystemAdmin(){
 <div class="card sysadmin-span2">
       <h3>📱 구독 판매 실적(지점별) 파일 업로드 <small>("구독 판매 Grade 및 현장관리자 시상 컨테스트" 파일 · "지점별 구독 판매" 시트)</small></h3>
       <div class="muted" style="margin-bottom:10px;">[구독 실적] 페이지의 총판/실판/전년마감 실적 수치를 이 파일 기준으로 갱신합니다(목표는 계속 [지표 한 눈에 보기] 업로드분을 사용). [지표 한 눈에 보기] 파일보다 더 자주 올라오는 경우 이 파일을 최신으로 올려주세요.
-      ${DB.subSalesUpload && DB.subSalesUpload.uploadedAt ? `<br>현재 반영된 자료: <b>${DB.subSalesUpload.asOfDate||'-'}</b> 기준 · ${Object.keys(DB.subSalesUpload.byKey||{}).length}개 지점 · ${escapeHtml(DB.subSalesUpload.fileName||'')} (${DB.subSalesUpload.uploadedBy||''} 업로드)` : '<br>아직 업로드된 자료가 없습니다.'}</div>
+      ${moUploadStatusHtml(DB.subSalesUpload.byPeriod, d=>Object.keys(d.byKey||{}).length+'개 지점')}</div>
       <input type="file" id="subSalesFileInput" accept=".xlsx,.xls" onchange="handleSubSalesFile(event)">
       <div id="subSalesUploadMsg" class="small-note"></div>
     </div>
@@ -3036,7 +3059,7 @@ function renderSystemAdmin(){
 <div class="card sysadmin-span2">
       <h3>🏆 구독 Grade 수당 파일 업로드 <small>(같은 파일의 "1. 매니저 구독 Grade" 시트)</small></h3>
       <div class="muted" style="margin-bottom:10px;">매니저(직원) 개인별 구독 판매 Grade 시상금 명단을 올리면 [지점별 인센티브(참고용)] 페이지에서 지점별로 매니저 개별 Grade 수당을 조회할 수 있습니다.
-      ${DB.subGradeIncentive && DB.subGradeIncentive.uploadedAt ? `<br>현재 반영된 자료: <b>${DB.subGradeIncentive.asOfDate||'-'}</b> 기준 · ${Object.keys(DB.subGradeIncentive.byBranchKey||{}).length}개 지점 · ${escapeHtml(DB.subGradeIncentive.fileName||'')} (${DB.subGradeIncentive.uploadedBy||''} 업로드)` : '<br>아직 업로드된 자료가 없습니다.'}</div>
+      ${moUploadStatusHtml(DB.subGradeIncentive.byPeriod, d=>Object.keys(d.byBranchKey||{}).length+'개 지점')}</div>
       <input type="file" id="subGradeFileInput" accept=".xlsx,.xls" onchange="handleSubGradeFile(event)">
       <div id="subGradeUploadMsg" class="small-note"></div>
     </div>
@@ -6355,7 +6378,9 @@ function handleMetricsOverviewFile(evt){
         const d = new Date(); d.setDate(d.getDate()-1); // 파일명에서 날짜를 못 찾으면 업로드 시점 기준 D-1(전일)로 대체
         asOfDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       }
-      DB.metricsOverview = { asOfDate, rows: matchedRows, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name };
+      const moPeriodKey = asOfDate.slice(0,7);
+      if(!DB.metricsOverview.byPeriod) DB.metricsOverview.byPeriod = {};
+      DB.metricsOverview.byPeriod[moPeriodKey] = { asOfDate, rows: matchedRows, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name };
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [지표 한 눈에 보기] 파일을 업로드했습니다: ${file.name}`);
       renderTab('systemAdmin');
@@ -6424,7 +6449,9 @@ function handleSubSalesFile(evt){
       }
       let asOfDate = metricsOverviewDateFromFileName(file.name);
       if(!asOfDate){ const d = new Date(); asOfDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-      DB.subSalesUpload = { asOfDate, byKey: parsed.byKey, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name };
+      const subSalesPeriodKey = asOfDate.slice(0,7);
+      if(!DB.subSalesUpload.byPeriod) DB.subSalesUpload.byPeriod = {};
+      DB.subSalesUpload.byPeriod[subSalesPeriodKey] = { asOfDate, byKey: parsed.byKey, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name };
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [구독 판매 실적] 파일을 업로드했습니다: ${file.name}`);
       renderTab('systemAdmin');
@@ -6494,7 +6521,9 @@ function handleSubGradeFile(evt){
       }
       let asOfDate = metricsOverviewDateFromFileName(file.name);
       if(!asOfDate){ const d = new Date(); asOfDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-      DB.subGradeIncentive = { asOfDate, byBranchKey: parsed.byBranchKey, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name };
+      const subGradePeriodKey = asOfDate.slice(0,7);
+      if(!DB.subGradeIncentive.byPeriod) DB.subGradeIncentive.byPeriod = {};
+      DB.subGradeIncentive.byPeriod[subGradePeriodKey] = { asOfDate, byBranchKey: parsed.byBranchKey, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name };
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [구독 Grade 수당] 파일을 업로드했습니다: ${file.name}`);
       renderTab('systemAdmin');
@@ -6575,14 +6604,78 @@ function moRankOf(list, valueFn, key){
   const idx = sorted.findIndex(x=>x.key===key);
   return idx>=0 ? idx+1 : null;
 }
+/* =========================================================================
+   "지표 한 눈에 보기"/"구독 판매 실적"/"구독 Grade 수당" 업로드 자료의 월별(YYYY-MM) 조회 헬퍼.
+   세 파일 모두 같은 정기 보고 주기로 함께 올라오는 자료라 조회할 "달"을 하나의 상태
+   (state.moPeriod)로 공유한다 — [지표 한 눈에 보기]에서 8월을 선택하면 [구독 실적]/
+   [지점별 인센티브] 페이지로 이동해도 계속 8월 기준으로 보인다.
+   ========================================================================= */
+// 조회 가능한 달 목록은 [지표 한 눈에 보기](metricsOverview) 파일이 실제로 올라와 있는 달을
+// 기준으로 삼는다 — 이 파일이 세 업로드 중 항상 먼저/기준으로 올라오는 "본 파일"이고, 페이지
+// 진입 가드(아직 업로드된 자료가 없습니다)도 이 파일 기준이기 때문. [구독 판매 실적]/[구독 Grade
+// 수당]은 더 자주 개별적으로 올라오는 보조 파일이라(예: 본 파일은 아직 8월인데 이 두 파일만 먼저
+// 9월분이 올라오는 경우가 실제로 있었음), 이 둘의 달까지 합쳐서 "조회 가능한 달"을 정하면 정작
+// metricsOverview 자료가 있는 8월이 기본으로 안 보이고 빈 9월이 기본으로 뜨는 문제가 생긴다.
+function moAvailablePeriods(){
+  return Object.keys((DB.metricsOverview && DB.metricsOverview.byPeriod) || {}).sort();
+}
+function moLatestPeriod(){
+  const periods = moAvailablePeriods();
+  return periods.length ? periods[periods.length-1] : currentGoalsPeriod();
+}
+function moEffectivePeriod(){
+  return state.moPeriod || moLatestPeriod();
+}
+function setMoPeriod(period){
+  state.moPeriod = period;
+  renderTab(state.tab);
+}
+function moDataFor(period){
+  const p = period || moEffectivePeriod();
+  return (DB.metricsOverview && DB.metricsOverview.byPeriod && DB.metricsOverview.byPeriod[p])
+    || { asOfDate:null, rows:[], uploadedAt:null, uploadedBy:null, fileName:null };
+}
+function subSalesDataFor(period){
+  const p = period || moEffectivePeriod();
+  return (DB.subSalesUpload && DB.subSalesUpload.byPeriod && DB.subSalesUpload.byPeriod[p])
+    || { asOfDate:null, byKey:{}, uploadedAt:null, uploadedBy:null, fileName:null };
+}
+function subGradeDataFor(period){
+  const p = period || moEffectivePeriod();
+  return (DB.subGradeIncentive && DB.subGradeIncentive.byPeriod && DB.subGradeIncentive.byPeriod[p])
+    || { asOfDate:null, byBranchKey:{}, uploadedAt:null, uploadedBy:null, fileName:null };
+}
+// [시스템관리] 업로드 칸에 "현재 반영된 자료"(최신 달 기준)와 그동안 누적 보관 중인 달 목록을
+// 함께 보여준다 — 월별 누적 보관으로 바뀌면서 "지금 화면에 반영된 게 몇 월 자료인지",
+// "과거 달 자료도 잘 남아있는지"를 관리자가 업로드 화면에서 바로 확인할 수 있게 하기 위함.
+function moUploadStatusHtml(byPeriod, countFn, suffix){
+  const periods = Object.keys(byPeriod||{}).sort();
+  if(periods.length===0) return '<br>아직 업로드된 자료가 없습니다.';
+  const latest = periods[periods.length-1];
+  const d = byPeriod[latest];
+  return `<br>현재 반영된 자료: <b>${d.asOfDate||'-'}</b>${suffix||''} · ${countFn(d)} · ${escapeHtml(d.fileName||'')} (${d.uploadedBy||''} 업로드)` +
+    (periods.length>1 ? `<br><span class="muted" style="font-size:11.5px;">📅 누적 보관 중인 달: ${periods.map(p=>goalsPeriodLabel(p)+(p===latest?' (최신)':'')).join(', ')}</span>` : '');
+}
+// [지표 한 눈에 보기]/[구독 실적]/[지점별 인센티브] 페이지 상단에 공통으로 쓰는 월 선택 pill.
+// 보관 중인 달이 1개뿐이면(아직 여러 달이 쌓이기 전) 굳이 선택할 필요가 없으므로 표시하지 않는다.
+function moPeriodSelectorHtml(){
+  const periods = moAvailablePeriods();
+  if(periods.length<=1) return '';
+  const period = moEffectivePeriod();
+  const latest = moLatestPeriod();
+  return `<div class="card" style="margin-bottom:16px;">
+    <div class="small-note" style="margin-bottom:8px;">🗓️ 조회할 달을 선택하세요. 매달 새 실적 파일을 올려도 이전 달 자료는 그대로 보관되어 언제든 다시 볼 수 있습니다.</div>
+    <div>${periods.slice().reverse().map(p=>`<span class="branch-pill ${p===period?'active':''}" onclick="setMoPeriod('${p}')">${goalsPeriodLabel(p)}${p===latest?' (최신)':''}</span>`).join('')}</div>
+  </div>`;
+}
 // 지점 목록(원본 파일 매칭 결과) 중 특정 관리자 소속만 필터링
-function moBranchesOf(manager){
-  const rows = DB.metricsOverview.rows || [];
+function moBranchesOf(manager, period){
+  const rows = moDataFor(period).rows || [];
   return manager ? rows.filter(r=>r.manager===manager) : rows;
 }
 // 관리자 목록(업로드된 파일에 실제로 존재하는 관리자만, 지점 수 많은 순 정렬)
-function moManagerList(){
-  const rows = DB.metricsOverview.rows || [];
+function moManagerList(period){
+  const rows = moDataFor(period).rows || [];
   const names = [...new Set(rows.map(r=>r.manager).filter(Boolean))];
   const order = {};
   names.forEach(n=>{ order[n] = rows.filter(r=>r.manager===n).length; });
@@ -6746,14 +6839,16 @@ function moBranchGridHtml(rows, showManager){
   return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">${sorted.map(r=>moBranchCardHtml(r, showManager)).join('')}</div>`;
 }
 function renderMetricsOverview(){
-  if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
+  const moEntry = moDataFor();
+  if(!moEntry.rows || moEntry.rows.length===0){
     return `
     <div class="page-title">지표 한 눈에 보기</div>
     <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자DATA 기준)</div>
     <div class="page-desc">관리자별·지점별 GROSS/구독/고수익 실적을 한 화면에서 확인합니다.</div>
+    ${moPeriodSelectorHtml()}
     <div class="card"><div class="muted">아직 업로드된 자료가 없습니다. [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다.${SESSION.role==='admin'?` <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
   }
-  const allRows = DB.metricsOverview.rows;
+  const allRows = moEntry.rows;
   const managers = moManagerList();
   const selManager = state.metricsOverviewManager && managers.includes(state.metricsOverviewManager) ? state.metricsOverviewManager : null;
   const branchesInScope = moBranchesOf(selManager);
@@ -7033,7 +7128,8 @@ function renderMetricsOverview(){
   return `
     <div class="page-title">지표 한 눈에 보기</div>
     <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자DATA 기준)</div>
-    <div class="page-desc">기준일자 <b>${DB.metricsOverview.asOfDate}</b> (D-1, 전일) · ${DB.metricsOverview.rows.length}개 지점 · 전체 직원 조회 가능</div>
+    <div class="page-desc">기준일자 <b>${moEntry.asOfDate}</b> (D-1, 전일) · ${moEntry.rows.length}개 지점 · 전체 직원 조회 가능</div>
+    ${moPeriodSelectorHtml()}
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
         <div>${managerPills}</div>
@@ -7144,7 +7240,7 @@ function setSubOverviewBranch(id){
 // g_sp_cur(전체 실판)는 그대로 두어 구독비중(s_sp_ratio = 구독실판/전체실판)을 새 실판 값
 // 기준으로 다시 계산한다.
 function subMergedRow(r){
-  const upd = DB.subSalesUpload && DB.subSalesUpload.byKey ? DB.subSalesUpload.byKey[metricsOverviewNormName(r.branchName)] : null;
+  const upd = subSalesDataFor().byKey ? subSalesDataFor().byKey[metricsOverviewNormName(r.branchName)] : null;
   const m = Object.assign({}, r.m);
   if(upd){
     m.s_tp_cur = upd.tp_cur; m.s_tp_lyClose = upd.tp_lyClose; m.s_tp_qty = upd.tp_qty;
@@ -7156,16 +7252,18 @@ function subMergedRow(r){
   return Object.assign({}, r, {m});
 }
 function renderSubscription(){
-  if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
+  const moEntry = moDataFor();
+  if(!moEntry.rows || moEntry.rows.length===0){
     return `
     <div class="page-title">구독 실적</div>
     <div class="page-desc">관리자별·지점별 구독 목표/총판/실판/달성율/비중/전년 대비 실적을 한 화면에서 확인합니다.</div>
+    ${moPeriodSelectorHtml()}
     <div class="card"><div class="muted">아직 업로드된 자료가 없습니다. [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일(지표 한 눈에 보기용)을 업로드하면 이 페이지에도 함께 반영됩니다.${SESSION.role==='admin'?` <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
   }
-  const allRows = DB.metricsOverview.rows.map(subMergedRow);
+  const allRows = moEntry.rows.map(subMergedRow);
   const managers = moManagerList();
   const selManager = state.subOverviewManager && managers.includes(state.subOverviewManager) ? state.subOverviewManager : null;
-  const branchesInScope = (selManager ? moBranchesOf(selManager) : DB.metricsOverview.rows).map(subMergedRow);
+  const branchesInScope = (selManager ? moBranchesOf(selManager) : moEntry.rows).map(subMergedRow);
   const selBranch = state.subOverviewBranch && branchesInScope.some(r=>r.branchId===state.subOverviewBranch) ? state.subOverviewBranch : null;
 
   const rowsForAgg = selBranch ? branchesInScope.filter(r=>r.branchId===selBranch) : branchesInScope;
@@ -7173,8 +7271,9 @@ function renderSubscription(){
   const teamAgg = moAggregate(allRows);
   const selBranchRow = selBranch ? branchesInScope.find(r=>r.branchId===selBranch) : null;
   const scopeLabel = selBranchRow ? selBranchRow.branchName : (selManager ? `${selManager} 관리자` : '경북팀 전체');
-  const dataSourceNote = DB.subSalesUpload && DB.subSalesUpload.uploadedAt
-    ? `총판/실판/전년마감 실적은 [구독 판매 실적] 업로드 파일 기준(<b>${DB.subSalesUpload.asOfDate}</b>), 목표는 [지표 한 눈에 보기] 업로드 파일(<b>${DB.metricsOverview.asOfDate}</b>) 기준입니다.`
+  const subSalesEntry = subSalesDataFor();
+  const dataSourceNote = subSalesEntry && subSalesEntry.uploadedAt
+    ? `총판/실판/전년마감 실적은 [구독 판매 실적] 업로드 파일 기준(<b>${subSalesEntry.asOfDate}</b>), 목표는 [지표 한 눈에 보기] 업로드 파일(<b>${moEntry.asOfDate}</b>) 기준입니다.`
     : `아직 [구독 판매 실적] 파일이 업로드되지 않아 실적 수치는 [지표 한 눈에 보기] 업로드분을 그대로 표시합니다.`;
 
   const managerPills = `<span class="branch-pill ${!selManager?'active':''}" onclick="setSubOverviewManager(null)">전체</span>` +
@@ -7216,6 +7315,7 @@ function renderSubscription(){
   const html = `
     <div class="page-title">구독 실적</div>
     <div class="page-desc">관리자별·지점별 구독 목표/총판/실판/달성율/비중/전년마감 대비 실적입니다. ${dataSourceNote}</div>
+    ${moPeriodSelectorHtml()}
 
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
@@ -7888,8 +7988,9 @@ function incBranchDetailRowsHtml(m){
 // 2026-08-25 추가: [구독 Grade 수당] 업로드 파일 기준, 지점 소속 매니저(직원) 개인별 구독 판매
 // Grade 시상금 명단을 보여준다. branchName은 metricsOverviewNormName으로 정규화해서 매칭한다.
 function incGradeRecordsForBranch(branchName){
-  if(!DB.subGradeIncentive || !DB.subGradeIncentive.byBranchKey) return null;
-  const entry = DB.subGradeIncentive.byBranchKey[metricsOverviewNormName(branchName)];
+  const byBranchKey = subGradeDataFor().byBranchKey;
+  if(!byBranchKey) return null;
+  const entry = byBranchKey[metricsOverviewNormName(branchName)];
   return entry ? entry.records : null;
 }
 // 2026-08-25 추가: 파일에 잘못 포함된 인원(예: 다른 지점으로 이동/퇴사 등) 등을 관리자가 직접
@@ -7897,9 +7998,10 @@ function incGradeRecordsForBranch(branchName){
 // metricsOverviewNormName으로 다시 정규화해 매칭한다.
 function removeSubGradeRecord(branchNameRaw, empId){
   if(SESSION.role!=='admin') return;
-  if(!DB.subGradeIncentive || !DB.subGradeIncentive.byBranchKey) return;
+  const byBranchKey = subGradeDataFor().byBranchKey;
+  if(!byBranchKey) return;
   const key = metricsOverviewNormName(branchNameRaw);
-  const entry = DB.subGradeIncentive.byBranchKey[key];
+  const entry = byBranchKey[key];
   if(!entry) return;
   const before = entry.records.length;
   entry.records = entry.records.filter(r=>r.empId!==empId);
@@ -7934,20 +8036,23 @@ function incGradeTableHtml(records, branchNameForDelete){
 }
 function renderIncentiveOverview(){
   const noticeHtml = renderCollectionNotice('incentiveOverviewNotice', 'incentiveOverview');
-  if(!DB.metricsOverview || !DB.metricsOverview.rows || DB.metricsOverview.rows.length===0){
+  const moEntry = moDataFor();
+  if(!moEntry.rows || moEntry.rows.length===0){
     return `
     <div class="page-title">지점별 인센티브(참고용)</div>
     <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트 기준 지점별 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다.</div>
+    ${moPeriodSelectorHtml()}
     ${noticeHtml}
     <div class="card"><div class="muted">아직 업로드된 자료가 없습니다.${SESSION.role==='admin'?` [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다. <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
   }
-  const allRows = DB.metricsOverview.rows;
+  const allRows = moEntry.rows;
   const teamAgg = moAggregate(allRows);
   const canBrowseAll = canSwitchBranch(); // 관리자·임원: 전 지점 상세 조회 가능
 
   const pageHeader = `
     <div class="page-title">지점별 인센티브(참고용)</div>
-    <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트("◆ 지점별 인센티브" 표) 기준 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다. 기준일자 <b>${DB.metricsOverview.asOfDate}</b>(D-1, 전일)</div>
+    <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트("◆ 지점별 인센티브" 표) 기준 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다. 기준일자 <b>${moEntry.asOfDate}</b>(D-1, 전일)</div>
+    ${moPeriodSelectorHtml()}
     ${noticeHtml}`;
 
   if(!canBrowseAll){
