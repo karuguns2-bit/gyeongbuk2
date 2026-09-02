@@ -3049,10 +3049,10 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>📱 구독 판매 실적(지점별) 파일 업로드 <small>("구독 판매 Grade 및 현장관리자 시상 컨테스트" 파일 · "지점별 구독 판매" 시트)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">[구독 실적] 페이지의 총판/실판/전년마감 실적 수치를 이 파일 기준으로 갱신합니다(목표는 계속 [지표 한 눈에 보기] 업로드분을 사용). [지표 한 눈에 보기] 파일보다 더 자주 올라오는 경우 이 파일을 최신으로 올려주세요.
-      ${moUploadStatusHtml(DB.subSalesUpload.byPeriod, d=>Object.keys(d.byKey||{}).length+'개 지점')}</div>
-      <input type="file" id="subSalesFileInput" accept=".xlsx,.xls" onchange="handleSubSalesFile(event)">
+      <h3>📱 목표관리(MSIS기준)DATA업로드 <small>("구독 총판 수기 실적 현황" 파일 · "지점별 구독 실적현황 (N월)수기" 시트)</small></h3>
+      <div class="muted" style="margin-bottom:10px;">"지점별 구독 실적현황 (N월)수기" 시트(시트명에 "구독"과 "수기"가 들어있으면 자동으로 찾습니다)를 그대로 올리면, 지점·매니저별 구독 실적(수량/금액)이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리(MSIS기준)] 페이지의 구독 실적 데이터로 반영됩니다. [구독 실적] 페이지에는 영향을 주지 않습니다.
+      ${goalsSubActualsStatusHtml()}</div>
+      <input type="file" id="subSalesFileInput" accept=".xlsx,.xls" onchange="handleGoalsSubscriptionManualFile(event)">
       <div id="subSalesUploadMsg" class="small-note"></div>
     </div>
 
@@ -4693,8 +4693,15 @@ function parseGoalsSubscriptionSheet(rows){
   if(headerRowIdx<0){ out.warnings.push('구독 수기 실적 시트에서 표 헤더(지점명/매니저)를 찾지 못했습니다.'); return out; }
   const headerRow = rows[headerRowIdx]||[];
   mgrCol = headerRow.findIndex(c=>/^관리자$/.test(String(c==null?'':c).trim()));
-  amtCol = headerRow.findIndex(c=>/개인별/.test(String(c==null?'':c).trim()));
-  qtyCol = empCol + 1; // "매니저" 바로 다음 칸이 그 사람의 개인 판매 건수(수량)이며 헤더 텍스트는 비어있음
+  // "개인별" 칸이 금액 하나만 있던 예전 형식과 달리, 2026-09월 파일부터는 금액 칸 앞에
+  // "개인별(수량)" 칸이 새로 추가되어 "개인별"만으로 찾으면 수량 칸을 금액 칸으로 잘못 짚는다
+  // (findIndex가 왼쪽에서부터 처음 매칭되는 칸을 쓰기 때문) — 반드시 "금액"까지 함께 포함된
+  // 칸만 금액 칸으로 인정한다.
+  amtCol = headerRow.findIndex(c=>{ const s = String(c==null?'':c); return /개인별/.test(s) && /금액/.test(s); });
+  // 수량 칸은 "개인별(수량)"이라는 명시적 헤더가 있으면 그 칸을 쓰고, 없으면(예전 형식) 기존처럼
+  // "매니저" 바로 다음 칸(헤더 텍스트는 비어있음)을 그대로 쓴다.
+  const explicitQtyCol = headerRow.findIndex(c=>{ const s = String(c==null?'':c); return /개인별/.test(s) && /수량/.test(s); });
+  qtyCol = explicitQtyCol>=0 ? explicitQtyCol : empCol + 1;
   if(amtCol<0){ out.warnings.push('구독 수기 실적 시트에서 "개인별(금액)" 열을 찾지 못했습니다.'); return out; }
 
   let curMgr = '', curBranch = '';
@@ -4718,6 +4725,83 @@ function parseGoalsSubscriptionSheet(rows){
     });
   }
   return out;
+}
+
+// [시스템 관리] "목표관리(MSIS기준)DATA업로드" 박스 전용 상태 표시. DB.goalsSubActualsMeta에
+// 달(period)별 마지막 업로드 메타(파일명/업로더/반영건수)를 기록해 두고, 다른 업로드 박스들과
+// 같은 톤으로 "현재 반영된 자료"를 보여준다(moUploadStatusHtml과 같은 UX 패턴, 다만 이 데이터는
+// byPeriod 구조가 아니라 DB.goalsSubActuals[period]에 바로 저장되므로 별도 헬퍼로 둔다).
+function goalsSubActualsStatusHtml(){
+  const meta = DB.goalsSubActualsMeta || {};
+  const periods = Object.keys(meta).sort();
+  if(periods.length===0) return '<br>아직 업로드된 자료가 없습니다.';
+  const latest = periods[periods.length-1];
+  const m = meta[latest];
+  return `<br>현재 반영된 자료: <b>${goalsPeriodLabel(latest)}</b> · ${m.matchedCount||0}명 · ${escapeHtml(m.fileName||'')} (${m.uploadedBy||''} 업로드)` +
+    (periods.length>1 ? `<br><span class="muted" style="font-size:11.5px;">📅 누적 보관 중인 달: ${periods.map(p=>goalsPeriodLabel(p)+(p===latest?' (최신)':'')).join(', ')}</span>` : '');
+}
+// "목표관리(MSIS기준)DATA업로드" 박스 핸들러 — "구독 총판 수기 실적 현황" 같은 관리자 수기취합
+// 파일을 그대로 받아, 시트명에 "구독"과 "수기"가 모두 들어있는 시트(예: "지점별 구독 실적현황
+// (9월)수기")를 찾아 parseGoalsSubscriptionSheet로 파싱한 뒤 DB.goalsSubActuals[period]에 반영한다.
+// applyGoalsFileUpload()가 큰 목표파일 안의 같은 이름 시트를 파싱해 쓰는 것과 동일한 저장소를
+// 쓰지만, 이 박스는 그 큰 파일과 별개로 이 시트 하나만 담긴 파일을 훨씬 자주 올릴 수 있게 만든
+// 전용 업로드다. [구독 실적] 페이지(DB.subSalesUpload)에는 의도적으로 손대지 않는다.
+function handleGoalsSubscriptionManualFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const msgEl = document.getElementById('subSalesUploadMsg');
+  if(msgEl) msgEl.textContent = '파일을 읽는 중입니다...';
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const raw = new Uint8Array(e.target.result);
+      const wb = XLSX.read(raw, {type:'array'});
+      const subPerfSheetName = wb.SheetNames.find(n=>n.includes('구독') && n.includes('수기'));
+      if(!subPerfSheetName){
+        showUploadResult('subSalesUploadMsg', false, '"구독"과 "수기"가 모두 포함된 시트를 찾지 못했습니다. "지점별 구독 실적현황 (N월)수기" 시트가 들어있는 파일이 맞는지 확인해 주세요.');
+        return;
+      }
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[subPerfSheetName], {header:1, defval:null, raw:true});
+      const parsedSub = parseGoalsSubscriptionSheet(rows);
+      const period = currentGoalsPeriod();
+      const today = todayStr();
+      const unmatchedBranches = [];
+      const unmatchedNames = [];
+      if(!DB.goalsSubActuals) DB.goalsSubActuals = {};
+      if(!DB.goalsSubActuals[period]) DB.goalsSubActuals[period] = {};
+      let matchedCount = 0;
+      parsedSub.rows.forEach(r=>{
+        const branch = matchBranchByFileName(r.branchNameRaw);
+        if(!branch){ unmatchedBranches.push(r.branchNameRaw); return; }
+        const user = DB.users.find(u=>u.branchId===branch.id && u.name===r.name);
+        if(!user){ unmatchedNames.push(`${branch.name} - ${r.name}`); return; }
+        if(!DB.goalsSubActuals[period][branch.id]) DB.goalsSubActuals[period][branch.id] = {};
+        DB.goalsSubActuals[period][branch.id][user.empId] = { qty: r.qty, amt: r.amt, date: today };
+        matchedCount++;
+      });
+      if(matchedCount===0){
+        const detail = parsedSub.warnings.length ? ' ('+parsedSub.warnings.join(', ')+')' : '';
+        showUploadResult('subSalesUploadMsg', false, '반영할 수 있는 구독 실적 데이터를 찾지 못했습니다.'+detail);
+        return;
+      }
+      if(!DB.goalsSubActualsMeta) DB.goalsSubActualsMeta = {};
+      DB.goalsSubActualsMeta[period] = { fileName: file.name, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, matchedCount };
+      saveDB();
+      logActivity('update', `${SESSION.name}님(관리자)이 [목표관리(MSIS기준)DATA] 파일을 업로드했습니다: ${file.name}`);
+      renderTab('systemAdmin');
+      const warnParts = [];
+      if(unmatchedBranches.length>0){
+        const uniq = [...new Set(unmatchedBranches)];
+        warnParts.push(`지점 매칭 실패 ${unmatchedBranches.length}건(${uniq.slice(0,5).join(', ')}${uniq.length>5?' 외':''})`);
+      }
+      if(unmatchedNames.length>0) warnParts.push(`담당자 매칭 실패 ${unmatchedNames.length}건(${unmatchedNames.slice(0,5).join(', ')}${unmatchedNames.length>5?' 외':''})`);
+      const warnMsg = warnParts.length>0 ? ' / '+warnParts.join(' / ') : '';
+      showUploadResult('subSalesUploadMsg', true, `${goalsPeriodLabel(period)} 기준 ${matchedCount}명 구독 실적 반영 완료${warnMsg}`);
+    }catch(err){
+      showUploadResult('subSalesUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 // "msis경쟁력" 시트: 지점(Ship To)별 LG vs 경쟁사(SS) 매출/점유율(M/S)을 가전+PC 합계로,
