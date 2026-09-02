@@ -9269,16 +9269,12 @@ function renderCollectGiftcard(){
       ${DB.giftcardRegistrationLocked ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-weight:600;">⛔ 8월 모바일상품권 사용기간 종료로 인해 등록이 일시 정지됩니다.</div>` : ''}
       <div class="form-row">
         <div class="field">
-          <label>지점명</label>
-          <select id="gcBranch" style="width:160px">${branchOptionsHtml(myBranch)}</select>
+          <label>고객명</label>
+          <input id="gcCustomerName" placeholder="예: 홍길동" style="width:130px">
         </div>
         <div class="field">
-          <label>이관지점</label>
-          <select id="gcTransferBranch" style="width:160px"><option value="NONE" selected>해당없음</option>${branchOptionsHtml(null)}</select>
-        </div>
-        <div class="field">
-          <label>주문번호</label>
-          <input id="gcOrderNo" placeholder="예: I051245311" style="width:150px">
+          <label>연락처</label>
+          <input id="gcPhone" placeholder="예: 010-1234-5678" style="width:150px">
         </div>
         <div class="field" style="position:relative;">
           <label>모델명</label>
@@ -9289,32 +9285,38 @@ function renderCollectGiftcard(){
           <label>사용 금액</label>
           <input id="gcAmount" type="number" placeholder="예: 10000" style="width:120px">
         </div>
+        <div class="field">
+          <label>주문번호</label>
+          <input id="gcOrderNo" placeholder="예: I051245311" style="width:150px">
+        </div>
       </div>
       <div class="small-note" style="margin-top:-8px;">※ &quot;I&quot;로 시작하는 주문번호를 입력해 주세요. (예: I051245311)<br>주문번호 없을 시 &quot;i&quot;만 입력하면 됨.</div>
       <div class="small-note" style="margin-top:2px;">※ 모델명은 반드시 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR)</div>
       <div class="form-row">
-        <div class="field" style="flex:1;min-width:260px;">
-          <label>판매 유형 <span style="color:var(--bad);">*필히 작성</span></label>
-          <input id="gcSaleType" placeholder="예: FQ18GC1EB2(일시불) + Z330MEEF21(구독) / 구재고 소진 / 에어컨 판매 시 등" style="width:100%">
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="field">
-          <label>판매일자</label>
-          <input id="gcSaleDate" type="date" value="${todayStr()}">
-        </div>
         <div class="field">
           <label>배송일자</label>
           <input id="gcDeliveryDate" type="date">
         </div>
         <div class="field">
-          <label>고객명</label>
-          <input id="gcCustomerName" placeholder="예: 홍길동" style="width:130px">
+          <label>지점명</label>
+          <select id="gcBranch" style="width:160px">${branchOptionsHtml(myBranch)}</select>
         </div>
         <div class="field">
-          <label>연락처</label>
-          <input id="gcPhone" placeholder="예: 010-1234-5678" style="width:150px">
+          <label>이관지점</label>
+          <select id="gcTransferBranch" style="width:160px"><option value="NONE" selected>해당없음</option>${branchOptionsHtml(null)}</select>
         </div>
+        <div class="field">
+          <label>판매일자</label>
+          <input id="gcSaleDate" type="date" value="${todayStr()}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:260px;">
+          <label>판매 유형 <span style="color:var(--bad);">*필히 작성</span></label>
+          <input id="gcSaleType" placeholder="예)FQ18GC1EBE(일시불)+Z330MEEF21(구독)/구재고 소진/에어컨 판매 시 등" style="width:100%">
+        </div>
+      </div>
+      <div class="form-row">
         <div class="field">
           <label>영수증 증빙 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
           <input id="gcReceipt" type="file" multiple>
@@ -9919,12 +9921,12 @@ function renderCollectContest(){
           </select>
         </div>
         <div class="field">
-          <label>사은품명</label>
-          <input id="cgGiftName" style="width:220px;background:#f7f7f8;" placeholder="컨테스트 구분 선택 시 자동 입력">
-        </div>
-        <div class="field">
           <label>지점명</label>
           <select id="cgBranch" style="width:150px">${branchOptionsHtml(myBranch)}</select>
+        </div>
+        <div class="field">
+          <label>고객명</label>
+          <input id="cgCustomerName" placeholder="예: 홍길동" style="width:130px">
         </div>
         <div class="field">
           <label>판매일자</label>
@@ -9944,10 +9946,6 @@ function renderCollectContest(){
         <div class="field">
           <label>판매 건수</label>
           <input id="cgQty" type="number" style="width:90px" placeholder="예: 1">
-        </div>
-        <div class="field">
-          <label>고객명</label>
-          <input id="cgCustomerName" placeholder="예: 홍길동" style="width:130px">
         </div>
         <div class="field">
           <label>연락처</label>
@@ -9970,6 +9968,10 @@ function renderCollectContest(){
         </div>
       </div>
       <div class="form-row">
+        <div class="field">
+          <label>사은품명</label>
+          <input id="cgGiftName" style="width:220px;background:#f7f7f8;" placeholder="컨테스트 구분 선택 시 자동 입력">
+        </div>
         <div class="field" style="min-width:260px;">
           <label>증빙자료 첨부 (사진/PPT/엑셀 등 여러 개 가능)</label>
           <input id="cgEvidenceFiles" type="file" multiple>
@@ -13734,13 +13736,21 @@ function renderKakaoFriends(){
    9i. RENDER: 개별 가망고객 관리현황 (본인 사번 전용, 타인 열람 불가)
    ========================================================================= */
 const PROSPECT_HAPPY_CALL_OPTIONS = ['실행', '미실행'];
-const PROSPECT_SALE_STATUS_OPTIONS = ['판매', '미판매', '보류'];
+// 2026-09-03 개편: 판매/미판매/보류(진행 상태) 대신, 실제로 무엇을 구매했는지를 바로 알 수 있도록
+// 일시불/구독/동시구매 여부까지 값 하나에 담는 방식으로 완전히 교체했다(기존 등록 건의 판매/미판매/
+// 보류 값은 새 항목과 자동 매칭되지 않으므로 그대로 남아있고, 목록에서는 "미선택"으로 보인다 —
+// 필요 시 관리자가 새 값으로 다시 선택해 주면 된다).
+const PROSPECT_SALE_STATUS_OPTIONS = ['일시불 구매', '구독 구매', '미구매', '일시불+구독 구매'];
 const PROSPECT_PURCHASE_TYPE_OPTIONS = ['구독', '일시불'];
 // 2026-08-24 방문 상담 일지 양식 추가 항목(방문일자/방문시간/고객구분/방문단위/방문경로/상담제품 대분류)
 const PROSPECT_VISIT_TIME_OPTIONS = ['오전', '오후'];
 const PROSPECT_AGE_GROUP_OPTIONS = ['20대', '30대', '40대', '50대', '60대↑'];
 const PROSPECT_VISIT_UNIT_OPTIONS = ['가족단위', '부부', '1인', '지인동행', '기타'];
-const PROSPECT_VISIT_CHANNEL_OPTIONS = ['워크인', '전단지(POP,현수막)', '카플친', '당근', '온라인DB', '이업종 연계(식품관,테넌트)', '대형마트 방송', '행사장', '기존 구매고객', '단골 고객', '지인소개'];
+// 2026-09-03 추가: 기존 항목은 그대로 두고, 요청받은 목록 중 기존 항목과 겹치지 않는 3개(기타/
+// 임직원/아파트 광고)만 새로 추가했다. 나머지 요청 항목(이업종연계(식품관,테넌트 등)/전단(POP,
+// 현수막)/매장 홍보 방송/카카오 플친)은 이미 있는 '이업종 연계(식품관,테넌트)'/'전단지(POP,현수막)'/
+// '대형마트 방송'/'카플친'과 사실상 같은 항목이라 중복 추가하지 않았다.
+const PROSPECT_VISIT_CHANNEL_OPTIONS = ['워크인', '전단지(POP,현수막)', '카플친', '당근', '온라인DB', '이업종 연계(식품관,테넌트)', '대형마트 방송', '행사장', '기존 구매고객', '단골 고객', '지인소개', '임직원', '아파트 광고(엘리베이터,게시판)', '기타'];
 const PROSPECT_PRODUCT_CATEGORY_OPTIONS = ['대형가전', '소형가전', 'PC', '혼수', '이사'];
 function myProspects(){
   return (DB.prospects||[]).filter(p=>p.empId===SESSION.empId);
@@ -13810,9 +13820,9 @@ function prospectMonthlyStats(){
   const mine = visibleProspects().filter(p=>String(p.createdAt||'').slice(0,7)===thisMonth);
   const total = mine.length;
   const totalAmt = mine.reduce((s,p)=>s+(Number(p.expectedAmountWon)||0),0);
-  const sold = mine.filter(p=>p.saleStatus==='판매').length;
-  const notSold = mine.filter(p=>p.saleStatus==='미판매').length;
-  const pending = mine.filter(p=>p.saleStatus==='보류').length;
+  const sold = mine.filter(p=>p.saleStatus && p.saleStatus!=='미구매').length;
+  const notSold = mine.filter(p=>p.saleStatus==='미구매').length;
+  const pending = mine.filter(p=>!p.saleStatus).length; // 판매여부 미입력(기존 판매/미판매/보류 값 포함)
   const noHappyCall = mine.filter(p=>p.happyCall!=='실행').length;
   // 2026-08-24 추가: 방문경로/고객구분/방문단위별 분포(값이 하나도 입력 안 된 달에는 null)
   const channelLabel = prospectGroupCountsLabel(mine, 'visitChannel');
@@ -13824,17 +13834,17 @@ function prospectFeedback(){
   const s = prospectMonthlyStats();
   const lines = [];
   lines.push(`이번 달(${periodStr()}) 가망고객 <b>${s.total}건</b> 등록 · 예상금액 합계 <b>${fmtWon(s.totalAmt)}</b>`);
-  lines.push(`판매완료 <b>${s.sold}건</b> · 미판매 <b>${s.notSold}건</b> · 보류 <b>${s.pending}건</b>`);
+  lines.push(`구매완료 <b>${s.sold}건</b> · 미구매 <b>${s.notSold}건</b> · 판매여부 미입력 <b>${s.pending}건</b>`);
   if(s.total>0){
     const convRate = s.sold/s.total*100;
-    lines.push(`전환율(판매완료/전체) <b>${convRate.toFixed(1)}%</b>`);
-    if(convRate<30) lines.push('전환율이 낮은 편입니다. 보류 중인 고객 위주로 추가 상담 및 재연락을 진행해 보세요.');
+    lines.push(`전환율(구매완료/전체) <b>${convRate.toFixed(1)}%</b>`);
+    if(convRate<30) lines.push('전환율이 낮은 편입니다. 판매여부가 미입력이거나 미구매인 고객 위주로 추가 상담 및 재연락을 진행해 보세요.');
     else lines.push('양호한 전환율을 유지하고 있습니다. 지금의 상담 방식을 유지해 보세요.');
   } else {
     lines.push('이번 달 등록된 가망고객이 없습니다. 신규 상담 고객을 등록해 관리를 시작해 보세요.');
   }
   if(s.noHappyCall>0) lines.push(`⚠ 해피콜 미실행 고객이 <b>${s.noHappyCall}명</b> 있습니다. 우선적으로 연락해 보세요.`);
-  if(s.pending>0) lines.push(`보류 상태 고객 <b>${s.pending}명</b> — 구매희망일이 임박한 고객부터 순차적으로 재상담을 권장합니다.`);
+  if(s.pending>0) lines.push(`판매여부 미입력 고객 <b>${s.pending}명</b> — 구매희망일이 임박한 고객부터 순차적으로 재상담을 권장합니다.`);
   if(s.channelLabel) lines.push(`방문경로별: ${s.channelLabel}`);
   if(s.ageGroupLabel) lines.push(`고객구분별: ${s.ageGroupLabel}`);
   if(s.visitUnitLabel) lines.push(`방문단위별: ${s.visitUnitLabel}`);
@@ -13928,7 +13938,7 @@ function renderProspects(){
         ${canManage ? `<button class="btn btn-sm" style="margin-left:4px;" onclick="updateProspectField('${p.id}','happyCall','${p.happyCall==='실행'?'미실행':'실행'}')">${p.happyCall==='실행'?'미실행으로 변경':'실행으로 변경'}</button>` : ''}
       </td>
       <td>
-        <span class="badge ${p.saleStatus==='판매'?'good':(p.saleStatus==='미판매'?'bad':'warn')}">${p.saleStatus}</span>
+        <span class="badge ${p.saleStatus==='미구매'?'bad':(p.saleStatus?'good':'warn')}">${p.saleStatus||'미선택'}</span>
         ${canManage ? `
         <div style="margin-top:4px;display:flex;gap:3px;">
           ${PROSPECT_SALE_STATUS_OPTIONS.map(o=>`<button class="btn btn-sm" style="padding:2px 7px;font-size:11px;${p.saleStatus===o?'opacity:.4;pointer-events:none;':''}" onclick="updateProspectField('${p.id}','saleStatus','${o}')">${o}</button>`).join('')}
