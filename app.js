@@ -9491,13 +9491,18 @@ const CONTEST_GIFT_TYPE_OPTIONS = [
   { value:'26년 8월 에어컨 구독 특별사은품', gift:'[셰퍼]에어브리즈 14인치 선풍기', closed:true }, // 2026-08-18 운영 종료
   // 매장에서 직접 수령하는 항목이라 실제 배송 주소가 없으므로, 선택 시 주소칸에 안내 문구를 자동으로 채워준다.
   // 선착순 24개 한정 사은품이므로 limit을 지정해 등록 시마다 잔여수량 안내/소진 시 등록 차단에 사용한다.
-  { value:'26년 8월 로니 런칭 기념 사은품(24건 선착순 한정)', gift:'[아티] 내열용기 직사각 5종세트', address:'매장으로 배송', limit:24, closed:true } // 2026-08-18 신청 종료
+  { value:'26년 8월 로니 런칭 기념 사은품(24건 선착순 한정)', gift:'[아티] 내열용기 직사각 5종세트', address:'매장으로 배송', limit:24, closed:true }, // 2026-08-18 신청 종료
+  // ---- 2026-09-02 추가: 구독 계약건수별 사은품 컨테스트 (9/4~9/14 운영, 고객댁 배송이라 주소 필수) ----
+  { value:'구독 1건 계약 시', gift:'LG생활건강 보타닉 퍼퓸 컬렉션 1EA', windowStart:'2026-09-04', windowEnd:'2026-09-14' },
+  { value:'구독 2건 이상 계약 시', gift:'CJ스팸 세트 1EA', windowStart:'2026-09-04', windowEnd:'2026-09-14' }
 ];
-// "새 건 등록" 드롭다운에는 관리자가 종료 처리한(closed:true) 항목은 노출하지 않는다(과거 항목
-// 선택 자체를 원천 차단). 기존에 이미 등록된 건을 수정하는 화면(edit-row select)은 과거 값을
-// 그대로 보여줘야 하므로 영향받지 않는다 - subTierContestOptionsForNewEntry()와 동일한 패턴.
+// "새 건 등록" 드롭다운에는 관리자가 종료 처리했거나(closed:true) 운영기간(windowStart~windowEnd)이
+// 아직 시작 전/이미 지난 항목은 노출하지 않는다(과거 항목 선택 자체를 원천 차단). 기존에 이미
+// 등록된 건을 수정하는 화면(edit-row select)은 과거 값을 그대로 보여줘야 하므로 영향받지 않는다 -
+// subTierContestOptionsForNewEntry()와 동일한 패턴이라 판정 로직(subTierContestOptionWithinWindow)도
+// 그대로 재사용한다(closed/windowStart/windowEnd 필드만 보는 순수 함수라 두 옵션 배열 모두에 쓸 수 있음).
 function contestGiftOptionsForNewEntry(){
-  return CONTEST_GIFT_TYPE_OPTIONS.filter(o=>!o.closed);
+  return CONTEST_GIFT_TYPE_OPTIONS.filter(o=>subTierContestOptionWithinWindow(o));
 }
 // 선착순 한정수량 항목의 누적 지급 수량(판매 건수 qty 합산)을 계산한다. 전 지점 취합 기준(각 지점별이 아니라 전체 합계).
 // excludeId를 넘기면 해당 레코드는 집계에서 제외한다(수정 화면에서 자기 자신의 기존 qty를 이중 차감하지 않기 위함).
@@ -9872,7 +9877,7 @@ function renderCollectContest(){
       </div>
       <div class="form-row">
         <div class="field" style="min-width:300px;">
-          <label>주소</label>
+          <label>주소 <span style="color:var(--bad);">*필히 작성</span></label>
           <div style="display:flex;gap:6px;">
             <input id="cgAddress" placeholder="주소 검색 버튼을 눌러 입력하세요 (직접 입력 불가)" style="width:300px;background:#f7f7f8;" readonly>
             <button type="button" class="btn btn-sm" onclick="openAddressSearch('cgAddress')">주소 검색</button>
@@ -10019,7 +10024,7 @@ function submitContestGift(){
   const evidenceInput = document.getElementById('cgEvidenceFiles');
   const evidenceFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
 
-  if(!contestType || !model || qty<=0 || !customerName || !phone){ alert('컨테스트 구분, 모델명, 판매 건수, 고객명, 연락처를 입력해 주세요.'); return; }
+  if(!contestType || !model || qty<=0 || !customerName || !phone || !address){ alert('컨테스트 구분, 모델명, 판매 건수, 고객명, 연락처, 주소를 입력해 주세요.'); return; }
   if(!isValidGiftcardModelList(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR) · 여러 모델은 "/"로 구분해 주세요.'); return; }
   const oversized = evidenceFiles.find(f=>f.size > 3*1024*1024);
   if(oversized){ alert(`"${oversized.name}" 파일이 3MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
@@ -10123,7 +10128,7 @@ function saveEditContestGift(id){
   const evidenceInput = document.getElementById(`cge_${id}_evidence`);
   const newFiles = evidenceInput && evidenceInput.files ? Array.from(evidenceInput.files) : [];
 
-  if(!contestType || !model || qty<=0 || !customerName || !phone){ alert('컨테스트 구분, 모델명, 판매 건수, 고객명, 연락처를 입력해 주세요.'); return; }
+  if(!contestType || !model || qty<=0 || !customerName || !phone || !address){ alert('컨테스트 구분, 모델명, 판매 건수, 고객명, 연락처, 주소를 입력해 주세요.'); return; }
   if(!isValidGiftcardModelList(model)){ alert('모델명 뒤에 .AKOR / .CKOR / .AKRG 등 풀네임을 붙여서 입력해 주세요. (예: SC5GMR81S.AKOR) · 여러 모델은 "/"로 구분해 주세요.'); return; }
   const oversized = newFiles.find(f=>f.size > 3*1024*1024);
   if(oversized){ alert(`"${oversized.name}" 파일이 3MB를 초과합니다. 용량을 줄여서 다시 첨부해 주세요.`); return; }
