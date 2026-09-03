@@ -2958,6 +2958,21 @@ function renameEmpIdEverywhere(oldId, newId){
   }
   if(SESSION && SESSION.empId===oldId) SESSION.empId = newId;
 }
+// [계정관리]에서 사원 "이름"만 고쳤을 때(사번은 그대로) 쓰는 짝 함수 — renameEmpIdEverywhere는
+// empId 자체가 바뀔 때 참조를 옮기지만, 이름은 여러 곳에 생성 시점 스냅샷(문자열)으로 그대로
+// 복사돼 저장돼 있어서 계정관리에서 이름을 바꿔도 자동으로 안 바뀐다. 그중에서도 "지점별
+// 매니저/사원 명단"에 해당하는 목표 배분 명단(DB.goals[..].allocations)과 오늘 출근 현황
+// 명단(DB.attendance)은 empId 기준으로 찾아 이름을 즉시 같은 값으로 맞춰준다.
+function renameUserNameEverywhere(empId, newName){
+  Object.values(DB.goals||{}).forEach(periods=>{
+    Object.values(periods||{}).forEach(g=>{
+      (g.allocations||[]).forEach(a=>{ if(a.empId===empId) a.name = newName; });
+    });
+  });
+  Object.values(DB.attendance||{}).forEach(a=>{
+    (a.records||[]).forEach(r=>{ if(r.empId===empId) r.name = newName; });
+  });
+}
 function loginHistoryLabel(empId){
   if(!sbClient) return '-';
   if(!loginStatsCache) return '불러오는 중...';
@@ -3357,11 +3372,15 @@ function saveEditSystemUser(oldEmpId){
   if(!newEmpId || !newName){ alert('사번과 이름을 입력해 주세요.'); return; }
   if(newEmpId !== oldEmpId && DB.users.find(x=>x.empId===newEmpId)){ alert('이미 존재하는 사번입니다.'); return; }
 
+  const nameChanged = u.name !== newName;
   if(newEmpId !== oldEmpId){
     renameEmpIdEverywhere(oldEmpId, newEmpId);
     u.empId = newEmpId;
   }
   u.name = newName;
+  // 이름이 바뀌면 지점별 목표 배분 명단·오늘 출근 현황 명단 등에 복사돼 있던 이름도 즉시
+  // 같은 값으로 맞춰서, 계정관리에서 수정하는 순간 다른 화면에도 바로 반영되게 한다.
+  if(nameChanged) renameUserNameEverywhere(u.empId, newName);
   u.role = newRole;
   u.branchId = (newRole==='admin' || newRole==='exec' || !newBranch) ? null : newBranch;
   if(newPw) u.pw = newPw;
