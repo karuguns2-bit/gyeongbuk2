@@ -2973,6 +2973,57 @@ function renameUserNameEverywhere(empId, newName){
     (a.records||[]).forEach(r=>{ if(r.empId===empId) r.name = newName; });
   });
 }
+// [계정관리]에서 사원의 "소속 지점"을 바꿨을 때 쓰는 짝 함수 — 목표 배분 명단(DB.goals[지점][기간].allocations)과
+// 오늘 출근 현황 명단(DB.attendance[지점].records)은 지점 ID별로 따로 저장돼 있어서, 계정에서 지점을
+// 옮겨도 이 두 명단은 예전 지점에 그대로 남아있고 새 지점에는 자동으로 추가되지 않는다(방치하면 예전
+// 지점 화면엔 안 써야 할 사람이 남고, 새 지점 화면엔 있어야 할 사람이 빠지게 된다).
+// 그래서 계정관리에서 지점을 바꾸는 즉시: 예전 지점들에 남아있던 행을 모두 찾아 제거하면서 그 안에
+// 있던 목표(target/subQtyTarget/subAmtTarget) 값을 같이 들고 와서, 새 지점의 각 기간에 옮겨 넣는다
+// (새 지점으로 승격/전배 등으로 branchId가 아예 null이 되는 경우엔 예전 지점 행만 제거하고 새로 만들지 않는다).
+function syncUserBranchEverywhere(empId, newBranchId, name){
+  // 기간(period)마다 배분 목표값이 다르므로, 예전 지점에서 걷어올 때 기간별로 따로 보관해뒀다가
+  // 새 지점의 "같은 기간"에만 그대로 옮겨 넣는다(한 기간 값으로 다른 기간까지 덮어쓰지 않도록 주의).
+  const movedByPeriod = {};
+  Object.keys(DB.goals||{}).forEach(bId=>{
+    if(bId===newBranchId) return;
+    Object.entries(DB.goals[bId]||{}).forEach(([period,g])=>{
+      if(!g || !g.allocations) return;
+      const idx = g.allocations.findIndex(a=>a.empId===empId);
+      if(idx>=0){ movedByPeriod[period] = g.allocations[idx]; g.allocations.splice(idx,1); }
+    });
+  });
+  if(newBranchId && DB.goals[newBranchId]){
+    Object.keys(DB.goals[newBranchId]).forEach(period=>{
+      const g = DB.goals[newBranchId][period];
+      if(!g) return;
+      if(!g.allocations) g.allocations = [];
+      if(!g.allocations.find(a=>a.empId===empId)){
+        const m = movedByPeriod[period];
+        g.allocations.push({
+          empId, name,
+          target: (m && m.target) || 0,
+          subQtyTarget: (m && m.subQtyTarget) || 0,
+          subAmtTarget: (m && m.subAmtTarget) || 0
+        });
+      }
+    });
+  }
+
+  let movedAtt = null;
+  Object.keys(DB.attendance||{}).forEach(bId=>{
+    if(bId===newBranchId) return;
+    const a = DB.attendance[bId];
+    if(!a || !a.records) return;
+    const idx = a.records.findIndex(r=>r.empId===empId);
+    if(idx>=0){ movedAtt = a.records[idx]; a.records.splice(idx,1); }
+  });
+  if(newBranchId && DB.attendance[newBranchId]){
+    if(!DB.attendance[newBranchId].records) DB.attendance[newBranchId].records = [];
+    if(!DB.attendance[newBranchId].records.find(r=>r.empId===empId)){
+      DB.attendance[newBranchId].records.push(movedAtt ? Object.assign({}, movedAtt, {name}) : {empId, name, status:'출근', checkin:'09:00', checkout:'18:00'});
+    }
+  }
+}
 function loginHistoryLabel(empId){
   if(!sbClient) return '-';
   if(!loginStatsCache) return '불러오는 중...';
@@ -3373,6 +3424,7 @@ function saveEditSystemUser(oldEmpId){
   if(newEmpId !== oldEmpId && DB.users.find(x=>x.empId===newEmpId)){ alert('이미 존재하는 사번입니다.'); return; }
 
   const nameChanged = u.name !== newName;
+  const oldBranchId = u.branchId;
   if(newEmpId !== oldEmpId){
     renameEmpIdEverywhere(oldEmpId, newEmpId);
     u.empId = newEmpId;
@@ -3383,6 +3435,8 @@ function saveEditSystemUser(oldEmpId){
   if(nameChanged) renameUserNameEverywhere(u.empId, newName);
   u.role = newRole;
   u.branchId = (newRole==='admin' || newRole==='exec' || !newBranch) ? null : newBranch;
+  // 소속 지점이 바뀌면 목표 배분 명단·출근 현황 명단도 예전 지점에서 새 지점으로 즉시 옮겨준다.
+  if(u.branchId !== oldBranchId) syncUserBranchEverywhere(u.empId, u.branchId, u.name);
   if(newPw) u.pw = newPw;
 
   state.sysUserEditId = null;
