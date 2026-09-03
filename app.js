@@ -601,16 +601,16 @@ const SUBSCRIPTION_DATA = {
 // 한 번 더 매핑을 만들어 두면 실제 지점 레코드와 안정적으로 매칭된다. 다만 이것도 어디까지나
 // 최초 1회용 폴백일 뿐이고, 목표 파일이 업로드되면 그 시점부터 branch.manager가 파일의 SR로
 // 매달 자동 갱신되므로(applyGoalsFileUpload 참고) 그게 항상 가장 정확한 최신 출처다.
-const BRANCH_MANAGER_BY_NAME = (function(){
-  const map = {};
-  ((SUBSCRIPTION_DATA.emart && SUBSCRIPTION_DATA.emart.groups) || []).forEach(grp=>{
-    (grp.branches||[]).forEach(b=>{
-      const nm = String(b.name||'').replace(/^\(신\)\s*이마트\s*/, '').trim();
-      if(nm) map[nm] = grp.manager;
-    });
-  });
-  return map;
-})();
+// 2026-09-03 갱신: 관리자별 담당 지점이 재편되어(이재림 담당 종료, 구미점/상주점/영천점 재배정)
+// 더 이상 SUBSCRIPTION_DATA(7월 스냅샷, historical 데이터라 그대로 보존)에서 유도하지 않고
+// 최신 배정을 직접 명시한다. 실제 운영 중인 지점은 이미 목표파일 업로드로 branch.manager가
+// 채워져 있어 이 폴백이 쓰일 일은 거의 없지만, DB 초기화·신규 지점 등 예외 상황을 대비해 둔다.
+const BRANCH_MANAGER_BY_NAME = {
+  '월배점':'이광환', '경산점':'이광환', '칠성점':'이광환',
+  '포항점':'박귀복', '이동점':'박귀복', '반야월점':'박귀복', '영천점':'박귀복',
+  '성서점':'배지우', '동구미점':'배지우', '김천점':'배지우', '상주점':'배지우',
+  'E/T비산점':'손영길', '만촌점':'손영길', '구미점':'손영길'
+};
 
 /* =========================================================================
    1a2. SHARED DB (Supabase) — 전체 팀 실시간 공유 저장소
@@ -3041,7 +3041,7 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>📊 지표 한 눈에 보기 파일 업로드 <small>("일일실적 현황" 파일 · MASTER/Gross(CC포함)/구독/고수익 시트 포함 .xlsb/.xlsx)</small></h3>
+      <h3>📊 지표 한 눈에 보기 파일 업로드(담당자 : 박귀복C) <small>("일일실적 현황" 파일 · MASTER/Gross(CC포함)/구독/고수익 시트 포함 .xlsb/.xlsx)</small></h3>
       <div class="muted" style="margin-bottom:10px;">"(인터비즈) 일일실적 현황" 파일을 그대로 올리면 됩니다. 파일명의 날짜를 기준일자(D-1, 전일)로 자동 인식하고, Gross(CC포함)/구독/고수익 시트에서 우리 팀 소속 지점(이마트 채널)만 자동으로 골라내어 [지표 한 눈에 보기] 페이지의 관리자별·지점별 GROSS 총판/실판, 구독, 고수익(HIGH-END) 비중 지표를 갱신합니다. 같은 달 안에서 다시 올리면 그 달 자료만 최신 값으로 갱신되고, 다른 달(예: 9월) 파일을 올리면 이전 달(8월) 자료는 지워지지 않고 그대로 보관되어 화면에서 달을 선택해 다시 볼 수 있습니다.<br>※ 파일 용량이 커서(약 20~30MB) 읽어오는 데 30초 이상 걸릴 수 있습니다. 업로드 중 메시지가 뜨면 창을 벗어나지 말고 잠시 기다려 주세요.
       ${moUploadStatusHtml(DB.metricsOverview.byPeriod, d=>d.rows.length+'개 지점', ' 기준(D-1)')}</div>
       <input type="file" id="metricsOverviewFileInput" accept=".xlsb,.xlsx,.xls" onchange="handleMetricsOverviewFile(event)">
@@ -3049,7 +3049,7 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>📱 목표관리(MSIS기준)DATA업로드 <small>("구독 총판 수기 실적 현황" 파일 · "지점별 구독 실적현황 (N월)수기" 시트)</small></h3>
+      <h3>📱 목표관리(MSIS기준)DATA업로드(담당자 : 박귀복C) <small>("구독 총판 수기 실적 현황" 파일 · "지점별 구독 실적현황 (N월)수기" 시트)</small></h3>
       <div class="muted" style="margin-bottom:10px;">"지점별 구독 실적현황 (N월)수기" 시트(시트명에 "구독"과 "수기"가 들어있으면 자동으로 찾습니다)를 그대로 올리면, 지점·매니저별 구독 실적(수량/금액)이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리(MSIS기준)] 페이지의 구독 실적 데이터로 반영됩니다. [구독 실적] 페이지에는 영향을 주지 않습니다.
       ${goalsSubActualsStatusHtml()}</div>
       <input type="file" id="subSalesFileInput" accept=".xlsx,.xls" onchange="handleGoalsSubscriptionManualFile(event)">
@@ -3057,7 +3057,7 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>🏆 구독 Grade 수당 파일 업로드 <small>(같은 파일의 "1. 매니저 구독 Grade" 시트)</small></h3>
+      <h3>🏆 구독 Grade 수당 파일 업로드(담당자 : 박귀복C) <small>(같은 파일의 "1. 매니저 구독 Grade" 시트)</small></h3>
       <div class="muted" style="margin-bottom:10px;">매니저(직원) 개인별 구독 판매 Grade 시상금 명단을 올리면 [지점별 인센티브(참고용)] 페이지에서 지점별로 매니저 개별 Grade 수당을 조회할 수 있습니다.
       ${moUploadStatusHtml(DB.subGradeIncentive.byPeriod, d=>Object.keys(d.byBranchKey||{}).length+'개 지점')}</div>
       <input type="file" id="subGradeFileInput" accept=".xlsx,.xls" onchange="handleSubGradeFile(event)">
@@ -3065,7 +3065,7 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>근무일정 파일 업로드 <small>(Shiftee 내보내기 .xlsx · 오늘 출근 현황에 반영)</small></h3>
+      <h3>근무일정 파일 업로드(담당자 : 배지우C) <small>(Shiftee 내보내기 .xlsx · 오늘 출근 현황에 반영)</small></h3>
       <div class="muted" style="margin-bottom:10px;">Shiftee에서 내보낸 월별 근무일정 파일을 올리면 사번을 기준으로 자동 매칭되어, 홈 대시보드와 [전체 지점 현황]의 "오늘 출근 현황/근태"에 출퇴근시간·휴무·대체휴무가 실제 일정 그대로 표시됩니다. 지점별로 파일이 따로 있으면 순서에 상관없이 하나씩 올리면 됩니다 — 사번 단위로 합쳐지므로 먼저 올린 다른 지점 데이터는 지워지지 않습니다.</div>
       <input type="file" id="workScheduleFileInput" accept=".xlsx,.xls" onchange="handleWorkScheduleFile(event)">
       <div id="workScheduleUploadMsg" class="small-note"></div>
@@ -3073,14 +3073,14 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span2" style="background:#fff7f9;border-color:#f0c7d4;">
-      <h3>📁 목표/실적 파일 업로드 <small>("목표" 시트 + "실판매 목표대비 실적조회" 시트 포함 .xlsx)</small></h3>
+      <h3>📁 목표/실적 파일 업로드(담당자 : 배지우C) <small>("목표" 시트 + "실판매 목표대비 실적조회" 시트 포함 .xlsx)</small></h3>
       <div class="muted" style="margin-bottom:10px;">"목표" 시트(구독목표/판매 금액 목표 표)와 "실판매 목표대비 실적조회" 시트가 들어있는 파일을 그대로 올리면, 지점별 GROSS 목표·구독 금액 목표·팀원별 누적 실적이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리] 페이지 데이터로 한 번에 갱신됩니다. 오늘(${todayStr()})은 ${nowWeekIdx}주차로 인식되어, 주차별 달성율 계산용 실적 스냅샷으로 함께 기록됩니다. 지난 달로 넘어가면 지난 달 데이터는 그대로 보존되고, 이번 달 실적만 새로 올리면 됩니다.</div>
       <input type="file" id="goalsFileInput" accept=".xlsx,.xls" onchange="handleGoalsFile(event)">
       <div id="goalsUploadMsg" class="small-note"></div>
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>교육 이수율 데이터 업로드</h3>
+      <h3>교육 이수율 데이터 업로드(담당자 : 배지우C)</h3>
       <div class="form-row" style="align-items:flex-start;flex-wrap:wrap;">
         <div class="field">
           <label>화상교육 이수율 <span class="muted" style="font-weight:400;">(1~4차 회차별 서식)</span></label>
@@ -3102,7 +3102,7 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>재고 조회 파일 업로드 <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
+      <h3>재고 조회 파일 업로드(담당자 : 이광환B) <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
       <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 단, 아래 "소진집중 소진율 카운팅 기준선"이 저장되어 있으면, 기준선 대비 수량이 0이 되었거나 이번 파일에서 아예 사라진 소진집중 품목은 구분(상태)이 자동으로 "소진완료"로 표시됩니다(이 경우에 한해 매니저가 다시 수정하기 전까지 자동 반영).</div>
       <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
       <div id="inventoryUploadMsg" class="small-note"></div>
@@ -3125,7 +3125,7 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span4">
-      <h3>카카오 플친 데이터 업로드</h3>
+      <h3>카카오 플친 데이터 업로드(담당자 : 서영현D)</h3>
       <div class="muted" style="margin-bottom:8px;font-size:12.5px;">"○○ 주차별 카카오 플러스 친구 추가 활동 결과" 형식(관리자/지점명/총계/주차별 누적/증감/비고)의 파일을 그대로 올리면 지점별·주차별 누적 데이터가 자동으로 반영됩니다. 지점/주차(또는 날짜)/플친수 컬럼만 있는 단순한 파일도 함께 지원합니다.</div>
       <input type="file" accept=".xlsx,.xls,.csv" onchange="handleKakaoFriendsFile(event)">
       <div id="kakaoFriendsUploadMsg" class="small-note"></div>
