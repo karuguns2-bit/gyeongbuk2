@@ -3069,12 +3069,12 @@ function renderSystemAdmin(){
       <div class="muted" style="margin-bottom:10px;">Shiftee에서 내보낸 월별 근무일정 파일을 올리면 사번을 기준으로 자동 매칭되어, 홈 대시보드와 [전체 지점 현황]의 "오늘 출근 현황/근태"에 출퇴근시간·휴무·대체휴무가 실제 일정 그대로 표시됩니다. 지점별로 파일이 따로 있으면 순서에 상관없이 하나씩 올리면 됩니다 — 사번 단위로 합쳐지므로 먼저 올린 다른 지점 데이터는 지워지지 않습니다.</div>
       <input type="file" id="workScheduleFileInput" accept=".xlsx,.xls" onchange="handleWorkScheduleFile(event)">
       <div id="workScheduleUploadMsg" class="small-note"></div>
-      ${(DB.workSchedule.uploads&&DB.workSchedule.uploads.length>0) ? `<div class="muted" style="font-size:11.5px;margin-top:8px;">최근 업로드: ${DB.workSchedule.uploads.slice(-3).reverse().map(u=>`${escapeHtml(u.fileName)}(${u.matchedEmp}명)`).join(', ')}</div>` : ''}
+      ${(DB.workSchedule.uploads&&DB.workSchedule.uploads.length>0) ? `<div class="muted" style="font-size:11.5px;margin-top:8px;">최근 업로드: ${DB.workSchedule.uploads.slice(-3).reverse().map(u=>`${fmtUploadDateTime(u.uploadedAt)} · ${escapeHtml(u.fileName)}(${u.matchedEmp}명)`).join(' / ')}</div>` : ''}
     </div>
 
 <div class="card sysadmin-span2" style="background:#fff7f9;border-color:#f0c7d4;">
       <h3>📁 목표/실적 파일 업로드(담당자 : 배지우C) <small>("목표" 시트 + "실판매 목표대비 실적조회" 시트 포함 .xlsx)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"목표" 시트(구독목표/판매 금액 목표 표)와 "실판매 목표대비 실적조회" 시트가 들어있는 파일을 그대로 올리면, 지점별 GROSS 목표·구독 금액 목표·팀원별 누적 실적이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리] 페이지 데이터로 한 번에 갱신됩니다. 오늘(${todayStr()})은 ${nowWeekIdx}주차로 인식되어, 주차별 달성율 계산용 실적 스냅샷으로 함께 기록됩니다. 지난 달로 넘어가면 지난 달 데이터는 그대로 보존되고, 이번 달 실적만 새로 올리면 됩니다.</div>
+      <div class="muted" style="margin-bottom:10px;">"목표" 시트(구독목표/판매 금액 목표 표)와 "실판매 목표대비 실적조회" 시트가 들어있는 파일을 그대로 올리면, 지점별 GROSS 목표·구독 금액 목표·팀원별 누적 실적이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리] 페이지 데이터로 한 번에 갱신됩니다. 오늘(${todayStr()})은 ${nowWeekIdx}주차로 인식되어, 주차별 달성율 계산용 실적 스냅샷으로 함께 기록됩니다. 지난 달로 넘어가면 지난 달 데이터는 그대로 보존되고, 이번 달 실적만 새로 올리면 됩니다.${uploadLogStatusHtml('goalsFile')}</div>
       <input type="file" id="goalsFileInput" accept=".xlsx,.xls" onchange="handleGoalsFile(event)">
       <div id="goalsUploadMsg" class="small-note"></div>
     </div>
@@ -3086,16 +3086,19 @@ function renderSystemAdmin(){
           <label>화상교육 이수율 <span class="muted" style="font-weight:400;">(1~4차 회차별 서식)</span></label>
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduVideoRichFile(event)">
           <div id="eduVideoUploadMsg" class="small-note"></div>
+          <div class="muted" style="font-size:11px;">${uploadLogStatusHtml('eduVideo').replace(/^<br>/,'')}</div>
         </div>
         <div class="field">
           <label>월간test 이수율</label>
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduCompletionFile(event, 'test')">
           <div id="eduTestUploadMsg" class="small-note"></div>
+          <div class="muted" style="font-size:11px;">${uploadLogStatusHtml('eduTest').replace(/^<br>/,'')}</div>
         </div>
         <div class="field">
           <label>AI R/P 실행 여부</label>
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduCompletionFile(event, 'aiRp')">
           <div id="eduAiRpUploadMsg" class="small-note"></div>
+          <div class="muted" style="font-size:11px;">${uploadLogStatusHtml('eduAiRp').replace(/^<br>/,'')}</div>
         </div>
       </div>
       <div class="small-note">월간test는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>AI R/P는 "대상자요약" 파일(사번/이름/지점/상태/제출횟수/총점 컬럼) 그대로 올리면 됩니다 — <b>상태</b> 컬럼이 "완료"면 실행완료, 그 외("미완료" 등)면 미실행으로 매칭되고, 제출횟수·총점도 함께 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).${DB.eduVideoRich ? ` <b>현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}</b>` : ''}</div>
@@ -3103,7 +3106,7 @@ function renderSystemAdmin(){
 
 <div class="card sysadmin-span2">
       <h3>재고 조회 파일 업로드(담당자 : 이광환B) <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 단, 아래 "소진집중 소진율 카운팅 기준선"이 저장되어 있으면, 기준선 대비 수량이 0이 되었거나 이번 파일에서 아예 사라진 소진집중 품목은 구분(상태)이 자동으로 "소진완료"로 표시됩니다(이 경우에 한해 매니저가 다시 수정하기 전까지 자동 반영).</div>
+      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 단, 아래 "소진집중 소진율 카운팅 기준선"이 저장되어 있으면, 기준선 대비 수량이 0이 되었거나 이번 파일에서 아예 사라진 소진집중 품목은 구분(상태)이 자동으로 "소진완료"로 표시됩니다(이 경우에 한해 매니저가 다시 수정하기 전까지 자동 반영).${uploadLogStatusHtml('inventory')}</div>
       <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
       <div id="inventoryUploadMsg" class="small-note"></div>
     </div>
@@ -3126,7 +3129,7 @@ function renderSystemAdmin(){
 
 <div class="card sysadmin-span4">
       <h3>카카오 플친 데이터 업로드(담당자 : 서영현D)</h3>
-      <div class="muted" style="margin-bottom:8px;font-size:12.5px;">"○○ 주차별 카카오 플러스 친구 추가 활동 결과" 형식(관리자/지점명/총계/주차별 누적/증감/비고)의 파일을 그대로 올리면 지점별·주차별 누적 데이터가 자동으로 반영됩니다. 지점/주차(또는 날짜)/플친수 컬럼만 있는 단순한 파일도 함께 지원합니다.</div>
+      <div class="muted" style="margin-bottom:8px;font-size:12.5px;">"○○ 주차별 카카오 플러스 친구 추가 활동 결과" 형식(관리자/지점명/총계/주차별 누적/증감/비고)의 파일을 그대로 올리면 지점별·주차별 누적 데이터가 자동으로 반영됩니다. 지점/주차(또는 날짜)/플친수 컬럼만 있는 단순한 파일도 함께 지원합니다.${uploadLogStatusHtml('kakaoFriends')}</div>
       <input type="file" accept=".xlsx,.xls,.csv" onchange="handleKakaoFriendsFile(event)">
       <div id="kakaoFriendsUploadMsg" class="small-note"></div>
     </div>
@@ -4737,7 +4740,7 @@ function goalsSubActualsStatusHtml(){
   if(periods.length===0) return '<br>아직 업로드된 자료가 없습니다.';
   const latest = periods[periods.length-1];
   const m = meta[latest];
-  return `<br>현재 반영된 자료: <b>${goalsPeriodLabel(latest)}</b> · ${m.matchedCount||0}명 · ${escapeHtml(m.fileName||'')} (${m.uploadedBy||''} 업로드)` +
+  return `<br>현재 반영된 자료: <b>${goalsPeriodLabel(latest)}</b> · ${m.matchedCount||0}명 · ${escapeHtml(m.fileName||'')} (${m.uploadedBy||''} 업로드${m.uploadedAt?' · '+fmtUploadDateTime(m.uploadedAt):''})` +
     (periods.length>1 ? `<br><span class="muted" style="font-size:11.5px;">📅 누적 보관 중인 달: ${periods.map(p=>goalsPeriodLabel(p)+(p===latest?' (최신)':'')).join(', ')}</span>` : '');
 }
 // "목표관리(MSIS기준)DATA업로드" 박스 핸들러 — "구독 총판 수기 실적 현황" 같은 관리자 수기취합
@@ -5116,6 +5119,8 @@ function handleGoalsFile(evt){
       const wb = XLSX.read(data, {type:'array'});
       const parsed = parseGoalsFileWorkbook(wb);
       const result = applyGoalsFileUpload(parsed);
+      recordUploadLog('goalsFile', file);
+      saveDB();
       let msg = `반영 완료 — 지점 GROSS 목표 ${result.branchTargetCount}건, 구독 목표 ${result.subTargetCount}건, GROSS 실적 ${result.employeeCount}명, 구독 실적 ${result.subPerfCount}명, 경쟁력 ${result.competCount}개 지점.`;
       if(result.warnings.length) msg += ' ⚠ ' + result.warnings.join(' ');
       logActivity('update', `${SESSION.name}님(관리자)이 [목표 관리] 파일을 갱신했습니다 (GROSS 목표/구독 목표/실적)`);
@@ -6037,6 +6042,7 @@ function handleInventoryFile(evt){
       const depletedCount = applyClearanceDepletion();
       const depletionMsg = depletedCount>0 ? ` / 소진집중 ${depletedCount}건 소진완료 자동 반영` : '';
 
+      recordUploadLog('inventory', file);
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
@@ -6732,13 +6738,33 @@ function subGradeDataFor(period){
 // [시스템관리] 업로드 칸에 "현재 반영된 자료"(최신 달 기준)와 그동안 누적 보관 중인 달 목록을
 // 함께 보여준다 — 월별 누적 보관으로 바뀌면서 "지금 화면에 반영된 게 몇 월 자료인지",
 // "과거 달 자료도 잘 남아있는지"를 관리자가 업로드 화면에서 바로 확인할 수 있게 하기 위함.
+// ISO 타임스탬프를 "YYYY-MM-DD HH:MM"로 표시한다 (실제로 업로드 버튼을 누른 시각 — 파일
+// 내용에 찍힌 기준일자(asOfDate)와는 다른, 순수한 "최근 업로드 날짜" 기록용).
+function fmtUploadDateTime(iso){
+  if(!iso) return '';
+  const dt = new Date(iso);
+  if(isNaN(dt.getTime())) return '';
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+}
 function moUploadStatusHtml(byPeriod, countFn, suffix){
   const periods = Object.keys(byPeriod||{}).sort();
   if(periods.length===0) return '<br>아직 업로드된 자료가 없습니다.';
   const latest = periods[periods.length-1];
   const d = byPeriod[latest];
-  return `<br>현재 반영된 자료: <b>${d.asOfDate||'-'}</b>${suffix||''} · ${countFn(d)} · ${escapeHtml(d.fileName||'')} (${d.uploadedBy||''} 업로드)` +
+  return `<br>현재 반영된 자료: <b>${d.asOfDate||'-'}</b>${suffix||''} · ${countFn(d)} · ${escapeHtml(d.fileName||'')} (${d.uploadedBy||''} 업로드${d.uploadedAt?' · '+fmtUploadDateTime(d.uploadedAt):''})` +
     (periods.length>1 ? `<br><span class="muted" style="font-size:11.5px;">📅 누적 보관 중인 달: ${periods.map(p=>goalsPeriodLabel(p)+(p===latest?' (최신)':'')).join(', ')}</span>` : '');
+}
+// [시스템 관리]의 업로드 항목 중 별도의 월별/기간별 보관 구조가 없는 것들(목표/실적 파일,
+// 화상교육/월간test/AI R/P 이수율, 재고 조회, 카카오 플친 등)은 데이터 자체가 아니라 "최근
+// 업로드 날짜"만 이 범용 로그에 기록해서 보여준다. key는 업로드 박스별 고유 문자열.
+function recordUploadLog(key, file, extra){
+  if(!DB.uploadLog) DB.uploadLog = {};
+  DB.uploadLog[key] = Object.assign({ fileName: file.name, uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name }, extra||{});
+}
+function uploadLogStatusHtml(key){
+  const m = DB.uploadLog && DB.uploadLog[key];
+  if(!m) return '<br>아직 업로드된 자료가 없습니다.';
+  return `<br>최근 업로드: <b>${fmtUploadDateTime(m.uploadedAt)}</b> · ${escapeHtml(m.fileName||'')} (${m.uploadedBy||''})`;
 }
 // [지표 한 눈에 보기]/[구독 실적]/[지점별 인센티브] 페이지 상단에 공통으로 쓰는 월 선택 pill.
 // 보관 중인 달이 1개뿐이면(아직 여러 달이 쌓이기 전) 굳이 선택할 필요가 없으므로 표시하지 않는다.
@@ -13076,6 +13102,7 @@ function handleEduCompletionFile(evt, cat){
       }
       DB.eduCompletion[cat] = parsed;
       touchTabContent(eduTabName(cat));
+      recordUploadLog(cat==='test' ? 'eduTest' : 'eduAiRp', file);
       saveDB();
       // 업로드 결과 안내는 업로드 버튼이 있는 [시스템 관리] 화면에 그대로 표시한다
       // (예전처럼 결과 확인 화면으로 바로 넘어가면 안내 문구가 즉시 사라져 안 보였음).
@@ -13198,6 +13225,7 @@ function handleEduVideoRichFile(evt){
         completedDate: isFinalDone(r.final) ? parsed.refDate : null
       }));
       touchTabContent('eduVideo');
+      recordUploadLog('eduVideo', file);
       saveDB();
       // 업로드 결과 안내는 업로드 버튼이 있는 [시스템 관리] 화면에 그대로 표시한다
       // (renderTab이 화면을 새로 그리므로 반드시 먼저 호출한 뒤에 안내 문구를 넣어야 보인다).
@@ -13510,6 +13538,7 @@ function handleKakaoFriendsFile(evt){
       const newKeys = new Set(parsed.map(keyOf));
       DB.kakaoFriends = (DB.kakaoFriends||[]).filter(r=> !newKeys.has(keyOf(r))).concat(parsed);
       touchTabContent('kakaoFriends');
+      recordUploadLog('kakaoFriends', file);
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 관리] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
