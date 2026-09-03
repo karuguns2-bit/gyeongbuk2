@@ -3069,7 +3069,10 @@ function renderSystemAdmin(){
       <div class="muted" style="margin-bottom:10px;">Shiftee에서 내보낸 월별 근무일정 파일을 올리면 사번을 기준으로 자동 매칭되어, 홈 대시보드와 [전체 지점 현황]의 "오늘 출근 현황/근태"에 출퇴근시간·휴무·대체휴무가 실제 일정 그대로 표시됩니다. 지점별로 파일이 따로 있으면 순서에 상관없이 하나씩 올리면 됩니다 — 사번 단위로 합쳐지므로 먼저 올린 다른 지점 데이터는 지워지지 않습니다.</div>
       <input type="file" id="workScheduleFileInput" accept=".xlsx,.xls" onchange="handleWorkScheduleFile(event)">
       <div id="workScheduleUploadMsg" class="small-note"></div>
-      ${(DB.workSchedule.uploads&&DB.workSchedule.uploads.length>0) ? `<div class="muted" style="font-size:11.5px;margin-top:8px;">최근 업로드: ${DB.workSchedule.uploads.slice(-3).reverse().map(u=>`${fmtUploadDateTime(u.uploadedAt)} · ${escapeHtml(u.fileName)}(${u.matchedEmp}명)`).join(' / ')}</div>` : ''}
+      ${(DB.workSchedule.uploads&&DB.workSchedule.uploads.length>0) ? (
+        uploadDateHighlightBox(fmtUploadDateTime(DB.workSchedule.uploads[DB.workSchedule.uploads.length-1].uploadedAt)) +
+        `<div class="muted" style="font-size:11.5px;margin-top:6px;">최근 업로드: ${DB.workSchedule.uploads.slice(-3).reverse().map(u=>`${fmtUploadDateTime(u.uploadedAt)} · ${escapeHtml(u.fileName)}(${u.matchedEmp}명)`).join(' / ')}</div>`
+      ) : ''}
     </div>
 
 <div class="card sysadmin-span2" style="background:#fff7f9;border-color:#f0c7d4;">
@@ -4740,7 +4743,8 @@ function goalsSubActualsStatusHtml(){
   if(periods.length===0) return '<br>아직 업로드된 자료가 없습니다.';
   const latest = periods[periods.length-1];
   const m = meta[latest];
-  return `<br>현재 반영된 자료: <b>${goalsPeriodLabel(latest)}</b> · ${m.matchedCount||0}명 · ${escapeHtml(m.fileName||'')} (${m.uploadedBy||''} 업로드${m.uploadedAt?' · '+fmtUploadDateTime(m.uploadedAt):''})` +
+  return `<br>현재 반영된 자료: <b>${goalsPeriodLabel(latest)}</b> · ${m.matchedCount||0}명 · ${escapeHtml(m.fileName||'')} (${m.uploadedBy||''} 업로드)` +
+    uploadDateHighlightBox(m.uploadedAt ? fmtUploadDateTime(m.uploadedAt) : null) +
     (periods.length>1 ? `<br><span class="muted" style="font-size:11.5px;">📅 누적 보관 중인 달: ${periods.map(p=>goalsPeriodLabel(p)+(p===latest?' (최신)':'')).join(', ')}</span>` : '');
 }
 // "목표관리(MSIS기준)DATA업로드" 박스 핸들러 — "구독 총판 수기 실적 현황" 같은 관리자 수기취합
@@ -6746,12 +6750,19 @@ function fmtUploadDateTime(iso){
   if(isNaN(dt.getTime())) return '';
   return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
 }
+// "최근 업로드 날짜"를 눈에 띄게 보여주기 위한 별도 글상자(빨간 글씨 + 큰 글씨). 8개 업로드
+// 항목이 공통으로 재사용한다 — dateTimeStr이 없으면(아직 업로드 이력이 없으면) 아무것도 안 그린다.
+function uploadDateHighlightBox(dateTimeStr){
+  if(!dateTimeStr) return '';
+  return `<div style="margin-top:8px;padding:9px 14px;background:#fff0f0;border:1.5px solid var(--bad);border-radius:8px;color:var(--bad);font-weight:800;font-size:15px;">📅 최근 업로드일: ${escapeHtml(dateTimeStr)}</div>`;
+}
 function moUploadStatusHtml(byPeriod, countFn, suffix){
   const periods = Object.keys(byPeriod||{}).sort();
   if(periods.length===0) return '<br>아직 업로드된 자료가 없습니다.';
   const latest = periods[periods.length-1];
   const d = byPeriod[latest];
-  return `<br>현재 반영된 자료: <b>${d.asOfDate||'-'}</b>${suffix||''} · ${countFn(d)} · ${escapeHtml(d.fileName||'')} (${d.uploadedBy||''} 업로드${d.uploadedAt?' · '+fmtUploadDateTime(d.uploadedAt):''})` +
+  return `<br>현재 반영된 자료: <b>${d.asOfDate||'-'}</b>${suffix||''} · ${countFn(d)} · ${escapeHtml(d.fileName||'')} (${d.uploadedBy||''} 업로드)` +
+    uploadDateHighlightBox(d.uploadedAt ? fmtUploadDateTime(d.uploadedAt) : null) +
     (periods.length>1 ? `<br><span class="muted" style="font-size:11.5px;">📅 누적 보관 중인 달: ${periods.map(p=>goalsPeriodLabel(p)+(p===latest?' (최신)':'')).join(', ')}</span>` : '');
 }
 // [시스템 관리]의 업로드 항목 중 별도의 월별/기간별 보관 구조가 없는 것들(목표/실적 파일,
@@ -6764,7 +6775,7 @@ function recordUploadLog(key, file, extra){
 function uploadLogStatusHtml(key){
   const m = DB.uploadLog && DB.uploadLog[key];
   if(!m) return '<br>아직 업로드된 자료가 없습니다.';
-  return `<br>최근 업로드: <b>${fmtUploadDateTime(m.uploadedAt)}</b> · ${escapeHtml(m.fileName||'')} (${m.uploadedBy||''})`;
+  return `<br>${escapeHtml(m.fileName||'')} (${m.uploadedBy||''})` + uploadDateHighlightBox(fmtUploadDateTime(m.uploadedAt));
 }
 // [지표 한 눈에 보기]/[구독 실적]/[지점별 인센티브] 페이지 상단에 공통으로 쓰는 월 선택 pill.
 // 보관 중인 달이 1개뿐이면(아직 여러 달이 쌓이기 전) 굳이 선택할 필요가 없으므로 표시하지 않는다.
