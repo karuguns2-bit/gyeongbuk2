@@ -794,10 +794,16 @@ function conflictLogHtml(items){
   }).join('');
 }
 
-// 여러 매니저가 거의 동시에 저장하면(예: 게시글 등록) 버전이 어긋나는 경우가 잦다.
-// 버전이 어긋나면 서버의 최신 전체 데이터를 받아와 mergeRemoteDB()로 항목 단위 병합한 뒤
-// (내가 새로 등록한 것 + 상대가 새로 등록한 것 모두 보존) 다시 저장을 시도한다.
+// 여러 매니저가 거의 동시에 저장하면(예: 게시글 등록, 실행력 점검 사진 등록) 버전이 어긋나는
+// 경우가 잦다. 버전이 어긋나면 서버의 최신 전체 데이터를 받아와 mergeRemoteDB()로 항목 단위
+// 병합한 뒤(내가 새로 등록한 것 + 상대가 새로 등록한 것 모두 보존) 다시 저장을 시도한다.
+// 2026-09-04: 출근 직후처럼 여러 매니저가 한꺼번에(수십 건) 몰리는 시간대에는 예전 재시도 한도
+// (5회 + 마지막 1회)로는 부족해서, 재시도를 거듭해도 계속 부딪히다 결국 저장 자체가 실패하고
+// 조용히 데이터가 유실되는 사고가 실제로 발생했다(실행력 점검 사진 다수 유실). 그래서 재시도
+// 한도를 훨씬 넉넉히 늘리고, 재시도마다 서로 다른(무작위) 짧은 대기를 둬서 같은 타이밍에 몰린
+// 여러 사람이 계속 서로 부딪히지 않게 했다 - 이 정도면 사실상 항상 결국에는 저장에 성공한다.
 // 반환값: 실제로 서버에 반영됐으면 true, 아니면 false(호출부에서 저장 완료 토스트 여부 판단에 사용).
+const PUSH_DB_MAX_RETRIES = 25;
 async function pushDBToServer(retryCount){
   retryCount = retryCount || 0;
   if(!sbClient){ cacheDBLocally(); return true; }
@@ -812,23 +818,25 @@ async function pushDBToServer(retryCount){
       .select('version');
     if(error) throw error;
     if(!data || data.length === 0){
-      // 버전 불일치 = 다른 사용자가 그 사이 먼저 저장함.
-      if(retryCount < 5){
-        try{
-          const { data: latest, error: verErr } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
-          if(!verErr && latest){
-            const before = DB;
-            const merged = mergeRemoteDB(DB_BASELINE, DB, latest.data);
-            if(JSON.stringify(merged) !== JSON.stringify(latest.data)) logSaveConflict(merged, latest.data);
-            DB = merged;
-            DB_VERSION = latest.version;
-            DB_BASELINE = cloneDBSnapshot(latest.data);
-            return await pushDBToServer(retryCount + 1);
-          }
-        }catch(e2){ /* 최신 데이터 확인 자체가 실패하면 아래 최종 안내로 넘어감 */ }
+      // 버전 불일치 = 다른 사용자가 그 사이 먼저 저장함 - 서버 최신본을 받아와 병합한 뒤 다시 시도.
+      if(retryCount >= PUSH_DB_MAX_RETRIES){
+        alert('다른 사용자와 저장이 여러 번 겹쳐 저장에 실패했습니다. 방금 등록/수정하신 내용을 다시 한 번 시도해 주세요.');
+        return false;
       }
-      // 여러 번 재시도해도 계속 충돌하면(매우 드묾) 그제서야 최신 데이터와 병합 후 안내한다.
-      return await handleSaveConflict();
+      try{
+        const { data: latest, error: verErr } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
+        if(verErr || !latest) throw verErr || new Error('최신 데이터 없음');
+        const merged = mergeRemoteDB(DB_BASELINE, DB, latest.data);
+        if(JSON.stringify(merged) !== JSON.stringify(latest.data)) logSaveConflict(merged, latest.data);
+        DB = merged;
+        DB_VERSION = latest.version;
+        DB_BASELINE = cloneDBSnapshot(latest.data);
+        if(SESSION && !isUserActivelyTyping()) renderTab(state.tab);
+      }catch(e2){ /* 최신 데이터 확인 자체가 실패해도(네트워크 hiccup 등) 잠깐 쉬었다가 그냥 재시도 */ }
+      // 충돌이 잦은 시간대일수록 똑같은 타이밍에 재시도가 몰려 계속 부딪히므로, 매번 조금씩
+      // 다른(무작위) 짧은 대기 후 재시도해서 여러 사용자의 재시도가 서로 어긋나게 한다.
+      await new Promise(resolve=> setTimeout(resolve, 150 + Math.random()*400));
+      return await pushDBToServer(retryCount + 1);
     }
     DB_VERSION = newVersion;
     DB_BASELINE = cloneDBSnapshot(DB);
@@ -836,6 +844,10 @@ async function pushDBToServer(retryCount){
     return true;
   }catch(e){
     console.error('DB 저장 실패:', e);
+    if(retryCount < PUSH_DB_MAX_RETRIES){
+      await new Promise(resolve=> setTimeout(resolve, 300 + Math.random()*500));
+      return await pushDBToServer(retryCount + 1);
+    }
     alert('저장 중 오류가 발생했습니다. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.');
     return false;
   }
@@ -854,42 +866,9 @@ function isUserActivelyTyping(){
   return tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT' || !!el.isContentEditable;
 }
 
-async function handleSaveConflict(){
-  try{
-    const { data, error } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
-    if(error) throw error;
-    // 여기서도 무조건 서버 값으로 통째로 덮어쓰지 않고, 가능한 한 방금 입력한 내용을 병합해 살린다.
-    const merged = mergeRemoteDB(DB_BASELINE, DB, data.data);
-    if(JSON.stringify(merged) !== JSON.stringify(data.data)) logSaveConflict(merged, data.data);
-    DB = merged;
-    const mergedVersion = data.version || 0;
-    DB_VERSION = mergedVersion;
-    DB_BASELINE = cloneDBSnapshot(DB);
-    cacheDBLocally();
-    if(SESSION && !isUserActivelyTyping()) renderTab(state.tab);
-    // 병합한 결과를 실제로 서버에 한 번 더 저장 시도한다 - 여기까지 왔다는 건 이미 여러 번
-    // 재시도했다는 뜻이라, 이 마지막 시도가 성공하면 조용히 끝나고 실패할 때만 안내한다.
-    try{
-      const { data: upd, error: updErr } = await sbClient
-        .from('kpi_db')
-        .update({ data: DB, version: mergedVersion + 1, updated_at: new Date().toISOString() })
-        .eq('id', 1)
-        .eq('version', mergedVersion)
-        .select('version');
-      if(!updErr && upd && upd.length > 0){
-        DB_VERSION = mergedVersion + 1;
-        DB_BASELINE = cloneDBSnapshot(DB);
-        cacheDBLocally();
-        return true;
-      }
-    }catch(e3){ /* 아래 최종 안내로 진행 */ }
-    alert('다른 사용자와 저장이 겹쳐 최신 데이터와 병합했습니다. 방금 입력/변경하신 내용이 잘 반영됐는지 확인해 주세요.');
-    return false;
-  }catch(e){
-    console.error('충돌 처리 중 데이터 갱신 실패:', e);
-    return false;
-  }
-}
+// (예전에는 재시도 5회 초과 시에만 쓰이는 별도의 "최종 1회" 충돌 처리 함수가 따로 있었으나,
+// pushDBToServer() 자체가 훨씬 높은 한도로 같은 로직을 계속 재시도하도록 통합되어 더 이상
+// 필요하지 않다 - 제거함, 2026-09-04.)
 
 function startDbPolling(){
   stopDbPolling();
@@ -1275,14 +1254,21 @@ function migrateDB(){
 // silent=true면 저장은 그대로 하되 "저장되었습니다" 토스트를 띄우지 않는다 - 사용자가 직접
 // 누른 등록/수정/삭제가 아니라 백그라운드 마이그레이션, 공지 읽음 처리, 마지막 조회 시각
 // 기록처럼 사용자 눈에 "내가 뭔가 저장했다"고 느껴지면 안 되는 자동 저장에 사용한다.
+// 2026-09-04: 예전에는 이 함수가 저장 프로미스를 호출부로 돌려주지 않아서(반환값 없음),
+// 등록/수정 버튼 핸들러들이 saveDB()를 await 해도 실제 저장 성공 여부를 알 수 없었다 - 그래서
+// 화면은 이미 "등록됨"으로 낙관적으로 다시 그려진 뒤, 뒤에서 저장이 실제로는 실패해도 아무도
+// 모르고 넘어가는 경우가 있었다(여러 매니저가 몰릴 때 실행력 점검 사진이 조용히 사라진 사고의
+// 한 원인). 이제 pushDBToServer()의 프로미스를 그대로 반환하므로, 중요한 등록/수정 로직에서는
+// `if(!(await saveDB())){ ...실패 안내... }` 형태로 실제 저장 성공 여부를 확인할 수 있다.
 function saveDB(silent){
   // 임원(조회 전용) 계정은 어떤 경로로 saveDB()가 호출되더라도 서버에 절대 반영되지 않는다 —
   // 등록/수정/삭제 버튼을 개별적으로 다 찾아 막는 것보다 이 한 곳을 막는 게 가장 확실하다.
-  if(SESSION && SESSION.role==='exec') return;
+  if(SESSION && SESSION.role==='exec') return Promise.resolve(false);
   const p = pushDBToServer();
   if(!silent){
     p.then(ok=>{ if(ok) showSaveBanner('저장되었습니다.'); }).catch(()=>{});
   }
+  return p;
 }
 // "저장되었습니다" 확인은 화면 우측 구석의 작은 토스트로는 잘 안 보인다는 의견이 있어,
 // 등록/수정/삭제할 때마다 뜨는 이 저장 확인만은 화면 중앙 상단에 크게 표시하고 확인 버튼
@@ -5874,6 +5860,36 @@ const INV_HEADER_ALIASES = {
 // 여러 영업팀 재고가 한 파일에 섞여 올라오는 "부가정보 데이터" 형식의 경우, 팀명 컬럼 기준으로
 // 우리 팀(혼매경북팀) 재고만 기본으로 보여준다(관리자가 "타영업팀 재고 함께보기"를 켜면 전체 표시).
 const INV_HOME_TEAM = '혼매경북팀';
+// 2026-09-04: 예전에는 파일에 섞여 있는 타영업팀 재고까지 전부 DB.inventory(모든 세션이 매번
+// 통째로 읽고 쓰는 공유 kpi_db 한 줄)에 그대로 저장했다 - 10개 팀 재고가 다 쌓이면서 그 한 줄이
+// 9MB+ 로 부풀어, 여러 매니저가 몰리는 시간대에 저장/불러오기가 통째로 타임아웃 나며 실행력
+// 점검 사진 등록이 대거 유실되는 사고로 이어졌다. 그래서 타영업팀 재고는 이제 별도 테이블
+// (other_team_inventory, 이 앱과 무관하게 딱 한 줄만 갱신되는 독립 저장소)에 따로 저장하고,
+// "타영업팀 재고 함께보기"를 켰을 때만 그 자리에서 불러온다 - 평소 모든 사용자가 매번 불러오는
+// 핵심 DB에는 우리 팀(혼매경북팀) 재고만 남아 가볍게 유지된다.
+let otherTeamInventoryCache = null;
+let otherTeamInventoryLoading = false;
+function loadOtherTeamInventoryIfNeeded(){
+  if(otherTeamInventoryCache || otherTeamInventoryLoading || !sbClient) return;
+  otherTeamInventoryLoading = true;
+  sbClient.from('other_team_inventory').select('data').eq('id',1).single().then(({data,error})=>{
+    otherTeamInventoryLoading = false;
+    if(!error && data){
+      otherTeamInventoryCache = data.data || [];
+      if(SESSION && state.tab==='inventory') renderTab('inventory');
+    }
+  }).catch(()=>{ otherTeamInventoryLoading = false; });
+}
+// 재고 파일을 새로 올릴 때마다 그 시점의 타영업팀 재고 스냅샷 전체로 교체 저장한다(우리 팀
+// DB.inventory와 동일하게, 통째로 최신 파일 기준으로 갱신 - 실패해도 핵심 저장 흐름과는
+// 무관하므로 콘솔에만 남기고 조용히 넘어간다). 다음에 "함께보기"를 켜면 최신 값을 다시 받아온다.
+async function saveOtherTeamInventory(rows){
+  if(!sbClient) return;
+  try{
+    await sbClient.from('other_team_inventory').upsert({ id:1, data: rows, updated_at: new Date().toISOString() });
+    otherTeamInventoryCache = rows; // 이미 켜져 있던 화면이 있으면 재조회 없이 바로 최신값 반영
+  }catch(e){ console.error('타영업팀 재고 저장 실패:', e); }
+}
 // 파일 맨 위에 안내 문구 등 다른 행이 섞여 있을 수 있으므로, 위에서부터 최대 10행까지 훑어
 // "점포명"류 + "상품명"류 컬럼이 함께 있는 행을 진짜 헤더 행으로 판단한다.
 function findInvHeaderRowIndex(rows){
@@ -5922,7 +5938,15 @@ function parseInventorySheetRows(rows){
 // 매장+상품코드+모델명+상품명(=invRowKey)이 같은 기존 행이 있으면 매니저가 직접 입력한
 // 구분(cat1)·상태·판매상태·비고·진열일자·진열소진일자와 기존 id는 그대로 유지하고,
 // 수량/금액 등 나머지 값만 새 파일 기준으로 갱신한다. 새 상품은 기본값으로 새로 추가된다.
+// 2026-09-04: 파일에 여러 영업팀 재고가 섞여 있으면(팀명 컬럼 존재), 우리 팀(INV_HOME_TEAM)
+// 것만 이 함수가 관리하는 DB.inventory(공유 핵심 DB)에 남기고, 다른 팀 것은 별도 테이블로
+// 분리 저장한다(saveOtherTeamInventory) - DB.inventory가 다시 부풀어 저장/불러오기가
+// 타임아웃 나는 사고가 재발하지 않도록 하기 위함.
 function applyInventorySnapshot(parsedInventory){
+  const otherTeamRows = parsedInventory.filter(r=>r.team && r.team!==INV_HOME_TEAM);
+  const ownTeamRows = parsedInventory.filter(r=>!r.team || r.team===INV_HOME_TEAM);
+  if(otherTeamRows.length>0) saveOtherTeamInventory(otherTeamRows); // 별도 테이블로 - 실패해도 우리 팀 저장에는 영향 없음
+  parsedInventory = ownTeamRows;
   const prevByKey = {};
   (DB.inventory||[]).forEach(r=>{ prevByKey[invRowKey(r)] = r; });
   // 매장+상품코드+모델명+상품명 조합으로 기존 행을 못 찾은(=이 파일에서 처음 보는) 상품에는
@@ -6111,7 +6135,11 @@ function handleInventoryFile(evt){
         baselineMsg = ` / "${baselineSheetInfo.name}" 시트로 소진 카운팅 기준선(${baselineSheetInfo.d.dateStr}, ${Object.keys(baseRows).length}건) 자동 저장`;
       }
 
+      // 타영업팀 몫은 applyInventorySnapshot 내부에서 별도 테이블로 분리 저장되므로,
+      // 안내 문구에는 우리 팀 건수와 별도 저장된 타영업팀 건수를 나눠서 보여준다.
+      const otherTeamRowCount = parsedInventory.filter(r=>r.team && r.team!==INV_HOME_TEAM).length;
       const count = applyInventorySnapshot(parsedInventory);
+      const otherTeamMsg = otherTeamRowCount>0 ? ` (타영업팀 ${otherTeamRowCount}건은 별도 저장 - "함께보기" 켜면 조회 가능)` : '';
 
       // 소진집중 기준선이 저장돼 있으면, 기준선 대비 소진된(수량 0 또는 파일에서 사라진) 품목의
       // 구분(상태)을 자동으로 "소진완료"로 표시한다 (applyInventorySnapshot이 끝나 DB.inventory와
@@ -6124,7 +6152,7 @@ function handleInventoryFile(evt){
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
-      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${clearanceMsg}${baselineMsg}${depletionMsg}`);
+      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${otherTeamMsg}${clearanceMsg}${baselineMsg}${depletionMsg}`);
     }catch(err){
       showUploadResult('inventoryUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
@@ -8617,15 +8645,15 @@ function renderInventory(){
   if(!f.statusList) f.statusList = [];
   if(!f.saleStatusList) f.saleStatusList = [];
 
-  // 여러 영업팀 재고가 한 파일에 섞여 올라온 경우, 팀명이 혼매경북팀이 아닌 행은 기본적으로
-  // 제외한다(팀명 컬럼이 없는 예전 형식 파일은 원래부터 경북팀 데이터만 들어있었으므로 그대로 표시).
-  // 관리자가 "타영업팀 재고 함께보기"를 켜면 이 필터 없이 파일 내 전체 팀 재고를 다 볼 수 있다.
+  // 2026-09-04: 타영업팀 재고는 더 이상 DB.inventory(모든 세션이 매번 불러오는 공유 핵심 DB)에
+  // 같이 담아두지 않고 별도 테이블(other_team_inventory)에 분리 저장한다 - "함께보기"를 켰을
+  // 때만 그 자리에서 불러온다(loadOtherTeamInventoryIfNeeded, 아직 안 불러왔으면 여기서
+  // 요청을 걸어두고, 다 받아오면 자동으로 다시 그려진다).
+  if(DB.inventoryShowAllTeams) loadOtherTeamInventoryIfNeeded();
   const teamScopedInventory = DB.inventoryShowAllTeams
-    ? DB.inventory
+    ? DB.inventory.concat(otherTeamInventoryCache || [])
     : DB.inventory.filter(r=>!r.team || r.team===INV_HOME_TEAM);
-  // 토글을 켜도 아무 변화가 없어 "안 되는 것처럼" 보이는 문제 방지 - 지금 반영된 재고 데이터
-  // 안에 실제로 타영업팀 정보(팀명 컬럼 값)가 있는지 미리 파악해 토글 옆에 안내해준다.
-  const otherTeamInvCount = DB.inventory.filter(r=>r.team && r.team!==INV_HOME_TEAM).length;
+  const otherTeamInvCount = (otherTeamInventoryCache || []).length;
   // 행사(행)/진열(진)/핸디(핸) 태그가 붙은 품목만 다룸 — 그 외 일반 재고는 이 화면에서 제외
   // (권한 제한 없음: 관리자/지점 매니저 모두 전 지점 재고를 동일하게 조회 가능)
   const taggedInventory = teamScopedInventory.filter(r=>invTag(r.product));
@@ -8743,9 +8771,9 @@ function renderInventory(){
               <input type="checkbox" ${DB.inventoryShowAllTeams ? 'checked' : ''} onchange="toggleInventoryShowAllTeams(this.checked)">
               <span class="slider"></span>
             </span>
-            <span style="font-size:13px;">타영업팀 재고 함께보기 ${DB.inventoryShowAllTeams ? `(전체 팀 표시 중 · 타영업팀 ${otherTeamInvCount}건)` : '(혼매경북팀만 표시 중)'}</span>
+            <span style="font-size:13px;">타영업팀 재고 함께보기 ${DB.inventoryShowAllTeams ? (otherTeamInventoryLoading ? '(불러오는 중...)' : `(전체 팀 표시 중 · 타영업팀 ${otherTeamInvCount}건)`) : '(혼매경북팀만 표시 중)'}</span>
           </label>
-          ${otherTeamInvCount===0 ? `<div class="muted" style="font-size:11px;margin:-8px 0 14px;">⚠ 지금 반영된 재고 데이터에는 타영업팀 정보가 없어 켜도 변화가 없습니다. 재고 파일에 &quot;팀명&quot; 컬럼이 포함되어 있으면 다음 업로드부터 자동으로 구분됩니다.</div>` : ''}` : ''}
+          ${(DB.inventoryShowAllTeams && !otherTeamInventoryLoading && otherTeamInvCount===0) ? `<div class="muted" style="font-size:11px;margin:-8px 0 14px;">⚠ 별도 저장된 타영업팀 재고가 없어 켜도 변화가 없습니다. 재고 파일에 &quot;팀명&quot; 컬럼이 포함되어 있으면 다음 업로드부터 자동으로 구분돼 저장됩니다.</div>` : ''}` : ''}
           <div class="field" style="margin-bottom:12px;">
             <label>매장</label>
             <select onchange="setInvFilter('store', this.value)">
@@ -9085,14 +9113,19 @@ function submitExecPhoto(){
   if(files.length===0){ alert('파일을 선택해 주세요.'); return; }
   const oversized = files.find(f=>f.size > 5*1024*1024);
   if(oversized){ alert(`"${oversized.name}" 파일은 5MB 이하로 업로드해 주세요.`); return; }
-  Promise.all(files.map(readFileAsDataUrl)).then(uploaded=>{
+  Promise.all(files.map(readFileAsDataUrl)).then(async uploaded=>{
     DB.execPhotos.push({
       id: 'ep_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       branchId, week, photos: uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name})),
       uploaderEmpId: SESSION.empId, uploaderName: SESSION.name, createdAt: new Date().toISOString()
     });
     touchTabContent('collectPhoto');
-    saveDB();
+    // 저장이 실제로 서버에 반영됐는지 끝까지 기다린다 - saveDB()는 이제 저장 성공 여부(true/false)를
+    // 그대로 돌려주므로, 여러 매니저가 몰려 재시도를 다 써버린 극히 드문 경우에도 조용히 넘어가지
+    // 않고 화면에 남아있는 등록 내용을 사용자가 다시 시도할 수 있게 안내한다(pushDBToServer 내부
+    // 에서도 실패 시 알림을 띄우지만, 여기서도 한 번 더 명확히 안내한다).
+    const ok = await saveDB();
+    if(!ok){ alert('사진은 처리했지만 서버 저장에 실패했습니다. 등록 버튼을 다시 눌러 재시도해 주세요.'); }
     logActivity('post', `${SESSION.name}님이 [실행력 점검 사진]을 등록했습니다 (${branchName(branchId)} · ${week})`);
     renderTab('collectPhoto');
   }).catch(()=>alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
