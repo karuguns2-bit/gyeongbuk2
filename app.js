@@ -8916,7 +8916,7 @@ function canEditExecPhoto(r){
   return !!(r && (SESSION.role==='admin' || r.uploaderEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
 // 실행력 점검 사진 등록/가이드 이미지에서 공통으로 쓰는 실행 주차 선택지.
-const EXEC_PHOTO_WEEK_OPTIONS = ['8월 1주차', '8월 2주차', '8월 3주차', '8월 4주차'];
+const EXEC_PHOTO_WEEK_OPTIONS = ['9월 1주차', '9월 2주차', '9월 3주차', '9월 4주차', '9월 5주차'];
 function execPhotoWeekOptionsHtml(selected){
   return '<option value="">주차 선택</option>' + EXEC_PHOTO_WEEK_OPTIONS.map(w=>`<option value="${w}" ${w===selected?'selected':''}>${w}</option>`).join('');
 }
