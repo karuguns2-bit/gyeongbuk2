@@ -9854,7 +9854,7 @@ function renderContestGiftTypeOptionAdmin(){
     <tr>
       <td>${escapeHtml(o.value)}${o.closed?' <span class="badge bad">종료</span>':''}</td>
       <td>${escapeHtml(o.gift||'-')}</td>
-      <td class="muted">${o.address ? `매장 수령 (${escapeHtml(o.address)})` : '고객 주소 배송'}</td>
+      <td class="muted">${o.address ? escapeHtml(o.address) : '고객댁으로 배송'}</td>
       <td><button class="btn btn-sm" onclick="deleteContestGiftTypeOption('${o.id}')">삭제</button></td>
     </tr>`).join('') || `<tr><td colspan="4" class="muted">등록된 항목이 없습니다.</td></tr>`;
   return `
@@ -9865,11 +9865,11 @@ function renderContestGiftTypeOptionAdmin(){
         <div class="field"><label>컨테스트 구분(항목명)</label><input id="cgoNewValue" placeholder="예: 구독 3건 계약 시" style="width:220px"></div>
         <div class="field"><label>사은품명</label><input id="cgoNewGift" placeholder="예: OOO 세트 1EA" style="width:220px"></div>
         <div class="field">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
-            <input type="checkbox" id="cgoNewStorePickup" onchange="document.getElementById('cgoNewAddressText').style.display=this.checked?'inline-block':'none';">
-            매장에서 직접 수령 (고객 주소 불필요)
-          </label>
-          <input id="cgoNewAddressText" placeholder="예: 매장으로 배송" style="width:180px;margin-top:4px;display:none;">
+          <label>수령 방식</label>
+          <select id="cgoNewAddressMode" style="width:210px">
+            <option value="store_out">매장으로 배송</option>
+            <option value="customer">고객댁으로 배송(주소 검색 필요)</option>
+          </select>
         </div>
         <button class="btn btn-primary" onclick="addContestGiftTypeOption()">항목 추가</button>
       </div>
@@ -9883,13 +9883,13 @@ function addContestGiftTypeOption(){
   if(SESSION.role!=='admin') return;
   const value = document.getElementById('cgoNewValue').value.trim();
   const gift = document.getElementById('cgoNewGift').value.trim();
-  const storePickup = document.getElementById('cgoNewStorePickup').checked;
-  const addressText = document.getElementById('cgoNewAddressText').value.trim();
+  const mode = document.getElementById('cgoNewAddressMode').value;
   if(!value || !gift){ alert('컨테스트 구분과 사은품명을 모두 입력해 주세요.'); return; }
   if(!DB.contestGiftTypeOptions) DB.contestGiftTypeOptions = [];
   if(DB.contestGiftTypeOptions.some(o=>o.value===value)){ alert('이미 등록된 항목명입니다. 다른 이름을 입력해 주세요.'); return; }
   const entry = { id:'cgto_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), value, gift };
-  if(storePickup) entry.address = addressText || '매장으로 배송';
+  if(mode==='store_out') entry.address = '매장으로 배송';
+  // customer(고객댁으로 배송)는 address를 비워둬 등록 화면에서 실제 주소를 검색해서 입력하게 한다.
   DB.contestGiftTypeOptions.push(entry);
   saveDB();
   renderTab('collectContest');
@@ -10545,7 +10545,6 @@ function renderSubTierContestOptionAdmin(){
         <div class="field">
           <label>수령 방식</label>
           <select id="stcoNewAddressMode" style="width:210px">
-            <option value="store_in">매장으로 입고</option>
             <option value="store_out">매장으로 배송</option>
             <option value="customer">고객댁으로 배송(주소 검색 필요)</option>
           </select>
