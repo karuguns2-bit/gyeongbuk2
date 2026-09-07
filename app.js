@@ -9869,19 +9869,47 @@ function canEditContestGift(r){
 // 이제 관리자가 앱 화면에서 직접 새 컨테스트 항목을 추가하거나 더 이상 쓰지 않는 항목을 삭제할 수
 // 있다. 삭제해도 이미 등록된 건(DB.contestGifts) 자체는 그대로 남고, "새 건 등록" 선택지에서만
 // 빠진다 — 과거 등록건의 집계/조회가 깨지지 않도록 하기 위함이다(closed:true와 동일한 취지).
+// 한정수량이 지정된 항목은 잔여 수량(전 지점 합산 qty 기준)을 함께 보여준다.
+function contestGiftTypeOptionLimitLabel(o){
+  if(o.limit==null) return '제한 없음';
+  return `${o.limit}개 한정 (잔여 ${Math.max(0, o.limit - contestGiftIssuedQty(o.value, null))}개)`;
+}
 function renderContestGiftTypeOptionAdmin(){
   const list = DB.contestGiftTypeOptions || [];
-  const rows = list.map(o=>`
+  const editId = state.cgoEditId;
+  const rows = list.map(o=>{
+    if(editId===o.id){
+      const mode = o.address ? 'store_out' : 'customer';
+      return `
+    <tr>
+      <td><input id="cgoe_${o.id}_value" value="${escapeHtml(o.value)}" style="width:200px"></td>
+      <td><input id="cgoe_${o.id}_gift" value="${escapeHtml(o.gift||'')}" style="width:200px"></td>
+      <td>
+        <select id="cgoe_${o.id}_mode" style="width:200px">
+          <option value="store_out" ${mode==='store_out'?'selected':''}>매장으로 배송</option>
+          <option value="customer" ${mode==='customer'?'selected':''}>고객댁으로 배송(주소 검색 필요)</option>
+        </select>
+      </td>
+      <td><input id="cgoe_${o.id}_limit" type="number" min="1" value="${o.limit!=null?o.limit:''}" placeholder="무제한" style="width:90px"></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-primary" onclick="saveEditContestGiftTypeOption('${o.id}')">저장</button>
+        <button class="btn btn-sm" onclick="cancelEditContestGiftTypeOption()">취소</button>
+      </td>
+    </tr>`;
+    }
+    return `
     <tr>
       <td>${escapeHtml(o.value)}${o.closed?' <span class="badge bad">종료</span>':''}</td>
       <td>${escapeHtml(o.gift||'-')}</td>
       <td class="muted">${o.address ? escapeHtml(o.address) : '고객댁으로 배송'}</td>
-      <td><button class="btn btn-sm" onclick="deleteContestGiftTypeOption('${o.id}')">삭제</button></td>
-    </tr>`).join('') || `<tr><td colspan="4" class="muted">등록된 항목이 없습니다.</td></tr>`;
+      <td class="muted">${contestGiftTypeOptionLimitLabel(o)}</td>
+      <td style="white-space:nowrap;"><button class="btn btn-sm" onclick="startEditContestGiftTypeOption('${o.id}')">수정</button> <button class="btn btn-sm" onclick="deleteContestGiftTypeOption('${o.id}')">삭제</button></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" class="muted">등록된 항목이 없습니다.</td></tr>`;
   return `
     <div class="card" style="margin-bottom:16px;">
       <h3>컨테스트 항목 관리 (관리자 전용)</h3>
-      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 구분 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다.</div>
+      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 구분 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다.</div>
       <div class="form-row">
         <div class="field"><label>컨테스트 구분(항목명)</label><input id="cgoNewValue" placeholder="예: 구독 3건 계약 시" style="width:220px"></div>
         <div class="field"><label>사은품명</label><input id="cgoNewGift" placeholder="예: OOO 세트 1EA" style="width:220px"></div>
@@ -9892,10 +9920,14 @@ function renderContestGiftTypeOptionAdmin(){
             <option value="customer">고객댁으로 배송(주소 검색 필요)</option>
           </select>
         </div>
+        <div class="field">
+          <label>한정수량 (선택, 비워두면 무제한)</label>
+          <input id="cgoNewLimit" type="number" min="1" placeholder="예: 25" style="width:110px">
+        </div>
         <button class="btn btn-primary" onclick="addContestGiftTypeOption()">항목 추가</button>
       </div>
       <table style="margin-top:10px;">
-        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>수령 방식</th><th></th></tr></thead>
+        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>수령 방식</th><th>한정수량</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -9905,13 +9937,44 @@ function addContestGiftTypeOption(){
   const value = document.getElementById('cgoNewValue').value.trim();
   const gift = document.getElementById('cgoNewGift').value.trim();
   const mode = document.getElementById('cgoNewAddressMode').value;
+  const limitRaw = document.getElementById('cgoNewLimit').value.trim();
   if(!value || !gift){ alert('컨테스트 구분과 사은품명을 모두 입력해 주세요.'); return; }
+  if(limitRaw && (isNaN(Number(limitRaw)) || Number(limitRaw)<=0)){ alert('한정수량은 1 이상의 숫자로 입력해 주세요.'); return; }
   if(!DB.contestGiftTypeOptions) DB.contestGiftTypeOptions = [];
   if(DB.contestGiftTypeOptions.some(o=>o.value===value)){ alert('이미 등록된 항목명입니다. 다른 이름을 입력해 주세요.'); return; }
   const entry = { id:'cgto_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), value, gift };
   if(mode==='store_out') entry.address = '매장으로 배송';
   // customer(고객댁으로 배송)는 address를 비워둬 등록 화면에서 실제 주소를 검색해서 입력하게 한다.
+  if(limitRaw) entry.limit = Number(limitRaw);
   DB.contestGiftTypeOptions.push(entry);
+  saveDB();
+  renderTab('collectContest');
+}
+function startEditContestGiftTypeOption(id){
+  if(SESSION.role!=='admin') return;
+  state.cgoEditId = id;
+  renderTab('collectContest');
+}
+function cancelEditContestGiftTypeOption(){
+  state.cgoEditId = null;
+  renderTab('collectContest');
+}
+function saveEditContestGiftTypeOption(id){
+  if(SESSION.role!=='admin') return;
+  const opt = (DB.contestGiftTypeOptions||[]).find(o=>o.id===id);
+  if(!opt) return;
+  const value = document.getElementById(`cgoe_${id}_value`).value.trim();
+  const gift = document.getElementById(`cgoe_${id}_gift`).value.trim();
+  const mode = document.getElementById(`cgoe_${id}_mode`).value;
+  const limitRaw = document.getElementById(`cgoe_${id}_limit`).value.trim();
+  if(!value || !gift){ alert('컨테스트 구분과 사은품명을 모두 입력해 주세요.'); return; }
+  if(limitRaw && (isNaN(Number(limitRaw)) || Number(limitRaw)<=0)){ alert('한정수량은 1 이상의 숫자로 입력해 주세요.'); return; }
+  if(DB.contestGiftTypeOptions.some(o=>o.id!==id && o.value===value)){ alert('이미 등록된 항목명입니다. 다른 이름을 입력해 주세요.'); return; }
+  opt.value = value;
+  opt.gift = gift;
+  if(mode==='store_out') opt.address = '매장으로 배송'; else delete opt.address;
+  if(limitRaw) opt.limit = Number(limitRaw); else delete opt.limit;
+  state.cgoEditId = null;
   saveDB();
   renderTab('collectContest');
 }
@@ -10549,18 +10612,40 @@ function subTierContestOptionAddressLabel(o){
 }
 function renderSubTierContestOptionAdmin(){
   const list = DB.subTierContestOptions || [];
-  const rows = list.map(o=>`
+  const editId = state.stcoEditId;
+  const rows = list.map(o=>{
+    if(editId===o.id){
+      const mode = o.needsAddress ? 'customer' : 'store_out';
+      return `
+    <tr>
+      <td><input id="stcoe_${o.id}_value" value="${escapeHtml(o.value)}" style="width:200px"></td>
+      <td><input id="stcoe_${o.id}_gift" value="${escapeHtml(o.gift||'')}" style="width:200px"></td>
+      <td>
+        <select id="stcoe_${o.id}_mode" style="width:200px">
+          <option value="store_out" ${mode==='store_out'?'selected':''}>매장으로 배송</option>
+          <option value="customer" ${mode==='customer'?'selected':''}>고객댁으로 배송(주소 검색 필요)</option>
+        </select>
+      </td>
+      <td><input id="stcoe_${o.id}_limit" type="number" min="1" value="${o.limit!=null?o.limit:''}" placeholder="무제한" style="width:90px"></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-primary" onclick="saveEditSubTierContestOption('${o.id}')">저장</button>
+        <button class="btn btn-sm" onclick="cancelEditSubTierContestOption()">취소</button>
+      </td>
+    </tr>`;
+    }
+    return `
     <tr>
       <td>${escapeHtml(o.value)}${o.closed?' <span class="badge bad">종료</span>':''}</td>
       <td>${escapeHtml(o.gift||'-')}</td>
       <td class="muted">${subTierContestOptionAddressLabel(o)}</td>
       <td class="muted">${o.limit!=null ? `${o.limit}개 한정 (잔여 ${Math.max(0, o.limit - subTierContestIssuedCount(o.value, null))}개)` : '제한 없음'}</td>
-      <td><button class="btn btn-sm" onclick="deleteSubTierContestOption('${o.id}')">삭제</button></td>
-    </tr>`).join('') || `<tr><td colspan="5" class="muted">등록된 항목이 없습니다.</td></tr>`;
+      <td style="white-space:nowrap;"><button class="btn btn-sm" onclick="startEditSubTierContestOption('${o.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubTierContestOption('${o.id}')">삭제</button></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" class="muted">등록된 항목이 없습니다.</td></tr>`;
   return `
     <div class="card" style="margin-bottom:16px;">
       <h3>컨테스트 항목 관리 (관리자 전용)</h3>
-      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 항목 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다.</div>
+      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 항목 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다.</div>
       <div class="form-row">
         <div class="field"><label>컨테스트 항목명</label><input id="stcoNewValue" placeholder="예: 워시타워 구재고 판매시" style="width:220px"></div>
         <div class="field"><label>사은품명</label><input id="stcoNewGift" placeholder="예: OOO 세트 1EA" style="width:220px"></div>
@@ -10598,6 +10683,35 @@ function addSubTierContestOption(){
   else if(mode==='store_out') entry.fixedAddress = '매장으로 배송';
   if(limitRaw) entry.limit = Number(limitRaw);
   DB.subTierContestOptions.push(entry);
+  saveDB();
+  renderTab('subTierContest');
+}
+function startEditSubTierContestOption(id){
+  if(SESSION.role!=='admin') return;
+  state.stcoEditId = id;
+  renderTab('subTierContest');
+}
+function cancelEditSubTierContestOption(){
+  state.stcoEditId = null;
+  renderTab('subTierContest');
+}
+function saveEditSubTierContestOption(id){
+  if(SESSION.role!=='admin') return;
+  const opt = (DB.subTierContestOptions||[]).find(o=>o.id===id);
+  if(!opt) return;
+  const value = document.getElementById(`stcoe_${id}_value`).value.trim();
+  const gift = document.getElementById(`stcoe_${id}_gift`).value.trim();
+  const mode = document.getElementById(`stcoe_${id}_mode`).value;
+  const limitRaw = document.getElementById(`stcoe_${id}_limit`).value.trim();
+  if(!value || !gift){ alert('컨테스트 항목명과 사은품명을 모두 입력해 주세요.'); return; }
+  if(limitRaw && (isNaN(Number(limitRaw)) || Number(limitRaw)<=0)){ alert('한정수량은 1 이상의 숫자로 입력해 주세요.'); return; }
+  if(DB.subTierContestOptions.some(o=>o.id!==id && o.value===value)){ alert('이미 등록된 항목명입니다. 다른 이름을 입력해 주세요.'); return; }
+  opt.value = value;
+  opt.gift = gift;
+  if(mode==='customer'){ opt.needsAddress = true; delete opt.fixedAddress; }
+  else { delete opt.needsAddress; opt.fixedAddress = '매장으로 배송'; }
+  if(limitRaw) opt.limit = Number(limitRaw); else delete opt.limit;
+  state.stcoEditId = null;
   saveDB();
   renderTab('subTierContest');
 }
