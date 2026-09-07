@@ -1049,13 +1049,17 @@ function migrateDB(){
   });
   if(!DB.subTierContestGifts) DB.subTierContestGifts = [];
   // 2026-09-05: 컨테스트 구분/사은품명 옵션을 코드가 아니라 DB에서 관리하도록 이전한다.
-  // 구독연동사은품 취합은 기존 하드코딩 값을 그대로 시드로 넣어 진행 중인 컨테스트(9/4~9/14 등)가
-  // 끊기지 않게 하고, 기타 사은품 취합은 현재 운영 중인 항목이 없어 빈 배열로 시작한다.
+  // 구독연동사은품 취합/기타 사은품 취합 모두 기존에 코드에 있던 값을 그대로 시드로 넣어
+  // 진행 중인 컨테스트(9/4~9/14 구독 계약건수별, 일시불/구독 다품목 한정수량 사은품 등)가
+  // 끊기지 않게 한다.
   if(!DB.contestGiftTypeOptions){
     DB.contestGiftTypeOptions = JSON.parse(JSON.stringify(CONTEST_GIFT_TYPE_OPTIONS_SEED))
       .map((o,idx)=>({ id:'cgto_seed_'+idx, ...o }));
   }
-  if(!DB.subTierContestOptions) DB.subTierContestOptions = [];
+  if(!DB.subTierContestOptions){
+    DB.subTierContestOptions = JSON.parse(JSON.stringify(SUB_TIER_CONTEST_OPTIONS_SEED))
+      .map((o,idx)=>({ id:'stco_seed_'+idx, ...o }));
+  }
   // 근무일정(Shiftee) 업로드 데이터: 사번+날짜로 조회하는 평면 구조. 지점별로 파일을 나눠 올려도
   // 사번 단위로 병합되므로 여러 지점 파일을 순서에 상관없이 추가해도 서로 덮어쓰지 않는다.
   if(!DB.workSchedule) DB.workSchedule = { byEmpDate:{}, uploads:[] };
@@ -9776,7 +9780,18 @@ const SUB_TIER_CONTEST_BANNER_IMG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEU
 // 2026-09-05: 26년 8월 컨테스트가 전부 종료되고 현재 운영 중인 항목이 없어 기존에 코드에
 // 하드코딩돼 있던 컨테스트 항목/사은품명을 전부 삭제했다. 이제 컨테스트 구분/사은품명은
 // 코드 수정 없이 앱 화면(기타 사은품 취합 페이지, 관리자 전용)에서 직접 추가·삭제한다 —
-// DB.subTierContestOptions가 그 저장소이며, migrateDB()에서 빈 배열로 초기화된다.
+// DB.subTierContestOptions가 그 저장소이며, 아래 SUB_TIER_CONTEST_OPTIONS_SEED는 최초 1회
+// 마이그레이션 때의 초기값(시드)으로만 쓰인다(migrateDB() 참고).
+// ---- 2026-09-07 추가: 일시불 금액대별 + 구독 다품목 계약건수별 사은품 컨테스트 (선착순 한정수량) ----
+const SUB_TIER_CONTEST_OPTIONS_SEED = [
+  { value:'일시불 금액대 500만원대', gift:'올뉴 쿡플러스점보 4호', limit:25 },
+  { value:'일시불 금액대 700만원대', gift:'아이젠베르그 에스트 IH 세라믹 후라이팬 2종 세트', limit:9 },
+  { value:'일시불 금액대 1,000만원대', gift:'제너 클로제 인덕션 스탠냄비 3종', limit:9 },
+  { value:'일시불 금액대 1,500만원대', gift:'쿠쿠 전자레인지 20L', limit:4 },
+  { value:'구독 다품목 3건', gift:'올뉴 쿡플러스점보 4호', limit:25 },
+  { value:'구독 다품목 4건', gift:'리빙아트 디오바코 빈티지 유리포트 1.8L', limit:11 },
+  { value:'구독 다품목 5건', gift:'바이마르 무선 블렌더 포터블 믹서기(네이비)', limit:15 }
+];
 // 신청기간이 정해진 항목(windowStart/windowEnd)이면 오늘 날짜가 그 범위(포함) 안에 있는지 확인한다.
 // 기간이 지정되지 않은 기존 항목들은 항상 true(기존 동작 그대로 상시 신청 가능).
 function subTierContestOptionWithinWindow(opt){
@@ -9801,6 +9816,12 @@ function subTierContestIssuedCount(contestTypeValue, excludeId){
 // 기존에 이미 등록된 건을 수정하는 화면(edit-row select)은 과거 값을 그대로 보여줘야 하므로 영향받지 않는다.
 function subTierContestOptionsForNewEntry(){
   return DB.subTierContestOptions.filter(o=>subTierContestOptionWithinWindow(o));
+}
+// 한정수량이 지정된 항목은 드롭다운/관리 목록에 "N개 한정 · 잔여 M개"를 함께 보여준다.
+function subTierContestOptionLabel(o){
+  if(o.limit==null) return o.value;
+  const remaining = Math.max(0, o.limit - subTierContestIssuedCount(o.value, null));
+  return `${o.value} (${o.limit}개 한정 · 잔여 ${remaining}개)`;
 }
 function syncContestGiftName(){
   const sel = document.getElementById('cgContestType');
@@ -10533,8 +10554,9 @@ function renderSubTierContestOptionAdmin(){
       <td>${escapeHtml(o.value)}${o.closed?' <span class="badge bad">종료</span>':''}</td>
       <td>${escapeHtml(o.gift||'-')}</td>
       <td class="muted">${subTierContestOptionAddressLabel(o)}</td>
+      <td class="muted">${o.limit!=null ? `${o.limit}개 한정 (잔여 ${Math.max(0, o.limit - subTierContestIssuedCount(o.value, null))}개)` : '제한 없음'}</td>
       <td><button class="btn btn-sm" onclick="deleteSubTierContestOption('${o.id}')">삭제</button></td>
-    </tr>`).join('') || `<tr><td colspan="4" class="muted">등록된 항목이 없습니다.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="5" class="muted">등록된 항목이 없습니다.</td></tr>`;
   return `
     <div class="card" style="margin-bottom:16px;">
       <h3>컨테스트 항목 관리 (관리자 전용)</h3>
@@ -10549,10 +10571,14 @@ function renderSubTierContestOptionAdmin(){
             <option value="customer">고객댁으로 배송(주소 검색 필요)</option>
           </select>
         </div>
+        <div class="field">
+          <label>한정수량 (선택, 비워두면 무제한)</label>
+          <input id="stcoNewLimit" type="number" min="1" placeholder="예: 25" style="width:110px">
+        </div>
         <button class="btn btn-primary" onclick="addSubTierContestOption()">항목 추가</button>
       </div>
       <table style="margin-top:10px;">
-        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>수령 방식</th><th></th></tr></thead>
+        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>수령 방식</th><th>한정수량</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -10562,12 +10588,15 @@ function addSubTierContestOption(){
   const value = document.getElementById('stcoNewValue').value.trim();
   const gift = document.getElementById('stcoNewGift').value.trim();
   const mode = document.getElementById('stcoNewAddressMode').value;
+  const limitRaw = document.getElementById('stcoNewLimit').value.trim();
   if(!value || !gift){ alert('컨테스트 항목명과 사은품명을 모두 입력해 주세요.'); return; }
+  if(limitRaw && (isNaN(Number(limitRaw)) || Number(limitRaw)<=0)){ alert('한정수량은 1 이상의 숫자로 입력해 주세요.'); return; }
   if(!DB.subTierContestOptions) DB.subTierContestOptions = [];
   if(DB.subTierContestOptions.some(o=>o.value===value)){ alert('이미 등록된 항목명입니다. 다른 이름을 입력해 주세요.'); return; }
   const entry = { id:'stco_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), value, gift };
   if(mode==='customer') entry.needsAddress = true;
   else if(mode==='store_out') entry.fixedAddress = '매장으로 배송';
+  if(limitRaw) entry.limit = Number(limitRaw);
   DB.subTierContestOptions.push(entry);
   saveDB();
   renderTab('subTierContest');
@@ -10678,7 +10707,7 @@ function renderSubTierContest(){
           <label>컨테스트 항목 선택</label>
           <select id="stcContestType" style="width:230px" onchange="syncSubTierGiftName()">
             <option value="">선택하세요</option>
-            ${subTierContestOptionsForNewEntry().map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(o.value)}</option>`).join('')}
+            ${subTierContestOptionsForNewEntry().map(o=>`<option value="${escapeHtml(o.value)}">${escapeHtml(subTierContestOptionLabel(o))}</option>`).join('')}
           </select>
         </div>
         <div class="field">
