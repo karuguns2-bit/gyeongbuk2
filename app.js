@@ -2255,7 +2255,7 @@ function renderHomeBranchBadges(){
       ${rankRowsHtml}
     </div>`;
   return `
-    <div class="card" style="margin-bottom:16px;overflow:visible;">
+    <div class="card" style="margin-bottom:0;overflow:visible;height:100%;box-sizing:border-box;">
       <style>
         .bbadge-item{ text-align:center; width:82px; }
         .bbadge-medalwrap{ position:relative; width:60px; height:60px; margin:0 auto; transition:transform .18s ease; }
@@ -2991,8 +2991,10 @@ function renderHome(){
   return `
     <div class="page-title">홈 대시보드</div>
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
-    ${renderHomeBranchBadges()}
-    ${renderNoticeBanner()}
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:stretch;margin-bottom:16px;">
+      <div style="flex:1 1 420px;min-width:320px;">${renderHomeBranchBadges()}</div>
+      <div style="flex:1 1 420px;min-width:320px;">${renderNoticeBanner()}</div>
+    </div>
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
@@ -3820,7 +3822,7 @@ function renderNoticeBanner(){
       <button class="nb-nav-btn" onclick="shiftNotice(1)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);">▶</button>` : '';
 
   return `
-    <div class="card notice-banner" style="${notices.length>1?'padding-left:40px;padding-right:40px;':''}">
+    <div class="card notice-banner" style="height:100%;box-sizing:border-box;${notices.length>1?'padding-left:40px;padding-right:40px;':''}">
       <div class="nb-label">📢 공지사항</div>
       ${adminControls}
       <div id="noticeBannerBody">${bodyHtml}</div>
