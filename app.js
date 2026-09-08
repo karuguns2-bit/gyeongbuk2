@@ -2453,16 +2453,6 @@ function renderHomeManagerBadges(){
     const streakDisplay = (last && last.empId===winner.empId) ? last.streak+1 : 1;
     return { cat, winner, streakDisplay };
   });
-  // 그랜드슬램: 지점은 소속 인원 전체의 합산/각 분야 담당자가 나눠서 종목을 석권할 수 있지만,
-  // 매니저 "개인"이 전 종목(6개)에서 동시에 1위를 하는 건 사실상 불가능에 가까워서, 지우님 요청대로
-  // 전체 종목 수의 과반을 넘는 5개 이상 종목에서 동시 1위면 그랜드슬램으로 인정한다.
-  const MANAGER_GRANDSLAM_MIN = 5;
-  const winsByEmp = {};
-  results.forEach(r=>{ if(r.winner) winsByEmp[r.winner.empId] = (winsByEmp[r.winner.empId]||0) + 1; });
-  let grandSlamEmpId = null, grandSlamCount = 0;
-  Object.entries(winsByEmp).forEach(([empId,count])=>{
-    if(count>=MANAGER_GRANDSLAM_MIN && count>grandSlamCount){ grandSlamEmpId = empId; grandSlamCount = count; }
-  });
   const cardsHtml = results.map(r=>{
     const cat = r.cat;
     const winner = r.winner;
@@ -2500,32 +2490,15 @@ function renderHomeManagerBadges(){
         <div class="bbadge-title-label">${subLabel}</div>
       </div>`;
   }).join('');
-  const grandSlamHtml = grandSlamEmpId ? (()=>{
-    const u = (DB.users||[]).find(x=>x.empId===grandSlamEmpId);
-    const name = escapeHtml(u ? u.name : grandSlamEmpId);
-    return `
-      <div class="bbadge-item bbadge-won bbadge-grandslam" title="${name} · 이번 달 ${grandSlamCount}개 종목 동시 1위 그랜드슬램!">
-        <div class="bbadge-shieldwrap">
-          <div class="bbadge-stars">✨✨✨</div>
-          <div class="bbadge-crown">👑</div>
-          <div class="bbadge-shield" style="background:linear-gradient(160deg, #fff2c4 0%, #f0b429 45%, #8a5b06 100%);box-shadow:0 6px 14px rgba(138,91,6,.55), inset 0 0 0 2px rgba(255,246,221,.8);">
-            <span class="bbadge-leaf bbadge-leaf-l">🌿</span>
-            <span class="bbadge-leaf bbadge-leaf-r">🌿</span>
-            <span class="bbadge-icon">${bbadgeIconSvg('trophy')}</span>
-            <div class="bbadge-ribbon-text">그랜드슬램</div>
-          </div>
-        </div>
-        <div class="bbadge-branch" style="color:#8a5b06;">${name}</div>
-        <div class="bbadge-title-label">그랜드슬램</div>
-      </div>`;
-  })() : '';
   // 카드를 따로 만들지 않고, 지점 배지 카드 안 좌측 영역(랭킹 패널보다 낮아 남는 여백)에
   // 이어서 채워 넣는 조각(fragment)만 반환한다 — renderHomeBranchBadges()에서 이어붙여 쓴다.
+  // (그랜드슬램은 매니저 개인 단위로는 두지 않는다 — 지우님 확인: 그랜드슬램은 지점 배지에만
+  // 적용하고, 대신 지점 그랜드슬램 기준을 "전 종목"에서 "5개 이상 종목 동시 1위"로 완화했다.)
   return `
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
       <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🧑‍💼 ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
-      <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요. <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${MANAGER_BADGE_CATEGORIES.length}개 중 ${MANAGER_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건을 볼 수 있어요)</div>
-      <div class="bbadge-medals" style="justify-content:flex-start;gap:10px 18px;">${cardsHtml}${grandSlamHtml}</div>
+      <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요. <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가! (배지에 마우스를 올리면 획득 조건을 볼 수 있어요)</div>
+      <div class="bbadge-medals" style="justify-content:flex-start;gap:10px 18px;">${cardsHtml}</div>
     </div>`;
 }
 // 매달 넘어갈 때 "지난달까지 완전히 끝난 달"의 종목별 1위를 확정해 연속 우승 스트릭을 갱신한다.
@@ -2584,8 +2557,16 @@ function renderHomeBranchBadges(){
     return { cat, winner, streakDisplay };
   });
   const withWinner = results.filter(r=>r.winner);
-  const grandSlamBranch = (withWinner.length===BRANCH_BADGE_CATEGORIES.length && withWinner.every(r=>r.winner.branchId===withWinner[0].winner.branchId))
-    ? withWinner[0].winner.branchId : null;
+  // 그랜드슬램: 지점 배지가 11개로 늘어나면서 "전 종목 동시 1위"는 사실상 불가능에 가까워져서,
+  // 지우님 요청대로 전 종목이 아니라 "5개 이상 종목 동시 1위"로 기준을 완화했다(매니저 개인
+  // 그랜드슬램은 별도로 두지 않기로 함 — renderHomeManagerBadges() 옆 주석 참고).
+  const BRANCH_GRANDSLAM_MIN = 5;
+  const branchWinCounts = {};
+  withWinner.forEach(r=>{ branchWinCounts[r.winner.branchId] = (branchWinCounts[r.winner.branchId]||0) + 1; });
+  let grandSlamBranch = null, grandSlamBranchCount = 0;
+  Object.entries(branchWinCounts).forEach(([branchId,count])=>{
+    if(count>=BRANCH_GRANDSLAM_MIN && count>grandSlamBranchCount){ grandSlamBranch = branchId; grandSlamBranchCount = count; }
+  });
   const cardsHtml = results.map(r=>{
     const won = !!r.winner;
     const stars = won ? Math.floor(r.streakDisplay/3) : 0;
@@ -2619,7 +2600,7 @@ function renderHomeBranchBadges(){
       </div>`;
   }).join('');
   const grandSlamHtml = grandSlamBranch ? `
-      <div class="bbadge-item bbadge-won bbadge-grandslam" title="${escapeHtml(branchName(grandSlamBranch))} · 이번 달 전 종목 석권!">
+      <div class="bbadge-item bbadge-won bbadge-grandslam" title="${escapeHtml(branchName(grandSlamBranch))} · 이번 달 ${grandSlamBranchCount}개 종목 동시 1위 그랜드슬램!">
         <div class="bbadge-shieldwrap">
           <div class="bbadge-stars">✨✨✨</div>
           <div class="bbadge-crown">👑</div>
@@ -2705,7 +2686,7 @@ function renderHomeBranchBadges(){
         .bbadge-rule-info{ font-size:10px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:5px 9px; line-height:1.4; margin-bottom:9px; }
       </style>
       <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
-      <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">전 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
+      <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${BRANCH_BADGE_CATEGORIES.length}개 중 ${BRANCH_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
       <div class="bbadge-outer">
         <div style="flex:1 1 280px;">
           <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
