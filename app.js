@@ -1184,9 +1184,6 @@ function migrateDB(){
   if(DB.inventoryShowAllTeams===undefined) DB.inventoryShowAllTeams = false;
   if(!DB.kakaoFriends) DB.kakaoFriends = [];
   DB.kakaoFriends.forEach(r=>{ if(!r.date) r.date = r.weekStart; if(!r.weekStart && r.date) r.weekStart = getMondayStr(r.date); });
-  // 카카오 플친 관리현황표: 지점별 목표/전월 누적/전주 누적은 관리자가 직접 입력·수정하는 값이다
-  // (주차별 업로드 데이터와 달리 자동 집계되지 않음). "현재"는 기존 주차별 누적 데이터에서 그대로 가져온다.
-  if(!DB.kakaoFriendsMgmt) DB.kakaoFriendsMgmt = {};
   if(!DB.prospects) DB.prospects = [];
   DB.prospects.forEach(p=>{ if(p.purchaseType===undefined) p.purchaseType = null; });
   // 2026-08-24 방문 상담 일지 양식에 맞춰 방문일자/방문시간/고객구분/방문단위/방문경로/상담제품
@@ -1202,6 +1199,10 @@ function migrateDB(){
   if(!DB.subB2bSales) DB.subB2bSales = [];
   if(!DB.policyQuizAttempts) DB.policyQuizAttempts = [];
   if(!DB.kakaoContestInfo) DB.kakaoContestInfo = JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO));
+  // 카카오 플친 컨테스트 안내 표에 전월 누적/전주 누적 항목을 추가했다(기존 목표 인원 필드와
+  // 동일하게 관리자가 직접 입력·수정하는 값). 이전 DB에는 이 필드가 없을 수 있으니 보정한다.
+  if(!DB.kakaoContestInfo.lastMonthCum) DB.kakaoContestInfo.lastMonthCum = {};
+  if(!DB.kakaoContestInfo.lastWeekCum) DB.kakaoContestInfo.lastWeekCum = {};
   if(DB.kakaoContestResultImage===undefined) DB.kakaoContestResultImage = null;
   // 컨테스트 결과 이미지도 실행력 점검 사진 가이드와 동일하게 1장(dataUrl 단일 필드) ->
   // 여러 개(images[] 배열) 구조로 바뀌었으므로, 기존 단일 이미지를 배열 첫 항목으로 이전한다.
@@ -2147,18 +2148,18 @@ const BRANCH_BADGE_CATEGORIES = [
       return DB.branches.map(b=>({ branchId:b.id, value: kakaoFriendsLatestCumulative(b.id) })).filter(r=>r.value>0);
     },
     fmt(v){ return `${fmtNum(v)}명`; } },
-  // 카카오 플친 관리현황표의 "전월 누적"(관리자 직접 입력값) 대비 "현재(최신 주차 누적)"의 증가분이
-  // 가장 큰 지점. 전월 누적을 아직 입력하지 않은 지점은 기준이 없어 계산에서 제외한다. 관리현황표는
-  // "이번 달 목표/전월 누적" 스냅샷 성격이라 지난 달 배지 확정 시점에는 값을 줄 수 없으므로
+  // 카카오 플친 컨테스트 안내 표의 "전월 누적"(관리자 직접 입력값) 대비 "현재(최신 주차 누적)"의
+  // 증가분이 가장 큰 지점. 전월 누적을 아직 입력하지 않은 지점은 기준이 없어 계산에서 제외한다.
+  // 이 값은 "이번 달 전월 누적" 스냅샷 성격이라 지난 달 배지 확정 시점에는 값을 줄 수 없으므로
   // clearanceKing과 동일하게 이번 달(period) 조회일 때만 값을 준다.
   { id:'kakaoGrowth', label:'카카오 플친 최대 증가점', desc:'전월 누적 대비 이번 달 카카오 플러스친구 증가 인원 1위 지점', icon:'📈', svg:'arrowUpCircle', grad:['#d7f5c9','#8fe06a','#3fa622'], shadow:'63,166,34',
     compute(period){
       if(period !== periodStr()) return [];
-      ensureKakaoFriendsMgmt();
+      const lastMonthCum = (DB.kakaoContestInfo && DB.kakaoContestInfo.lastMonthCum) || {};
       return DB.branches.map(b=>{
-        const m = DB.kakaoFriendsMgmt[b.id];
-        if(!m || !(Number(m.lastMonthCum)>0)) return null;
-        const diff = kakaoFriendsLatestCumulative(b.id) - Number(m.lastMonthCum);
+        const lm = Number(lastMonthCum[b.id])||0;
+        if(!(lm>0)) return null;
+        const diff = kakaoFriendsLatestCumulative(b.id) - lm;
         return { branchId:b.id, value: diff };
       }).filter(Boolean).filter(r=>r.value>0);
     },
@@ -14635,98 +14636,6 @@ function deleteKakaoFriendsRow(branchId, date){
   saveDB();
   renderTab('kakaoFriends');
 }
-// ---- 카카오 플친 관리현황표: 목표/전월 누적/전주 누적은 관리자가 직접 입력·수정하는 값이고,
-// "현재(최신 주차 누적)"는 위쪽 주차별 업로드 데이터(kakaoFriendsLatestCumulative)에서 그대로
-// 가져온다. 남은 인원/전월비 증감율/진행률은 이 값들로부터 자동 계산된다.
-function ensureKakaoFriendsMgmt(){
-  if(!DB.kakaoFriendsMgmt) DB.kakaoFriendsMgmt = {};
-  DB.branches.forEach(b=>{
-    if(!DB.kakaoFriendsMgmt[b.id]) DB.kakaoFriendsMgmt[b.id] = { target:0, lastMonthCum:0, lastWeekCum:0 };
-  });
-}
-function kakaoFriendsMgmtRows(){
-  ensureKakaoFriendsMgmt();
-  return DB.branches.map(b=>{
-    const m = DB.kakaoFriendsMgmt[b.id] || { target:0, lastMonthCum:0, lastWeekCum:0 };
-    const target = Number(m.target)||0;
-    const lastMonthCum = Number(m.lastMonthCum)||0;
-    const lastWeekCum = Number(m.lastWeekCum)||0;
-    const current = kakaoFriendsLatestCumulative(b.id);
-    const remaining = target>0 ? Math.max(target - current, 0) : null;
-    const hasBaseline = lastMonthCum>0;
-    const momDiff = hasBaseline ? current - lastMonthCum : null;
-    const momRate = hasBaseline ? (momDiff/lastMonthCum*100) : null;
-    const pct = target>0 ? Math.min(current/target*100, 100) : null;
-    return { branchId:b.id, target, lastMonthCum, lastWeekCum, current, remaining, momDiff, momRate, pct };
-  });
-}
-function toggleKakaoMgmtEdit(){
-  if(SESSION.role!=='admin') return;
-  state.kakaoMgmtEditing = !state.kakaoMgmtEditing;
-  renderTab('kakaoFriends');
-}
-function saveKakaoFriendsMgmt(){
-  if(SESSION.role!=='admin') return;
-  ensureKakaoFriendsMgmt();
-  DB.branches.forEach(b=>{
-    const t = Number(document.getElementById('kfmTarget_'+b.id).value)||0;
-    const lm = Number(document.getElementById('kfmLastMonth_'+b.id).value)||0;
-    const lw = Number(document.getElementById('kfmLastWeek_'+b.id).value)||0;
-    DB.kakaoFriendsMgmt[b.id] = { target:t, lastMonthCum:lm, lastWeekCum:lw };
-  });
-  saveDB();
-  state.kakaoMgmtEditing = false;
-  logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 관리현황표] 목표·전월/전주 누적을 수정했습니다`);
-  renderTab('kakaoFriends');
-}
-function renderKakaoFriendsMgmtTable(){
-  const isAdmin = SESSION.role==='admin';
-  const rows = kakaoFriendsMgmtRows();
-  const bodyHtml = rows.map(r=>`
-    <tr>
-      <td>${branchName(r.branchId)}</td>
-      <td>${fmtNum(r.lastMonthCum)}명</td>
-      <td>${fmtNum(r.lastWeekCum)}명</td>
-      <td>${fmtNum(r.current)}명</td>
-      <td>${r.remaining==null ? '<span class="muted">목표 미입력</span>' : (r.remaining>0 ? fmtNum(r.remaining)+'명' : '<span class="badge good">목표 달성</span>')}</td>
-      <td>${r.momRate==null ? '<span class="muted">-</span>' : `<span style="color:${r.momRate>=0?'var(--primary)':'var(--bad)'};font-weight:700;">${r.momRate>=0?'+':''}${r.momRate.toFixed(1)}%</span>`}</td>
-      <td style="min-width:120px;">${r.pct==null ? '<span class="muted">목표 미입력</span>' : `<div class="progress-bar"><div style="width:${r.pct}%"></div></div><div style="font-size:11px;margin-top:2px;">${r.pct.toFixed(1)}%</div>`}</td>
-    </tr>`).join('');
-  const editToggleHtml = isAdmin ? `<button class="btn btn-sm" onclick="toggleKakaoMgmtEdit()">${state.kakaoMgmtEditing ? '편집 닫기' : '목표·전월/전주 누적 입력'}</button>` : '';
-  const editFormHtml = (isAdmin && state.kakaoMgmtEditing) ? `
-    <div class="card" style="margin:12px 0;background:#fff;">
-      <div class="muted" style="margin-bottom:8px;font-size:12px;">지점별로 이번 달 목표 인원, 전월 말 누적, 전주 누적을 입력해 주세요. '현재(최신 주차 누적)'는 위쪽 주차별 업로드 데이터에서 자동으로 반영되어 여기서 직접 입력하지 않습니다.</div>
-      <div class="grid grid-3">
-        ${DB.branches.map(b=>{
-          const m = (DB.kakaoFriendsMgmt && DB.kakaoFriendsMgmt[b.id]) || {target:0,lastMonthCum:0,lastWeekCum:0};
-          return `
-          <div class="field" style="border:1px solid var(--border);border-radius:8px;padding:8px;">
-            <label style="font-weight:700;">${escapeHtml(b.name)}</label>
-            <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px;">
-              <input id="kfmTarget_${b.id}" type="number" placeholder="목표 인원" value="${m.target||0}" style="width:100%;">
-              <input id="kfmLastMonth_${b.id}" type="number" placeholder="전월 누적" value="${m.lastMonthCum||0}" style="width:100%;">
-              <input id="kfmLastWeek_${b.id}" type="number" placeholder="전주 누적" value="${m.lastWeekCum||0}" style="width:100%;">
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-      <button class="btn btn-primary" style="margin-top:12px;" onclick="saveKakaoFriendsMgmt()">저장</button>
-    </div>` : '';
-  return `
-    <div class="card" style="margin-bottom:16px;">
-      <div class="flex-between" style="margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-        <h3 style="margin:0;">카카오 플친 관리현황표</h3>
-        ${editToggleHtml}
-      </div>
-      ${editFormHtml}
-      <div style="overflow-x:auto;">
-      <table>
-        <thead><tr><th>지점</th><th>전월 누적</th><th>전주 누적</th><th>현재(최신 주차 누적)</th><th>남은 인원</th><th>전월비 증감율</th><th>진행률</th></tr></thead>
-        <tbody>${bodyHtml || '<tr><td colspan="7" class="muted">지점 데이터가 없습니다.</td></tr>'}</tbody>
-      </table>
-      </div>
-    </div>`;
-}
 function kakaoFriendsLatestChange(){
   const byBranch = kakaoFriendsByBranch();
   const results = [];
@@ -14934,16 +14843,33 @@ function renderKakaoContestResultImage(){
       ${adminControls}
     </div>`;
 }
+// 지점별 목표/전월 누적/전주 누적은 모두 관리자가 이 컨테스트 안내 표에서 직접 입력·수정하는
+// 값이다(DB.kakaoContestInfo.targets/lastMonthCum/lastWeekCum). "현재(최신 주차 누적)"만
+// 위쪽 주차별 업로드 데이터에서 자동으로 가져온다. 남은 인원/전월비 증감율/진행률은 계산값.
 function kakaoContestProgress(){
   const byBranch = kakaoFriendsByBranch();
   const info = DB.kakaoContestInfo;
-  return Object.entries(info.targets).map(([branchId, target])=>{
+  const lastMonthCum = info.lastMonthCum || {};
+  const lastWeekCum = info.lastWeekCum || {};
+  return DB.branches.map(b=>{
+    const branchId = b.id;
+    const target = Number(info.targets[branchId])||0;
+    const lmCum = Number(lastMonthCum[branchId])||0;
+    const lwCum = Number(lastWeekCum[branchId])||0;
     const list = byBranch[branchId] || [];
     const latest = list.length ? list[list.length-1].count : 0;
-    const remaining = Math.max(target - latest, 0);
-    const pct = target>0 ? Math.min(latest/target*100, 100) : 0;
-    return { branchId, target, latest, remaining, pct };
-  }).sort((a,b)=> b.pct - a.pct);
+    const remaining = target>0 ? Math.max(target - latest, 0) : null;
+    const pct = target>0 ? Math.min(latest/target*100, 100) : null;
+    const hasBaseline = lmCum>0;
+    const momDiff = hasBaseline ? latest - lmCum : null;
+    const momRate = hasBaseline ? (momDiff/lmCum*100) : null;
+    return { branchId, target, lastMonthCum:lmCum, lastWeekCum:lwCum, latest, remaining, pct, momDiff, momRate };
+  }).sort((a,b)=>{
+    if(a.pct==null && b.pct==null) return 0;
+    if(a.pct==null) return 1;
+    if(b.pct==null) return -1;
+    return b.pct - a.pct;
+  });
 }
 function renderKakaoContestBanner(){
   const info = DB.kakaoContestInfo;
@@ -14953,11 +14879,14 @@ function renderKakaoContestBanner(){
     <tr>
       <td>${branchName(p.branchId)}</td>
       <td>${fmtNum(p.target)}명</td>
+      <td>${fmtNum(p.lastMonthCum)}명</td>
+      <td>${fmtNum(p.lastWeekCum)}명</td>
       <td>${fmtNum(p.latest)}명</td>
-      <td>${p.remaining>0 ? fmtNum(p.remaining)+'명' : '<span class="badge good">목표 달성</span>'}</td>
-      <td style="min-width:120px;"><div class="progress-bar"><div style="width:${p.pct}%"></div></div></td>
-      <td>${p.pct.toFixed(1)}%</td>
-    </tr>`).join('') || `<tr><td colspan="6" class="muted">등록된 목표가 없습니다.</td></tr>`;
+      <td>${p.remaining==null ? '<span class="muted">목표 미입력</span>' : (p.remaining>0 ? fmtNum(p.remaining)+'명' : '<span class="badge good">목표 달성</span>')}</td>
+      <td>${p.momRate==null ? '<span class="muted">-</span>' : `<span style="color:${p.momRate>=0?'var(--primary)':'var(--bad)'};font-weight:700;">${p.momRate>=0?'+':''}${p.momRate.toFixed(1)}%</span>`}</td>
+      <td style="min-width:120px;">${p.pct==null ? '<span class="muted">-</span>' : `<div class="progress-bar"><div style="width:${p.pct}%"></div></div>`}</td>
+      <td>${p.pct==null ? '' : p.pct.toFixed(1)+'%'}</td>
+    </tr>`).join('') || `<tr><td colspan="9" class="muted">등록된 목표가 없습니다.</td></tr>`;
   const editToggleHtml = isAdmin ? `<button class="btn btn-sm" onclick="toggleKakaoContestEdit()">${state.kakaoContestEditing ? '편집 닫기' : '내용 수정'}</button>` : '';
   const editFormHtml = (isAdmin && state.kakaoContestEditing) ? `
     <div class="card" style="margin:12px 0;background:#fff;">
@@ -14970,10 +14899,18 @@ function renderKakaoContestBanner(){
         <div class="field"><label>기간</label><input id="kcPeriod" value="${escapeHtml(info.period)}" style="width:180px;"></div>
         <div class="field" style="flex:1;min-width:220px;"><label>비고</label><input id="kcNote" value="${escapeHtml(info.note)}" style="width:100%;"></div>
       </div>
-      <h3 style="margin-top:14px;">지점별 목표 인원</h3>
+      <h3 style="margin-top:14px;">지점별 목표 · 전월 누적 · 전주 누적</h3>
+      <div class="muted" style="margin-bottom:8px;font-size:12px;">'현재(최신 주차 누적)'는 위쪽 주차별 업로드 데이터에서 자동으로 반영되어 여기서 직접 입력하지 않습니다.</div>
       <div class="grid grid-3">
         ${DB.branches.map(b=>`
-          <div class="field"><label>${b.name}</label><input id="kcTarget_${b.id}" type="number" value="${info.targets[b.id]!==undefined ? info.targets[b.id] : 0}" style="width:100%;"></div>
+          <div class="field" style="border:1px solid var(--border);border-radius:8px;padding:8px;">
+            <label style="font-weight:700;">${escapeHtml(b.name)}</label>
+            <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px;">
+              <input id="kcTarget_${b.id}" type="number" placeholder="목표 인원" value="${info.targets[b.id]!==undefined ? info.targets[b.id] : 0}" style="width:100%;">
+              <input id="kcLastMonth_${b.id}" type="number" placeholder="전월 누적" value="${(info.lastMonthCum && info.lastMonthCum[b.id])||0}" style="width:100%;">
+              <input id="kcLastWeek_${b.id}" type="number" placeholder="전주 누적" value="${(info.lastWeekCum && info.lastWeekCum[b.id])||0}" style="width:100%;">
+            </div>
+          </div>
         `).join('')}
       </div>
       <button class="btn btn-primary" style="margin-top:12px;" onclick="updateKakaoContestInfo()">저장</button>
@@ -14987,10 +14924,12 @@ function renderKakaoContestBanner(){
       <div style="font-weight:700;font-size:15px;margin:4px 0 2px;">${info.title}</div>
       <div class="muted" style="margin-bottom:10px;">${info.subtitle} · ${info.note}</div>
       ${editFormHtml}
+      <div style="overflow-x:auto;">
       <table>
-        <thead><tr><th>지점</th><th>목표</th><th>현재(최신 주차 누적)</th><th>남은 인원</th><th>진행률</th><th></th></tr></thead>
+        <thead><tr><th>지점</th><th>목표</th><th>전월 누적</th><th>전주 누적</th><th>현재(최신 주차 누적)</th><th>남은 인원</th><th>전월비 증감율</th><th>진행률</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
     </div>`;
 }
 function toggleKakaoContestEdit(){
@@ -15003,12 +14942,19 @@ function updateKakaoContestInfo(){
   info.subtitle = document.getElementById('kcSubtitle').value.trim();
   info.period = document.getElementById('kcPeriod').value.trim();
   info.note = document.getElementById('kcNote').value.trim();
+  if(!info.lastMonthCum) info.lastMonthCum = {};
+  if(!info.lastWeekCum) info.lastWeekCum = {};
   DB.branches.forEach(b=>{
     const el = document.getElementById('kcTarget_' + b.id);
     if(el) info.targets[b.id] = Number(el.value) || 0;
+    const elLM = document.getElementById('kcLastMonth_' + b.id);
+    if(elLM) info.lastMonthCum[b.id] = Number(elLM.value) || 0;
+    const elLW = document.getElementById('kcLastWeek_' + b.id);
+    if(elLW) info.lastWeekCum[b.id] = Number(elLW.value) || 0;
   });
   saveDB();
   state.kakaoContestEditing = false;
+  logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 컨테스트 안내] 목표·전월/전주 누적을 수정했습니다`);
   renderTab('kakaoFriends');
 }
 function renderKakaoFriendsBanner(){
@@ -15061,7 +15007,6 @@ function renderKakaoFriends(){
   return `
     <div class="page-title">카카오 플친 관리 현황</div>
     <div class="page-desc">지점별 카카오톡 플러스친구(플친) 컨테스트 현황입니다.</div>
-    ${renderKakaoFriendsMgmtTable()}
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;">
       <div style="flex:1;min-width:280px;max-width:420px;display:flex;">
         ${renderKakaoContestResultImage()}
