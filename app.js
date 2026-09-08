@@ -1991,8 +1991,25 @@ function yearPeriodsUpToNow(year){
   for(let m=1;m<=maxM;m++) periods.push(`${year}-${pad(m)}`);
   return periods;
 }
+// 배지 안의 아이콘을 이모지 대신 큼직하고 또렷한 벡터(SVG) 아이콘으로 그린다 — 이모지는 기기/폰트에
+// 따라 작고 흐릿하게 보일 수 있어서, 방패 배지 안에서 잘 안 보인다는 문의가 있었다. 이름으로 골라
+// 쓰도록 간단한 조회 테이블 형태로 구성.
+function bbadgeIconSvg(name){
+  const common = 'width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  const icons = {
+    target: `<svg ${common}><circle cx="12" cy="12" r="9.2"/><circle cx="12" cy="12" r="5.4"/><circle cx="12" cy="12" r="1.7" fill="#fff"/></svg>`,
+    trending: `<svg ${common}><polyline points="3 17 9.5 10.5 13.5 14.5 21 6.5"/><polyline points="14.5 6.5 21 6.5 21 13"/></svg>`,
+    clipboard: `<svg ${common}><rect x="5" y="3.3" width="14" height="18.4" rx="2"/><path d="M9 3.3h6a1 1 0 0 1 1 1v1.2H8V4.3a1 1 0 0 1 1-1z" fill="#fff" stroke="none"/><line x1="8.3" y1="10" x2="15.7" y2="10"/><line x1="8.3" y1="14" x2="15.7" y2="14"/><line x1="8.3" y1="17.7" x2="13" y2="17.7"/></svg>`,
+    chat: `<svg ${common}><path d="M21 11.6a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-.95L3 21l1.85-5.75a8.4 8.4 0 0 1-.95-3.95A8.5 8.5 0 0 1 12.4 2.6a8.5 8.5 0 0 1 8.6 8.6z"/></svg>`,
+    star: `<svg ${common} fill="#fff"><polygon points="12 2.3 15.1 8.9 22.2 9.7 17 14.7 18.3 21.8 12 18.3 5.7 21.8 7 14.7 1.8 9.7 8.9 8.9"/></svg>`,
+    bars: `<svg ${common}><line x1="6" y1="20.5" x2="6" y2="12.5"/><line x1="12" y1="20.5" x2="12" y2="5"/><line x1="18" y1="20.5" x2="18" y2="9.5"/></svg>`,
+    users: `<svg ${common}><path d="M16.7 20.5v-1.9a3.7 3.7 0 0 0-3.7-3.7H6.5a3.7 3.7 0 0 0-3.7 3.7v1.9"/><circle cx="9.6" cy="7.6" r="3.7"/><path d="M21.2 20.5v-1.9a3.7 3.7 0 0 0-2.8-3.6"/><path d="M14.7 4.1a3.7 3.7 0 0 1 0 7.2"/></svg>`,
+    trophy: `<svg ${common}><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 3.5h10v5a5 5 0 0 1-10 0v-5z"/><path d="M7 4.7H4.3A2.6 2.6 0 0 0 7 9.2"/><path d="M17 4.7h2.7A2.6 2.6 0 0 1 17 9.2"/></svg>`
+  };
+  return icons[name] || icons.star;
+}
 const BRANCH_BADGE_CATEGORIES = [
-  { id:'goalAchieve', label:'목표달성점', icon:'🎯', grad:['#7ee8fa','#3fa9f5','#2176d2'], shadow:'33,150,243',
+  { id:'goalAchieve', label:'목표달성점', icon:'🎯', svg:'target', grad:['#7ee8fa','#3fa9f5','#2176d2'], shadow:'33,150,243',
     compute(period){
       return DB.branches.map(b=>({ branchId:b.id, value: pctOf(branchAchieved(b.id, period), branchTarget(b.id, period)) }))
         .filter(r=>r.value>0);
@@ -2010,7 +2027,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(sums).map(([branchId,s])=>({branchId, value: pctOf(s.ach, s.tgt)})).filter(r=>r.value>0);
     },
     fmt(v){ return v.toFixed(1)+'%'; } },
-  { id:'subB2b', label:'소상공인 판촉 우수점', icon:'🏪', grad:['#ffd59e','#ff9a56','#f0640c'], shadow:'240,100,12',
+  { id:'subB2b', label:'소상공인 판촉 우수점', icon:'🏪', svg:'trending', grad:['#ffd59e','#ff9a56','#f0640c'], shadow:'240,100,12',
     compute(period){
       const sums = {};
       (DB.subB2bSales||[]).forEach(r=>{
@@ -2028,7 +2045,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(sums).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
     },
     fmt(v){ return fmtWon(v); } },
-  { id:'infoReport', label:'정보보고우수점', icon:'📝', grad:['#baf7c9','#4fd77c','#0e9e52'], shadow:'14,158,82',
+  { id:'infoReport', label:'정보보고우수점', icon:'📝', svg:'clipboard', grad:['#baf7c9','#4fd77c','#0e9e52'], shadow:'14,158,82',
     compute(period){
       const counts = {};
       (DB.infoReports||[]).forEach(r=>{
@@ -2046,7 +2063,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
     },
     fmt(v){ return `${v}건`; } },
-  { id:'kakaoFriends', label:'카카오 플친 최다보유점', icon:'💛', grad:['#fff4b8','#ffe066','#f4c400'], shadow:'244,196,0',
+  { id:'kakaoFriends', label:'카카오 플친 최다보유점', icon:'💛', svg:'chat', grad:['#fff4b8','#ffe066','#f4c400'], shadow:'244,196,0',
     compute(){
       return DB.branches.map(b=>({ branchId:b.id, value: kakaoFriendsLatestCumulative(b.id) })).filter(r=>r.value>0);
     },
@@ -2054,7 +2071,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return DB.branches.map(b=>({ branchId:b.id, value: kakaoFriendsLatestCumulative(b.id) })).filter(r=>r.value>0);
     },
     fmt(v){ return `${fmtNum(v)}명`; } },
-  { id:'bestPractice', label:'우수활동 우수점', icon:'🌟', grad:['#e2ceff','#b088ff','#7c3aed'], shadow:'124,58,237',
+  { id:'bestPractice', label:'우수활동 우수점', icon:'🌟', svg:'star', grad:['#e2ceff','#b088ff','#7c3aed'], shadow:'124,58,237',
     compute(period){
       const counts = {};
       (DB.bestPractices||[]).forEach(p=>{
@@ -2074,7 +2091,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
     },
     fmt(v){ return `${v}건`; } },
-  { id:'competitiveness', label:'경쟁력우수점', icon:'📊', grad:['#ffc2d6','#ff6f9c','#e0195e'], shadow:'224,25,94',
+  { id:'competitiveness', label:'경쟁력우수점', icon:'📊', svg:'bars', grad:['#ffc2d6','#ff6f9c','#e0195e'], shadow:'224,25,94',
     compute(period){
       const data = competitivenessDataForPeriod(period);
       if(!data || !data.competitiveness) return [];
@@ -2099,7 +2116,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(sums).map(([branchId,s])=>({branchId, value: s.sum/s.count})).filter(r=>r.value>0);
     },
     fmt(v){ return v.toFixed(1)+'%'; } },
-  { id:'prospects', label:'가망고객 관리 우수점', icon:'🤝', grad:['#bfeaff','#5fc9ff','#0ea5e9'], shadow:'14,165,233',
+  { id:'prospects', label:'가망고객 관리 우수점', icon:'🤝', svg:'users', grad:['#bfeaff','#5fc9ff','#0ea5e9'], shadow:'14,165,233',
     compute(period){
       const counts = {};
       (DB.prospects||[]).forEach(p=>{
@@ -2135,6 +2152,103 @@ function branchBadgeRanking(catDef, period){
 function branchBadgeWinner(catDef, period){
   const ranked = branchBadgeRanking(catDef, period);
   return ranked.length>0 ? ranked[0] : null;
+}
+/* =========================================================================
+   4a1. 매니저 개인 배지 (홈 대시보드) — 위 지점 배지와 별개로, 매니저 개인의 이번 달 활동/실적
+   1위를 뽑아 배지를 준다. 지점 배지처럼 연속 스트릭/별은 없고, 매달 1위만 보여준다(단순화).
+   ========================================================================= */
+const MANAGER_BADGE_CATEGORIES = [
+  { id:'infoKing', label:'정보왕', desc:'정보보고 최다등록자', icon:'📝', svg:'clipboard', grad:['#baf7c9','#4fd77c','#0e9e52'], shadow:'14,158,82',
+    compute(period){
+      const counts = {};
+      (DB.infoReports||[]).forEach(r=>{
+        if(!r.authorEmpId || String(r.createdAt||'').slice(0,7)!==period) return;
+        counts[r.authorEmpId] = (counts[r.authorEmpId]||0) + 1;
+      });
+      return Object.entries(counts).map(([empId,value])=>({empId,value})).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${v}건`; } },
+  { id:'subKing', label:'구독 판매왕', desc:'월별 구독판매 누적 최다인원', icon:'📶', svg:'trending', grad:['#b8f5ec','#4fd7c0','#0e9e86'], shadow:'14,158,134',
+    compute(period){
+      const staff = (DB.users||[]).filter(u=>u.role==='staff');
+      return staff.map(u=>({empId:u.empId, value: empSubscriptionActual(u.branchId, u.empId, period).qty})).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${v}건`; } },
+  { id:'salesKing', label:'매출대장', desc:'MSIS 목표관리 내 최대 판매 금액', icon:'💰', svg:'bars', grad:['#ffe1a8','#ffb648','#e8890c'], shadow:'232,137,12',
+    compute(period){
+      const staff = (DB.users||[]).filter(u=>u.role==='staff');
+      return staff.map(u=>({empId:u.empId, value: empAchieved(u.branchId, u.empId, period)})).filter(r=>r.value>0);
+    },
+    fmt(v){ return fmtWon(v); } },
+  { id:'actionCaptain', label:'행동대장', desc:'우수활동 최다등록자', icon:'🌟', svg:'star', grad:['#e2ceff','#b088ff','#7c3aed'], shadow:'124,58,237',
+    compute(period){
+      const counts = {};
+      (DB.bestPractices||[]).forEach(p=>{
+        if(!p.managerEmpId || String(p.createdAt||'').slice(0,7)!==period) return;
+        counts[p.managerEmpId] = (counts[p.managerEmpId]||0) + 1;
+      });
+      return Object.entries(counts).map(([empId,value])=>({empId,value})).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${v}건`; } },
+  { id:'customerRich', label:'고객부자', desc:'가망고객 관리현황 최다등록자', icon:'🤝', svg:'users', grad:['#bfeaff','#5fc9ff','#0ea5e9'], shadow:'14,165,233',
+    compute(period){
+      const counts = {};
+      (DB.prospects||[]).forEach(p=>{
+        if(!p.empId) return;
+        const d = p.visitDate || String(p.createdAt||'').slice(0,10);
+        if(String(d||'').slice(0,7)!==period) return;
+        counts[p.empId] = (counts[p.empId]||0) + 1;
+      });
+      return Object.entries(counts).map(([empId,value])=>({empId,value})).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${v}건`; } }
+];
+function managerBadgeRanking(catDef, period){
+  return catDef.compute(period).sort((a,b)=>b.value-a.value);
+}
+function managerBadgeWinner(catDef, period){
+  const ranked = managerBadgeRanking(catDef, period);
+  return ranked.length>0 ? ranked[0] : null;
+}
+function renderHomeManagerBadges(){
+  const period = periodStr();
+  const cardsHtml = MANAGER_BADGE_CATEGORIES.map(cat=>{
+    const winner = managerBadgeWinner(cat, period);
+    const won = !!winner;
+    const u = won ? (DB.users||[]).find(x=>x.empId===winner.empId) : null;
+    const mgrName = won ? escapeHtml(u ? u.name : winner.empId) : '미정';
+    const branchNm = (won && u) ? escapeHtml(branchName(u.branchId)) : '';
+    const tooltip = won
+      ? `${cat.label}(${cat.desc}) · ${escapeHtml(u?u.name:winner.empId)}${branchNm?`(${branchNm})`:''} · ${escapeHtml(cat.fmt(winner.value))}`
+      : `${cat.label}(${cat.desc}) · 이번 달은 아직 1위가 없습니다`;
+    const g = cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
+    const sh = cat.shadow || '242,163,0';
+    const shieldStyle = won
+      ? `background:linear-gradient(160deg, ${g[0]} 0%, ${g[1]} 45%, ${g[2]} 100%);box-shadow:0 5px 12px rgba(${sh},.5), inset 0 0 0 2px rgba(255,255,255,.6);`
+      : 'background:#e7e8ec;box-shadow:inset 0 0 0 2px #d7d8dd;';
+    const dim = won ? '' : 'filter:grayscale(1);opacity:.5;';
+    const subLabel = won ? `${branchNm} · ${escapeHtml(cat.fmt(winner.value))}` : cat.desc;
+    return `
+      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
+        <div class="bbadge-shieldwrap">
+          <div class="bbadge-crown" style="${dim}">👑</div>
+          <div class="bbadge-shield" style="${shieldStyle}">
+            <span class="bbadge-leaf bbadge-leaf-l" style="${dim}">🌿</span>
+            <span class="bbadge-leaf bbadge-leaf-r" style="${dim}">🌿</span>
+            <span class="bbadge-icon" style="${dim}">${bbadgeIconSvg(cat.svg)}</span>
+            <div class="bbadge-ribbon-text">${cat.label}</div>
+          </div>
+        </div>
+        <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};">${mgrName}</div>
+        <div class="bbadge-title-label">${subLabel}</div>
+      </div>`;
+  }).join('');
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <div style="font-size:12.5px;font-weight:700;color:var(--text-sub);margin-bottom:8px;">🧑‍💼 ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
+      <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요. (배지에 마우스를 올리면 세부 기록을 볼 수 있어요)</div>
+      <div class="bbadge-medals" style="justify-content:flex-start;gap:16px 28px;flex:1 1 auto;">${cardsHtml}</div>
+    </div>`;
 }
 // 매달 넘어갈 때 "지난달까지 완전히 끝난 달"의 종목별 1위를 확정해 연속 우승 스트릭을 갱신한다.
 // 이번 달(진행 중)은 절대 확정하지 않고 매번 실시간으로 다시 계산한다(월말까지 등수가 바뀔 수 있음).
@@ -2206,11 +2320,12 @@ function renderHomeBranchBadges(){
           <div class="bbadge-shield" style="${shieldStyle}">
             <span class="bbadge-leaf bbadge-leaf-l" style="${dim}">🌿</span>
             <span class="bbadge-leaf bbadge-leaf-r" style="${dim}">🌿</span>
-            <span class="bbadge-icon" style="${dim}">${r.cat.icon}</span>
+            <span class="bbadge-icon" style="${dim}">${bbadgeIconSvg(r.cat.svg)}</span>
             <div class="bbadge-ribbon-text">${r.cat.label}</div>
           </div>
         </div>
         <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};">${branchNm}</div>
+        <div class="bbadge-title-label">${r.cat.label}</div>
       </div>`;
   }).join('');
   const grandSlamHtml = grandSlamBranch ? `
@@ -2221,11 +2336,12 @@ function renderHomeBranchBadges(){
           <div class="bbadge-shield" style="background:linear-gradient(160deg, #fff2c4 0%, #f0b429 45%, #8a5b06 100%);box-shadow:0 6px 14px rgba(138,91,6,.55), inset 0 0 0 2px rgba(255,246,221,.8);">
             <span class="bbadge-leaf bbadge-leaf-l">🌿</span>
             <span class="bbadge-leaf bbadge-leaf-r">🌿</span>
-            <span class="bbadge-icon">🏆</span>
+            <span class="bbadge-icon">${bbadgeIconSvg('trophy')}</span>
             <div class="bbadge-ribbon-text">그랜드슬램</div>
           </div>
         </div>
         <div class="bbadge-branch" style="color:#8a5b06;">${escapeHtml(branchName(grandSlamBranch))}</div>
+        <div class="bbadge-title-label">이달의 그랜드슬램</div>
       </div>` : '';
   // 우측 랭킹 패널: 종목별 1/2/3위 지점을 보여줘서 경쟁을 독려한다. "이번달" / "연간누적" 두 모드 지원.
   const rankMode = (state.branchBadgeRankMode==='year') ? 'year' : 'month';
@@ -2255,28 +2371,30 @@ function renderHomeBranchBadges(){
       ${rankRowsHtml}
     </div>`;
   return `
-    <div class="card" style="margin-bottom:0;overflow:visible;height:100%;box-sizing:border-box;">
+    <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;">
       <style>
-        .bbadge-item{ text-align:center; width:94px; flex:0 0 auto; }
-        .bbadge-shieldwrap{ position:relative; width:76px; height:76px; margin:14px auto 0; transition:transform .18s ease; }
+        .bbadge-item{ text-align:center; width:112px; flex:0 0 auto; }
+        .bbadge-shieldwrap{ position:relative; width:92px; height:92px; margin:18px auto 0; transition:transform .18s ease; }
         .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-3px) scale(1.06); }
         .bbadge-shield{
-          position:relative; width:76px; height:86px; margin:0 auto;
-          clip-path:polygon(6% 0%, 94% 0%, 100% 16%, 100% 56%, 50% 100%, 0% 56%, 0% 16%);
+          position:relative; width:92px; height:104px; margin:0 auto;
+          clip-path:polygon(6% 0%, 94% 0%, 100% 15%, 100% 55%, 50% 100%, 0% 55%, 0% 15%);
           display:flex; align-items:flex-start; justify-content:center; overflow:hidden;
         }
-        .bbadge-crown{ position:absolute; top:-15px; left:50%; transform:translateX(-50%); font-size:19px; z-index:3; filter:drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
-        .bbadge-leaf{ position:absolute; top:30px; font-size:15px; z-index:1; opacity:.95; }
-        .bbadge-leaf-l{ left:-12px; transform:scaleX(-1) rotate(8deg); }
-        .bbadge-leaf-r{ right:-12px; transform:rotate(8deg); }
-        .bbadge-icon{ position:relative; z-index:2; margin-top:14px; font-size:23px; filter:drop-shadow(0 1px 1px rgba(0,0,0,.2)); }
+        .bbadge-crown{ position:absolute; top:-18px; left:50%; transform:translateX(-50%); font-size:23px; z-index:3; filter:drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+        .bbadge-leaf{ position:absolute; top:36px; font-size:18px; z-index:1; opacity:.95; }
+        .bbadge-leaf-l{ left:-14px; transform:scaleX(-1) rotate(8deg); }
+        .bbadge-leaf-r{ right:-14px; transform:rotate(8deg); }
+        .bbadge-icon{ position:relative; z-index:2; margin-top:18px; display:flex; filter:drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+        .bbadge-icon svg{ width:38px; height:38px; }
         .bbadge-ribbon-text{
-          position:absolute; left:50%; bottom:13px; transform:translateX(-50%); width:96%;
-          background:rgba(0,0,0,.34); color:#fff; font-size:8px; font-weight:800; letter-spacing:-.3px;
-          text-align:center; padding:2px 1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:2;
+          position:absolute; left:50%; bottom:15px; transform:translateX(-50%); width:96%;
+          background:rgba(0,0,0,.36); color:#fff; font-size:9.5px; font-weight:800; letter-spacing:-.3px;
+          text-align:center; padding:3px 1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:2;
         }
-        .bbadge-stars{ position:absolute; top:-32px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.25); z-index:4; }
+        .bbadge-stars{ position:absolute; top:-36px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:12px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.25); z-index:4; }
         .bbadge-branch{ font-size:11.5px; font-weight:700; margin-top:6px; }
+        .bbadge-title-label{ font-size:10.5px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:2px; min-height:26px; }
         .bbadge-outer{ display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
         .bbadge-medals{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:16px 4px; flex:1 1 320px; }
         .bbadge-rankpanel{ flex:1 1 300px; min-width:260px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
@@ -2293,13 +2411,10 @@ function renderHomeBranchBadges(){
         .bbadge-rank-val{ font-weight:700; }
         .bbadge-rank-sep{ margin:0 6px; color:var(--border); }
         .bbadge-rank-empty{ color:#b7b8bf; font-size:11px; }
-        .bbadge-rule-info{ font-size:10.5px; font-weight:600; color:var(--primary); background:#fbe9ee; border-radius:20px; padding:2px 9px; cursor:help; }
+        .bbadge-rule-info{ font-size:11px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:8px; padding:6px 10px; line-height:1.5; margin-bottom:14px; }
       </style>
-      <div style="font-size:12.5px;font-weight:700;color:var(--text-sub);margin-bottom:14px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
-        <span>🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</span>
-        <span style="font-weight:400;">(배지에 마우스를 올리면 세부 기록을 볼 수 있어요)</span>
-        <span class="bbadge-rule-info" tabindex="0" title="[운영 방식] 매달 종목별로 1위 지점에게 배지가 주어집니다. 같은 지점이 3개월 연속 1위를 하면 배지에 별이 하나씩 붙습니다(3개월=⭐1개). 전 종목에서 동시에 1위를 하면 '그랜드슬램' 배지를 추가로 받습니다.">ⓘ 운영 방식</span>
-      </div>
+      <div style="font-size:12.5px;font-weight:700;color:var(--text-sub);margin-bottom:8px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
+      <div class="bbadge-rule-info">매달 종목별 1위 지점에게 배지가 주어져요. 같은 지점이 <b style="color:var(--primary);">3개월 연속 1위</b>를 하면 배지에 별이 하나씩 붙고(⭐), <b style="color:var(--primary);">전 종목에서 동시에 1위</b>를 하면 '그랜드슬램' 배지를 추가로 받아요. (배지에 마우스를 올리면 세부 기록을 볼 수 있어요)</div>
       <div class="bbadge-outer">
         <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
         ${rankPanelHtml}
@@ -3003,10 +3118,11 @@ function renderHome(){
   return `
     <div class="page-title">홈 대시보드</div>
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
-    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:stretch;margin-bottom:16px;">
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;margin-bottom:16px;">
       <div style="flex:1 1 420px;min-width:320px;">${renderHomeBranchBadges()}</div>
       <div style="flex:1 1 420px;min-width:320px;">${renderNoticeBanner()}</div>
     </div>
+    ${renderHomeManagerBadges()}
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
@@ -3834,7 +3950,7 @@ function renderNoticeBanner(){
       <button class="nb-nav-btn" onclick="shiftNotice(1)" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);">▶</button>` : '';
 
   return `
-    <div class="card notice-banner" style="height:100%;box-sizing:border-box;${notices.length>1?'padding-left:40px;padding-right:40px;':''}">
+    <div class="card notice-banner" style="box-sizing:border-box;${notices.length>1?'padding-left:40px;padding-right:40px;':''}">
       <div class="nb-label">📢 공지사항</div>
       ${adminControls}
       <div id="noticeBannerBody">${bodyHtml}</div>
@@ -4196,7 +4312,7 @@ function noticeBodyHtml(n){
   return `
     <div class="nb-title">${escapeHtml(n.title)}</div>
     ${unreadWarningHtml}
-    <div class="nb-content">${bannerSafeContentHtml(richContentHtml(n.content))}</div>
+    <div class="nb-content">${richContentHtml(n.content)}</div>
     ${moreBtn}
     ${photosHtml}
     <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
