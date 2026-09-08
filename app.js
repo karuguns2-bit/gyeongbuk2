@@ -975,6 +975,59 @@ function loadLoginStatsIfNeeded(){
     if(SESSION && state.tab==='accountManagement') renderTab('accountManagement');
   });
 }
+// "앱사랑꾼" 지점 배지(소속 매니저 로그인 횟수 최다 지점) 계산용 — 위 loginStatsCache(전체 누적)와
+// 달리 "이번 달"만 필터링해서 사번별 로그인 횟수를 센다. 홈 화면은 누구나 보므로 activity_log를
+// 매번 새로 불러오지 않도록 기간(period) 단위로 캐시해두고, 아직 못 불러온 동안에는 배지가
+// 잠시 "미정"으로 보이다가 로딩이 끝나면 홈 화면을 다시 그려 자동으로 채워진다.
+let appLoveStatsCache = null; // { period, byEmpId:{empId:count} } — 이번 달용
+let appLoveStatsLoading = false;
+let appLoveStatsYearCache = null; // { year, byEmpId:{empId:count} } — 연간 누적용(TOP3 "연간 누적" 탭)
+let appLoveStatsYearLoading = false;
+function monthBoundsISO(period){
+  const [y,m] = period.split('-').map(Number);
+  const start = new Date(y, m-1, 1, 0,0,0,0);
+  const end = new Date(m===12 ? y+1 : y, m===12 ? 0 : m, 1, 0,0,0,0);
+  return { startISO: start.toISOString(), endISO: end.toISOString() };
+}
+function yearBoundsISO(year){
+  const y = Number(year);
+  return { startISO: new Date(y,0,1,0,0,0,0).toISOString(), endISO: new Date(y+1,0,1,0,0,0,0).toISOString() };
+}
+async function fetchLoginCountsInRange(startISO, endISO){
+  if(!sbClient) return {};
+  try{
+    const { data, error } = await sbClient.from('activity_log').select('emp_id,created_at')
+      .eq('kind','login').gte('created_at', startISO).lt('created_at', endISO).limit(50000);
+    if(error) throw error;
+    const byEmpId = {};
+    (data||[]).forEach(r=>{ if(r.emp_id) byEmpId[r.emp_id] = (byEmpId[r.emp_id]||0) + 1; });
+    return byEmpId;
+  }catch(e){ return {}; }
+}
+function loadAppLoveStatsIfNeeded(){
+  if(!sbClient) return;
+  const period = periodStr();
+  if(appLoveStatsLoading || (appLoveStatsCache && appLoveStatsCache.period===period)) return;
+  appLoveStatsLoading = true;
+  const { startISO, endISO } = monthBoundsISO(period);
+  fetchLoginCountsInRange(startISO, endISO).then(byEmpId=>{
+    appLoveStatsCache = { period, byEmpId };
+    appLoveStatsLoading = false;
+    if(SESSION && state.tab==='home') renderTab('home');
+  });
+}
+function loadAppLoveYearStatsIfNeeded(){
+  if(!sbClient) return;
+  const year = String(new Date().getFullYear());
+  if(appLoveStatsYearLoading || (appLoveStatsYearCache && appLoveStatsYearCache.year===year)) return;
+  appLoveStatsYearLoading = true;
+  const { startISO, endISO } = yearBoundsISO(year);
+  fetchLoginCountsInRange(startISO, endISO).then(byEmpId=>{
+    appLoveStatsYearCache = { year, byEmpId };
+    appLoveStatsYearLoading = false;
+    if(SESSION && state.tab==='home') renderTab('home');
+  });
+}
 
 // "주말 정책 숙지도 점검" 마감일 버그(§POLICY_QUIZ_CURRENT_WEEK_DEADLINE 옆 주석 참고) 1회 보정.
 // 이미 저장된 DB에 옛날의 잘못된 마감일(8/8, 토요일까지만)이 그대로 남아있으면 "주말"(토+일)
@@ -2021,7 +2074,10 @@ function bbadgeIconSvg(name){
     star: `<svg ${common} fill="#fff"><polygon points="12 2.3 15.1 8.9 22.2 9.7 17 14.7 18.3 21.8 12 18.3 5.7 21.8 7 14.7 1.8 9.7 8.9 8.9"/></svg>`,
     bars: `<svg ${common}><line x1="6" y1="20.5" x2="6" y2="12.5"/><line x1="12" y1="20.5" x2="12" y2="5"/><line x1="18" y1="20.5" x2="18" y2="9.5"/></svg>`,
     users: `<svg ${common}><path d="M16.7 20.5v-1.9a3.7 3.7 0 0 0-3.7-3.7H6.5a3.7 3.7 0 0 0-3.7 3.7v1.9"/><circle cx="9.6" cy="7.6" r="3.7"/><path d="M21.2 20.5v-1.9a3.7 3.7 0 0 0-2.8-3.6"/><path d="M14.7 4.1a3.7 3.7 0 0 1 0 7.2"/></svg>`,
-    trophy: `<svg ${common}><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 3.5h10v5a5 5 0 0 1-10 0v-5z"/><path d="M7 4.7H4.3A2.6 2.6 0 0 0 7 9.2"/><path d="M17 4.7h2.7A2.6 2.6 0 0 1 17 9.2"/></svg>`
+    trophy: `<svg ${common}><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 3.5h10v5a5 5 0 0 1-10 0v-5z"/><path d="M7 4.7H4.3A2.6 2.6 0 0 0 7 9.2"/><path d="M17 4.7h2.7A2.6 2.6 0 0 1 17 9.2"/></svg>`,
+    arrowUpCircle: `<svg ${common}><circle cx="12" cy="12" r="9.2"/><polyline points="8 12.5 12 8 16 12.5"/><line x1="12" y1="8" x2="12" y2="16.5"/></svg>`,
+    flame: `<svg ${common} fill="#fff"><path d="M12 21c-3.4 0-6.2-2.6-6.2-6.4 0-3 1.8-5.1 3.2-7.6.8-1.4 1.3-2.9 1.4-4.5.3.2 4.3 3 4.3 7.4 0 1.3-.4 2.4-1 3.3 1.1-.3 2-1.1 2.6-2.1.9 1.6 1.3 3.1 1.3 4.5 0 3.8-2.8 6.4-5.6 6.4z"/></svg>`,
+    gift: `<svg ${common}><rect x="3.5" y="9.7" width="17" height="10.3" rx="1.2"/><line x1="3.5" y1="9.7" x2="20.5" y2="9.7"/><line x1="12" y1="9.7" x2="12" y2="20"/><path d="M12 9.7c-1.2-3.6-6-4.4-6-1.6 0 1.5 2 2 4.3 1.6"/><path d="M12 9.7c1.2-3.6 6-4.4 6-1.6 0 1.5-2 2-4.3 1.6"/></svg>`
   };
   return icons[name] || icons.star;
 }
@@ -2154,6 +2210,105 @@ const BRANCH_BADGE_CATEGORIES = [
       });
       return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
     },
+    fmt(v){ return `${v}건`; } },
+  { id:'appLover', label:'앱사랑꾼', icon:'📱', svg:'trophy', grad:['#c9e8ff','#6fb6ff','#1f6fe0'], shadow:'31,111,224',
+    // 소속 매니저(역할=manager)의 앱 로그인 횟수를 합산해 지점별로 비교한다. 로그인 기록은
+    // Supabase activity_log 테이블에 별도로 쌓이는 데이터라(DB 본체와 분리), renderHome()에서
+    // loadAppLoveStatsIfNeeded()/loadAppLoveYearStatsIfNeeded()로 미리 불러와 캐시해두고,
+    // 여기서는 그 캐시만 읽는다 — 아직 못 불러왔으면 빈 배열(=미정)을 반환하고, 로딩이
+    // 끝나면 홈 화면이 자동으로 다시 그려지며 채워진다.
+    compute(period){
+      if(!appLoveStatsCache || appLoveStatsCache.period!==period) return [];
+      const byEmpId = appLoveStatsCache.byEmpId || {};
+      const counts = {};
+      (DB.users||[]).forEach(u=>{
+        if(u.role!=='manager' || !u.branchId) return;
+        const c = byEmpId[u.empId] || 0;
+        if(c>0) counts[u.branchId] = (counts[u.branchId]||0) + c;
+      });
+      return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
+    },
+    ytdCompute(year){
+      if(!appLoveStatsYearCache || appLoveStatsYearCache.year!==String(year)) return [];
+      const byEmpId = appLoveStatsYearCache.byEmpId || {};
+      const counts = {};
+      (DB.users||[]).forEach(u=>{
+        if(u.role!=='manager' || !u.branchId) return;
+        const c = byEmpId[u.empId] || 0;
+        if(c>0) counts[u.branchId] = (counts[u.branchId]||0) + c;
+      });
+      return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${v}회`; } },
+  { id:'growthKing', label:'성장왕점', icon:'📈', svg:'arrowUpCircle', grad:['#b2f5ea','#38b2ac','#0f766e'], shadow:'15,118,110',
+    // [지표 한 눈에 보기]에 이미 있는 "전년동기비"(g_tp_yoy) 공식을 그대로 재사용한다 —
+    // moAggregate()가 여러 지점을 합산할 때 쓰는 것과 같은 식이며, 여기서는 지점 row 하나만
+    // 놓고 그 지점만의 전년동기비를 계산한다. 규모가 작은 지점도 "많이 늘었으면" 이길 수
+    // 있어서 목표달성점(절대 달성률)과 달리 성장세 자체를 독려하는 배지다.
+    compute(period){
+      const data = DB.metricsOverview && DB.metricsOverview.byPeriod && DB.metricsOverview.byPeriod[period];
+      const rows = (data && data.rows) || [];
+      return rows.map(r=>{
+        const m = r.m || {};
+        const value = m.g_tp_lySame>0 ? (m.g_tp_cur-m.g_tp_lySame)/m.g_tp_lySame*100 : null;
+        return { branchId: r.branchId, value };
+      }).filter(r=>r.value!=null);
+    },
+    fmt(v){ return (v>=0?'+':'')+v.toFixed(1)+'%'; } },
+  { id:'clearanceKing', label:'소진왕점', icon:'🔥', svg:'flame', grad:['#ffccbc','#ff7043','#bf360c'], shadow:'191,54,12',
+    // [재고 조회]의 "소진집중 소진율 카운팅 기준선"(DB.inventoryClearanceBaseline) 대비 현재까지
+    // 소진된 비율을 지점별로 계산한다. 기준선 스냅샷의 key가 이미 "매장||상품코드||모델명||상품명"
+    // 형식이라 앞부분(매장명)만 떼어 matchBranchByFileName()으로 지점에 매칭한다 — 다른 업로드
+    // (목표관리/구독 실적 등)에서 지점명을 매칭할 때 쓰는 것과 같은 함수라 새로 안 만들어도 된다.
+    // 기준선은 관리자가 원할 때 1회 저장하는 스냅샷이라 "이번 달" 개념이 없으므로, 이번 달(period)
+    // 조회일 때만 값을 주고 지난 달 조회 시에는(과거 배지 확정 때) 비워서 잘못된 재사용을 막는다.
+    compute(period){
+      if(period !== periodStr()) return [];
+      const baseline = DB.inventoryClearanceBaseline;
+      if(!baseline || !baseline.rows) return [];
+      const currentByKey = {};
+      (DB.inventory||[]).forEach(r=>{ currentByKey[invRowKey(r)] = r; });
+      const byBranch = {};
+      Object.keys(baseline.rows).forEach(key=>{
+        const store = key.split('||')[0];
+        const branch = matchBranchByFileName(store);
+        if(!branch) return;
+        const cur = currentByKey[key];
+        const isDepleted = !cur || (Number(cur.qty)||0) <= 0;
+        if(!byBranch[branch.id]) byBranch[branch.id] = { total:0, depleted:0 };
+        byBranch[branch.id].total++;
+        if(isDepleted) byBranch[branch.id].depleted++;
+      });
+      return Object.entries(byBranch)
+        .map(([branchId,s])=>({ branchId, value: s.total>0 ? Math.round((s.depleted/s.total)*1000)/10 : 0 }))
+        .filter(r=>r.value>0);
+    },
+    fmt(v){ return v.toFixed(1)+'%'; } },
+  { id:'giftSweepKing', label:'사은품싹슬이점', icon:'🎁', svg:'gift', grad:['#f3d9ff','#c77dff','#7b2cbf'], shadow:'123,44,191',
+    // 모바일 상품권 취합(giftcardRequests) + 구독연동사은품 취합(contestGifts) + 기타 사은품
+    // 취합(subTierContestGifts), 세 등록 게시판을 합산해서 이번 달 가장 많이 등록한 지점에게 준다.
+    compute(period){
+      const counts = {};
+      const addFrom = arr => (arr||[]).forEach(r=>{
+        if(!r.branchId || String(r.createdAt||'').slice(0,7)!==period) return;
+        counts[r.branchId] = (counts[r.branchId]||0) + 1;
+      });
+      addFrom(DB.giftcardRequests);
+      addFrom(DB.contestGifts);
+      addFrom(DB.subTierContestGifts);
+      return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
+    },
+    ytdCompute(year){
+      const counts = {};
+      const addFrom = arr => (arr||[]).forEach(r=>{
+        if(!r.branchId || String(r.createdAt||'').slice(0,4)!==String(year)) return;
+        counts[r.branchId] = (counts[r.branchId]||0) + 1;
+      });
+      addFrom(DB.giftcardRequests);
+      addFrom(DB.contestGifts);
+      addFrom(DB.subTierContestGifts);
+      return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
+    },
     fmt(v){ return `${v}건`; } }
 ];
 // 종목별 "이번 달"(period) 또는 "연간 누적"(year, ytdCompute 사용) 순위를 매겨 반환한다.
@@ -2218,7 +2373,25 @@ const MANAGER_BADGE_CATEGORIES = [
       });
       return Object.entries(counts).map(([empId,value])=>({empId,value})).filter(r=>r.value>0);
     },
-    fmt(v){ return `${v}건`; } }
+    fmt(v){ return `${v}건`; } },
+  { id:'salaryRich', label:'급여부자', desc:'구독 Grade수당 최고 수령자', icon:'💵', svg:'trophy', grad:['#fdf0b3','#f0c419','#a8790a'], shadow:'168,121,10',
+    // [지점별 인센티브] 페이지에서 매달 업로드하는 "구독 판매 Grade 및 현장관리자 시상 컨테스트"
+    // 파일(1. 매니저 구독 Grade 시트)에 이미 개인별 Grade수당 금액이 들어있으므로, 그 값을 그대로
+    // 활용한다 — 관리자가 그 달 파일을 아직 안 올렸으면(subGradeIncentive에 해당 월 자료 없음)
+    // 자동으로 빈 배열을 반환해 "미정"으로 표시된다.
+    compute(period){
+      const data = DB.subGradeIncentive && DB.subGradeIncentive.byPeriod && DB.subGradeIncentive.byPeriod[period];
+      if(!data || !data.byBranchKey) return [];
+      const byEmp = {};
+      Object.values(data.byBranchKey).forEach(b=>{
+        (b.records||[]).forEach(r=>{
+          if(!r.empId || r.gradeAmt==null) return;
+          if(!byEmp[r.empId] || r.gradeAmt > byEmp[r.empId]) byEmp[r.empId] = r.gradeAmt;
+        });
+      });
+      return Object.entries(byEmp).map(([empId,value])=>({empId,value})).filter(r=>r.value>0);
+    },
+    fmt(v){ return fmtWon(v); } }
 ];
 function managerBadgeRanking(catDef, period){
   return catDef.compute(period).sort((a,b)=>b.value-a.value);
@@ -3104,6 +3277,11 @@ function renderHome(){
   // 평소에는 아무 것도 하지 않는다(migrateDB()의 __migrateBefore/After 비교 방식과 동일한 패턴).
   if(finalizeBranchBadgesIfNeeded()) saveDB(true);
   if(finalizeManagerBadgesIfNeeded()) saveDB(true);
+  // "앱사랑꾼" 배지(로그인 횟수)는 activity_log에서 비동기로 가져와야 해서, 다른 배지처럼
+  // DB 안에서 바로 계산할 수 없다 — 여기서 미리 불러와 캐시해두면(이미 있으면 아무 것도
+  // 안 함) 로딩이 끝나는 대로 홈 화면이 자동으로 다시 그려지며 채워진다.
+  loadAppLoveStatsIfNeeded();
+  loadAppLoveYearStatsIfNeeded();
   const myBranch = canSwitchBranch() ? state.viewBranchId : SESSION.branchId;
   const branch = DB.branches.find(b=>b.id===myBranch);
   // 반드시 "이번 달" 기준으로 명시해서 조회한다 — period를 생략하면 지금까지 업로드된
@@ -3187,9 +3365,9 @@ function renderHome(){
   return `
     <div class="page-title">홈 대시보드</div>
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
-    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;margin-bottom:16px;">
-      <div style="flex:1 1 420px;min-width:320px;">${renderHomeBranchBadges()}</div>
-      <div style="flex:1 1 420px;min-width:320px;">${renderNoticeBanner()}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:stretch;margin-bottom:16px;">
+      <div style="flex:1 1 420px;min-width:320px;display:flex;flex-direction:column;">${renderHomeBranchBadges()}</div>
+      <div style="flex:1 1 420px;min-width:320px;display:flex;flex-direction:column;">${renderNoticeBanner()}</div>
     </div>
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
