@@ -2222,7 +2222,10 @@ const BRANCH_BADGE_CATEGORIES = [
       const byEmpId = appLoveStatsCache.byEmpId || {};
       const counts = {};
       (DB.users||[]).forEach(u=>{
-        if(u.role!=='manager' || !u.branchId) return;
+        // 이 앱의 실제 계정 역할은 admin/exec/staff 3가지뿐이고, 지점 소속 인원(=흔히
+        // "매니저"라고 부르는 대상)은 role이 'staff'로 저장된다 — ROLE_LABELS의 staff:'매니저'
+        // 표기 및 migrateDB()의 구버전 role:'manager'→'staff' 자동 변환과 같은 기준.
+        if(u.role!=='staff' || !u.branchId) return;
         const c = byEmpId[u.empId] || 0;
         if(c>0) counts[u.branchId] = (counts[u.branchId]||0) + c;
       });
@@ -2233,7 +2236,7 @@ const BRANCH_BADGE_CATEGORIES = [
       const byEmpId = appLoveStatsYearCache.byEmpId || {};
       const counts = {};
       (DB.users||[]).forEach(u=>{
-        if(u.role!=='manager' || !u.branchId) return;
+        if(u.role!=='staff' || !u.branchId) return;
         const c = byEmpId[u.empId] || 0;
         if(c>0) counts[u.branchId] = (counts[u.branchId]||0) + c;
       });
@@ -2258,8 +2261,8 @@ const BRANCH_BADGE_CATEGORIES = [
   { id:'clearanceKing', label:'소진왕점', icon:'🔥', svg:'flame', grad:['#ffccbc','#ff7043','#bf360c'], shadow:'191,54,12',
     // [재고 조회]의 "소진집중 소진율 카운팅 기준선"(DB.inventoryClearanceBaseline) 대비 현재까지
     // 소진된 비율을 지점별로 계산한다. 기준선 스냅샷의 key가 이미 "매장||상품코드||모델명||상품명"
-    // 형식이라 앞부분(매장명)만 떼어 matchBranchByFileName()으로 지점에 매칭한다 — 다른 업로드
-    // (목표관리/구독 실적 등)에서 지점명을 매칭할 때 쓰는 것과 같은 함수라 새로 안 만들어도 된다.
+    // 형식이라 앞부분(매장명)만 떼어 matchBranchByInvStore()로 지점에 매칭한다(재고 파일 매장명은
+    // "EM경산점"/"TR비산점"처럼 다른 업로드와 표기 규칙이 달라 전용 매칭 함수를 따로 둠).
     // 기준선은 관리자가 원할 때 1회 저장하는 스냅샷이라 "이번 달" 개념이 없으므로, 이번 달(period)
     // 조회일 때만 값을 주고 지난 달 조회 시에는(과거 배지 확정 때) 비워서 잘못된 재사용을 막는다.
     compute(period){
@@ -2271,7 +2274,7 @@ const BRANCH_BADGE_CATEGORIES = [
       const byBranch = {};
       Object.keys(baseline.rows).forEach(key=>{
         const store = key.split('||')[0];
-        const branch = matchBranchByFileName(store);
+        const branch = matchBranchByInvStore(store);
         if(!branch) return;
         const cur = currentByKey[key];
         const isDepleted = !cur || (Number(cur.qty)||0) <= 0;
@@ -3365,9 +3368,9 @@ function renderHome(){
   return `
     <div class="page-title">홈 대시보드</div>
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
-    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:stretch;margin-bottom:16px;">
-      <div style="flex:1 1 420px;min-width:320px;display:flex;flex-direction:column;">${renderHomeBranchBadges()}</div>
-      <div style="flex:1 1 420px;min-width:320px;display:flex;flex-direction:column;">${renderNoticeBanner()}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;margin-bottom:16px;">
+      <div style="flex:1 1 420px;min-width:320px;">${renderHomeBranchBadges()}</div>
+      <div style="flex:1 1 420px;min-width:320px;">${renderNoticeBanner()}</div>
     </div>
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
@@ -5412,6 +5415,17 @@ function stripEmartPrefix(name){
 function matchBranchByFileName(rawName){
   const stripped = stripEmartPrefix(rawName);
   return DB.branches.find(b=> b.name===stripped || b.name===rawName);
+}
+// [재고 조회] 업로드 파일의 매장명은 목표/구독 실적 등 다른 파일과 표기 규칙이 달라서
+// (예: "EM경산점"처럼 EM 접두어, 지점에 따라 "TR비산점"/"EM포항이동점"처럼 아예 다른 표기)
+// matchBranchByFileName() 하나로 처리할 수 없다. 확인된 예외만 명시적으로 매핑해두고
+// (지우님 확인: TR비산점=E/T비산점, EM포항이동점=이동점), 나머지는 EM 접두어만 뗀 뒤
+// 일반 지점명 매칭을 그대로 탄다.
+const INV_STORE_NAME_ALIASES = { 'TR비산점':'E/T비산점', 'EM포항이동점':'이동점' };
+function matchBranchByInvStore(rawStore){
+  const s = String(rawStore||'').trim();
+  if(INV_STORE_NAME_ALIASES[s]) return matchBranchByFileName(INV_STORE_NAME_ALIASES[s]);
+  return matchBranchByFileName(s.replace(/^EM/i, ''));
 }
 
 // "목표" 시트 안의 표 하나(구독목표 또는 판매 금액 목표)를 파싱한다. 표는
