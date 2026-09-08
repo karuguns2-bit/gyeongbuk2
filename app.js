@@ -2210,6 +2210,37 @@ function managerBadgeWinner(catDef, period){
   const ranked = managerBadgeRanking(catDef, period);
   return ranked.length>0 ? ranked[0] : null;
 }
+// 매니저 배지는 연속 스트릭/별 없이 "총 누적 획득 개수"만 관리한다 — 지점 배지의
+// finalizeBranchBadgesIfNeeded()와 동일한 패턴으로, 매달 넘어갈 때 지난달까지 확정된 달의
+// 종목별 1위 매니저에게 누적 카운트를 1씩 더한다.
+function finalizeManagerBadgesIfNeeded(){
+  if(!DB.managerBadgeFinalize) DB.managerBadgeFinalize = { lastFinalizedPeriod:null };
+  if(!DB.managerBadgeTotals) DB.managerBadgeTotals = {};
+  const nowPeriod = periodStr();
+  if(!DB.managerBadgeFinalize.lastFinalizedPeriod){
+    DB.managerBadgeFinalize.lastFinalizedPeriod = addMonthsToPeriod(nowPeriod, -1);
+    return true;
+  }
+  let changed = false;
+  let cursor = addMonthsToPeriod(DB.managerBadgeFinalize.lastFinalizedPeriod, 1);
+  while(cursor < nowPeriod){
+    MANAGER_BADGE_CATEGORIES.forEach(cat=>{
+      const winner = managerBadgeWinner(cat, cursor);
+      if(winner){
+        if(!DB.managerBadgeTotals[cat.id]) DB.managerBadgeTotals[cat.id] = {};
+        DB.managerBadgeTotals[cat.id][winner.empId] = (DB.managerBadgeTotals[cat.id][winner.empId]||0) + 1;
+      }
+    });
+    DB.managerBadgeFinalize.lastFinalizedPeriod = cursor;
+    cursor = addMonthsToPeriod(cursor, 1);
+    changed = true;
+  }
+  return changed;
+}
+function managerBadgeTotalCount(catId, empId, includingThisMonth){
+  const base = (DB.managerBadgeTotals && DB.managerBadgeTotals[catId] && DB.managerBadgeTotals[catId][empId]) || 0;
+  return base + (includingThisMonth ? 1 : 0);
+}
 function renderHomeManagerBadges(){
   const period = periodStr();
   const cardsHtml = MANAGER_BADGE_CATEGORIES.map(cat=>{
@@ -2227,9 +2258,11 @@ function renderHomeManagerBadges(){
       ? `background:linear-gradient(160deg, ${g[0]} 0%, ${g[1]} 45%, ${g[2]} 100%);box-shadow:0 5px 12px rgba(${sh},.5), inset 0 0 0 2px rgba(255,255,255,.6);`
       : 'background:#e7e8ec;box-shadow:inset 0 0 0 2px #d7d8dd;';
     const dim = won ? '' : 'filter:grayscale(1);opacity:.5;';
-    const subLabel = won ? `${branchNm} · ${escapeHtml(cat.fmt(winner.value))}` : cat.desc;
+    const totalCount = won ? managerBadgeTotalCount(cat.id, winner.empId, true) : 0;
+    const totalTag = totalCount>0 ? ` <span class="bbadge-total">🏅×${totalCount}</span>` : '';
+    const subLabel = won ? `${branchNm}${totalTag}` : cat.desc;
     return `
-      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
+      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip} · 누적 ${totalCount}회 획득">
         <div class="bbadge-shieldwrap">
           <div class="bbadge-crown" style="${dim}">👑</div>
           <div class="bbadge-shield" style="${shieldStyle}">
@@ -2244,10 +2277,10 @@ function renderHomeManagerBadges(){
       </div>`;
   }).join('');
   return `
-    <div class="card" style="margin-bottom:16px;">
-      <div style="font-size:12.5px;font-weight:700;color:var(--text-sub);margin-bottom:8px;">🧑‍💼 ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
-      <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요. (배지에 마우스를 올리면 세부 기록을 볼 수 있어요)</div>
-      <div class="bbadge-medals" style="justify-content:flex-start;gap:16px 28px;flex:1 1 auto;">${cardsHtml}</div>
+    <div class="card" style="margin-bottom:16px;padding:14px 16px;">
+      <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🧑‍💼 ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
+      <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요.</div>
+      <div class="bbadge-medals" style="justify-content:flex-start;gap:10px 18px;flex:1 1 auto;">${cardsHtml}</div>
     </div>`;
 }
 // 매달 넘어갈 때 "지난달까지 완전히 끝난 달"의 종목별 1위를 확정해 연속 우승 스트릭을 갱신한다.
@@ -2256,6 +2289,7 @@ function renderHomeManagerBadges(){
 function finalizeBranchBadgesIfNeeded(){
   if(!DB.branchBadgeStreaks) DB.branchBadgeStreaks = { lastFinalizedPeriod:null, lastWinner:{} };
   if(!DB.branchBadgeStreaks.lastWinner) DB.branchBadgeStreaks.lastWinner = {};
+  if(!DB.branchBadgeTotals) DB.branchBadgeTotals = {};
   const nowPeriod = periodStr();
   if(!DB.branchBadgeStreaks.lastFinalizedPeriod){
     // 최초 실행 시점: 과거 달을 소급해서 확정하지 않고, "이전 달까지는 이미 확정된 것"으로
@@ -2272,6 +2306,9 @@ function finalizeBranchBadgesIfNeeded(){
       if(winner){
         const streak = (last && last.branchId===winner.branchId) ? (last.streak+1) : 1;
         DB.branchBadgeStreaks.lastWinner[cat.id] = { branchId:winner.branchId, streak };
+        // 해당 지점이 이 종목에서 지금까지 총 몇 번 1위를 했는지 누적 집계(배지 수집 개수 표시용).
+        if(!DB.branchBadgeTotals[cat.id]) DB.branchBadgeTotals[cat.id] = {};
+        DB.branchBadgeTotals[cat.id][winner.branchId] = (DB.branchBadgeTotals[cat.id][winner.branchId]||0) + 1;
       } else {
         DB.branchBadgeStreaks.lastWinner[cat.id] = null;
       }
@@ -2281,6 +2318,12 @@ function finalizeBranchBadgesIfNeeded(){
     changed = true;
   }
   return changed;
+}
+// 이번 달 특정 종목에서 특정 지점이 총 몇 번째 배지를 획득하는 셈인지 계산한다(이미 확정된 과거
+// 누적 + 이번 달도 계속 1위 중이면 +1). 배지 아래 "🏅×N" 누적 획득 개수 표시에 쓰인다.
+function branchBadgeTotalCount(catId, branchId, includingThisMonth){
+  const base = (DB.branchBadgeTotals && DB.branchBadgeTotals[catId] && DB.branchBadgeTotals[catId][branchId]) || 0;
+  return base + (includingThisMonth ? 1 : 0);
 }
 // 홈 대시보드 상단에 붙는 "이달의 지점 배지" 카드. 종목별로 이번 달 1위 지점을 실시간 계산해서
 // 메달 모양 배지로 보여주고(아직 아무도 없는 종목은 회색 점선 배지), 몇 개월 연속 우승 중인지에
@@ -2312,8 +2355,10 @@ function renderHomeBranchBadges(){
       ? `background:linear-gradient(160deg, ${g[0]} 0%, ${g[1]} 45%, ${g[2]} 100%);box-shadow:0 5px 12px rgba(${sh},.5), inset 0 0 0 2px rgba(255,255,255,.6);`
       : 'background:#e7e8ec;box-shadow:inset 0 0 0 2px #d7d8dd;';
     const dim = won ? '' : 'filter:grayscale(1);opacity:.5;';
+    const totalCount = won ? branchBadgeTotalCount(r.cat.id, r.winner.branchId, true) : 0;
+    const totalTag = totalCount>0 ? ` <span class="bbadge-total">🏅×${totalCount}</span>` : '';
     return `
-      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
+      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip} · 누적 ${totalCount}회 획득">
         <div class="bbadge-shieldwrap">
           ${starsHtml}
           <div class="bbadge-crown" style="${dim}">👑</div>
@@ -2325,7 +2370,7 @@ function renderHomeBranchBadges(){
           </div>
         </div>
         <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};">${branchNm}</div>
-        <div class="bbadge-title-label">${r.cat.label}</div>
+        <div class="bbadge-title-label">${r.cat.label}${totalTag}</div>
       </div>`;
   }).join('');
   const grandSlamHtml = grandSlamBranch ? `
@@ -2341,7 +2386,7 @@ function renderHomeBranchBadges(){
           </div>
         </div>
         <div class="bbadge-branch" style="color:#8a5b06;">${escapeHtml(branchName(grandSlamBranch))}</div>
-        <div class="bbadge-title-label">이달의 그랜드슬램</div>
+        <div class="bbadge-title-label">그랜드슬램</div>
       </div>` : '';
   // 우측 랭킹 패널: 종목별 1/2/3위 지점을 보여줘서 경쟁을 독려한다. "이번달" / "연간누적" 두 모드 지원.
   const rankMode = (state.branchBadgeRankMode==='year') ? 'year' : 'month';
@@ -2371,50 +2416,51 @@ function renderHomeBranchBadges(){
       ${rankRowsHtml}
     </div>`;
   return `
-    <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;">
+    <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:14px 16px;">
       <style>
-        .bbadge-item{ text-align:center; width:112px; flex:0 0 auto; }
-        .bbadge-shieldwrap{ position:relative; width:92px; height:92px; margin:18px auto 0; transition:transform .18s ease; }
-        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-3px) scale(1.06); }
+        .bbadge-item{ text-align:center; width:66px; flex:0 0 auto; }
+        .bbadge-shieldwrap{ position:relative; width:52px; height:52px; margin:11px auto 0; transition:transform .18s ease; }
+        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-2px) scale(1.06); }
         .bbadge-shield{
-          position:relative; width:92px; height:104px; margin:0 auto;
+          position:relative; width:52px; height:59px; margin:0 auto;
           clip-path:polygon(6% 0%, 94% 0%, 100% 15%, 100% 55%, 50% 100%, 0% 55%, 0% 15%);
           display:flex; align-items:flex-start; justify-content:center; overflow:hidden;
         }
-        .bbadge-crown{ position:absolute; top:-18px; left:50%; transform:translateX(-50%); font-size:23px; z-index:3; filter:drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
-        .bbadge-leaf{ position:absolute; top:36px; font-size:18px; z-index:1; opacity:.95; }
-        .bbadge-leaf-l{ left:-14px; transform:scaleX(-1) rotate(8deg); }
-        .bbadge-leaf-r{ right:-14px; transform:rotate(8deg); }
-        .bbadge-icon{ position:relative; z-index:2; margin-top:18px; display:flex; filter:drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
-        .bbadge-icon svg{ width:38px; height:38px; }
+        .bbadge-crown{ position:absolute; top:-10px; left:50%; transform:translateX(-50%); font-size:13px; z-index:3; filter:drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+        .bbadge-leaf{ position:absolute; top:19px; font-size:10px; z-index:1; opacity:.95; }
+        .bbadge-leaf-l{ left:-8px; transform:scaleX(-1) rotate(8deg); }
+        .bbadge-leaf-r{ right:-8px; transform:rotate(8deg); }
+        .bbadge-icon{ position:relative; z-index:2; margin-top:9px; display:flex; filter:drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
+        .bbadge-icon svg{ width:20px; height:20px; }
         .bbadge-ribbon-text{
-          position:absolute; left:50%; bottom:15px; transform:translateX(-50%); width:96%;
-          background:rgba(0,0,0,.36); color:#fff; font-size:9.5px; font-weight:800; letter-spacing:-.3px;
-          text-align:center; padding:3px 1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:2;
+          position:absolute; left:50%; bottom:8px; transform:translateX(-50%); width:96%;
+          background:rgba(0,0,0,.36); color:#fff; font-size:6.5px; font-weight:800; letter-spacing:-.3px;
+          text-align:center; padding:1.5px 1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:2;
         }
-        .bbadge-stars{ position:absolute; top:-36px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:12px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.25); z-index:4; }
-        .bbadge-branch{ font-size:11.5px; font-weight:700; margin-top:6px; }
-        .bbadge-title-label{ font-size:10.5px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:2px; min-height:26px; }
-        .bbadge-outer{ display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
-        .bbadge-medals{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:16px 4px; flex:1 1 320px; }
-        .bbadge-rankpanel{ flex:1 1 300px; min-width:260px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
-        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; flex-wrap:wrap; gap:6px; }
+        .bbadge-stars{ position:absolute; top:-21px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:8px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.25); z-index:4; }
+        .bbadge-branch{ font-size:10.5px; font-weight:700; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bbadge-title-label{ font-size:9px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:12px; }
+        .bbadge-total{ font-size:9px; font-weight:700; color:#c9820a; white-space:nowrap; }
+        .bbadge-outer{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+        .bbadge-medals{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px 2px; flex:1 1 280px; }
+        .bbadge-rankpanel{ flex:1 1 280px; min-width:240px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:9px 11px; }
+        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
-        .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:3px 10px; font-size:10.5px; cursor:pointer; color:var(--text-sub); }
+        .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9.5px; cursor:pointer; color:var(--text-sub); }
         .bbadge-rank-tab.active{ background:var(--primary); color:#fff; border-color:var(--primary); font-weight:700; }
-        .bbadge-rank-row{ padding:6px 0; border-top:1px solid var(--border); }
+        .bbadge-rank-row{ padding:4px 0; border-top:1px solid var(--border); }
         .bbadge-rank-row:first-of-type{ border-top:none; }
-        .bbadge-rank-cat{ font-size:10.5px; font-weight:700; color:var(--text-sub); margin-bottom:3px; display:flex; gap:4px; align-items:center; }
-        .bbadge-rank-list{ font-size:11px; line-height:1.6; }
+        .bbadge-rank-cat{ font-size:9.5px; font-weight:700; color:var(--text-sub); margin-bottom:2px; display:flex; gap:4px; align-items:center; }
+        .bbadge-rank-list{ font-size:10px; line-height:1.5; }
         .bbadge-rank-entry{ white-space:nowrap; font-weight:600; }
         .bbadge-rank-medal{ margin-right:1px; }
         .bbadge-rank-val{ font-weight:700; }
-        .bbadge-rank-sep{ margin:0 6px; color:var(--border); }
-        .bbadge-rank-empty{ color:#b7b8bf; font-size:11px; }
-        .bbadge-rule-info{ font-size:11px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:8px; padding:6px 10px; line-height:1.5; margin-bottom:14px; }
+        .bbadge-rank-sep{ margin:0 5px; color:var(--border); }
+        .bbadge-rank-empty{ color:#b7b8bf; font-size:10px; }
+        .bbadge-rule-info{ font-size:10px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:5px 9px; line-height:1.4; margin-bottom:9px; }
       </style>
-      <div style="font-size:12.5px;font-weight:700;color:var(--text-sub);margin-bottom:8px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
-      <div class="bbadge-rule-info">매달 종목별 1위 지점에게 배지가 주어져요. 같은 지점이 <b style="color:var(--primary);">3개월 연속 1위</b>를 하면 배지에 별이 하나씩 붙고(⭐), <b style="color:var(--primary);">전 종목에서 동시에 1위</b>를 하면 '그랜드슬램' 배지를 추가로 받아요. (배지에 마우스를 올리면 세부 기록을 볼 수 있어요)</div>
+      <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
+      <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">전 종목 동시 1위</b> 시 그랜드슬램! (마우스를 올리면 세부 기록을 볼 수 있어요)</div>
       <div class="bbadge-outer">
         <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
         ${rankPanelHtml}
@@ -3035,6 +3081,7 @@ function renderHome(){
   // 지점별 이달의 배지: 달이 넘어간 첫 조회 시점에만 실제로 갱신되고(내부에서 기간을 확인),
   // 평소에는 아무 것도 하지 않는다(migrateDB()의 __migrateBefore/After 비교 방식과 동일한 패턴).
   if(finalizeBranchBadgesIfNeeded()) saveDB(true);
+  if(finalizeManagerBadgesIfNeeded()) saveDB(true);
   const myBranch = canSwitchBranch() ? state.viewBranchId : SESSION.branchId;
   const branch = DB.branches.find(b=>b.id===myBranch);
   // 반드시 "이번 달" 기준으로 명시해서 조회한다 — period를 생략하면 지금까지 업로드된
