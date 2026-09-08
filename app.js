@@ -14883,7 +14883,7 @@ function renderKakaoContestBanner(){
       <td>${isAdmin ? `<input type="number" class="kc-inline-input" id="kcLastWeekCell_${p.branchId}" value="${p.lastWeekCum}" style="width:84px;">` : `${fmtNum(p.lastWeekCum)}명`}</td>
       <td>${fmtNum(p.latest)}명</td>
       <td>${p.remaining==null ? '<span class="muted">목표 미입력</span>' : (p.remaining>0 ? fmtNum(p.remaining)+'명' : '<span class="badge good">목표 달성</span>')}</td>
-      <td>${p.momRate==null ? '<span class="muted">-</span>' : `<span style="color:${p.momRate>=0?'var(--primary)':'var(--bad)'};font-weight:700;">${p.momRate>=0?'+':''}${p.momRate.toFixed(1)}%</span>`}</td>
+      <td>${p.momDiff==null ? '<span class="muted">-</span>' : `<span style="color:${p.momDiff>=0?'var(--primary)':'var(--bad)'};font-weight:700;">${p.momDiff>=0?'+':''}${fmtNum(p.momDiff)}명</span>`}</td>
       <td style="min-width:120px;">${p.pct==null ? '<span class="muted">-</span>' : `<div class="progress-bar"><div style="width:${p.pct}%"></div></div>`}</td>
       <td>${p.pct==null ? '' : p.pct.toFixed(1)+'%'}</td>
     </tr>`).join('') || `<tr><td colspan="9" class="muted">등록된 목표가 없습니다.</td></tr>`;
@@ -14922,7 +14922,7 @@ function renderKakaoContestBanner(){
       </div>` : ''}
       <div style="overflow-x:auto;">
       <table>
-        <thead><tr><th>지점</th><th>목표</th><th>전월 누적</th><th>전주 누적</th><th>현재(최신 주차 누적)</th><th>남은 인원</th><th>전월비 증감율</th><th>진행률</th><th></th></tr></thead>
+        <thead><tr><th>지점</th><th>목표</th><th>전월 누적</th><th>전주 누적</th><th>현재(최신 주차 누적)</th><th>남은 인원</th><th>전월비 증감수</th><th>진행률</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
