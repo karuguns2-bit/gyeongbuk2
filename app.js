@@ -1840,7 +1840,7 @@ function renderTab(tab){
   try{ localStorage.setItem(LAST_TAB_STORAGE_KEY, tab); }catch(e){ /* 저장 공간 문제 등은 무시 */ }
   if(tab!=='home' && typeof noticeTimer!=='undefined' && noticeTimer){ clearInterval(noticeTimer); noticeTimer=null; }
   const main = document.getElementById('mainContent');
-  if(tab==='home') main.innerHTML = renderHome();
+  if(tab==='home'){ main.innerHTML = renderHome(); refreshNoticeOverflowUI(); }
   if(tab==='systemAdmin') main.innerHTML = renderSystemAdmin();
   if(tab==='accountManagement') main.innerHTML = renderAccountManagement();
   if(tab==='metricsOverview') main.innerHTML = renderMetricsOverview();
@@ -2194,38 +2194,38 @@ function renderHomeBranchBadges(){
       : `${r.cat.label} · 이번 달은 아직 1위가 없습니다`;
     const g = r.cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
     const sh = r.cat.shadow || '242,163,0';
-    const ribbonHtml = won ? `
-        <div class="bbadge-ribbon bbadge-ribbon-l" style="background:linear-gradient(180deg, rgba(${sh},.9), rgba(${sh},.55));"></div>
-        <div class="bbadge-ribbon bbadge-ribbon-r" style="background:linear-gradient(180deg, rgba(${sh},.9), rgba(${sh},.55));"></div>` : '';
+    const shieldStyle = won
+      ? `background:linear-gradient(160deg, ${g[0]} 0%, ${g[1]} 45%, ${g[2]} 100%);box-shadow:0 5px 12px rgba(${sh},.5), inset 0 0 0 2px rgba(255,255,255,.6);`
+      : 'background:#e7e8ec;box-shadow:inset 0 0 0 2px #d7d8dd;';
+    const dim = won ? '' : 'filter:grayscale(1);opacity:.5;';
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
-        <div class="bbadge-medalwrap">
-          ${ribbonHtml}
-          <div class="bbadge-medal" style="${won
-            ? `background:radial-gradient(circle at 32% 26%, #ffffff, ${g[0]} 38%, ${g[1]} 68%, ${g[2]} 100%);box-shadow:0 4px 12px rgba(${sh},.5), inset 0 0 0 2px #fff, inset 0 -3px 4px rgba(0,0,0,.12);`
-            : 'background:#f2f2f4;border:2px dashed #d7d8dd;'}">
-            ${won?'<div class="bbadge-shine"></div>':''}
-            ${starsHtml}
-            <span class="bbadge-icon" style="${won?'':'filter:grayscale(1);opacity:.4;'}">${r.cat.icon}</span>
+        <div class="bbadge-shieldwrap">
+          ${starsHtml}
+          <div class="bbadge-crown" style="${dim}">👑</div>
+          <div class="bbadge-shield" style="${shieldStyle}">
+            <span class="bbadge-leaf bbadge-leaf-l" style="${dim}">🌿</span>
+            <span class="bbadge-leaf bbadge-leaf-r" style="${dim}">🌿</span>
+            <span class="bbadge-icon" style="${dim}">${r.cat.icon}</span>
+            <div class="bbadge-ribbon-text">${r.cat.label}</div>
           </div>
         </div>
-        <div class="bbadge-label">${r.cat.label}</div>
         <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};">${branchNm}</div>
       </div>`;
   }).join('');
   const grandSlamHtml = grandSlamBranch ? `
       <div class="bbadge-item bbadge-won bbadge-grandslam" title="${escapeHtml(branchName(grandSlamBranch))} · 이번 달 전 종목 석권!">
-        <div class="bbadge-medalwrap">
-          <div class="bbadge-ribbon bbadge-ribbon-l" style="background:linear-gradient(180deg, rgba(20,20,26,.9), rgba(20,20,26,.5));"></div>
-          <div class="bbadge-ribbon bbadge-ribbon-r" style="background:linear-gradient(180deg, rgba(20,20,26,.9), rgba(20,20,26,.5));"></div>
-          <div class="bbadge-medal" style="background:radial-gradient(circle at 32% 26%, #fffdf4, #ffe9a8 30%, #f0b429 62%, #a8720a 100%);box-shadow:0 5px 16px rgba(168,114,10,.55), inset 0 0 0 2px #fff6dd, inset 0 -3px 5px rgba(0,0,0,.18);">
-            <div class="bbadge-shine"></div>
-            <div class="bbadge-stars">✨✨✨</div>
-            <span class="bbadge-icon">👑</span>
+        <div class="bbadge-shieldwrap">
+          <div class="bbadge-stars">✨✨✨</div>
+          <div class="bbadge-crown">👑</div>
+          <div class="bbadge-shield" style="background:linear-gradient(160deg, #fff2c4 0%, #f0b429 45%, #8a5b06 100%);box-shadow:0 6px 14px rgba(138,91,6,.55), inset 0 0 0 2px rgba(255,246,221,.8);">
+            <span class="bbadge-leaf bbadge-leaf-l">🌿</span>
+            <span class="bbadge-leaf bbadge-leaf-r">🌿</span>
+            <span class="bbadge-icon">🏆</span>
+            <div class="bbadge-ribbon-text">그랜드슬램</div>
           </div>
         </div>
-        <div class="bbadge-label">이달의 그랜드슬램</div>
-        <div class="bbadge-branch" style="color:#a8720a;">${escapeHtml(branchName(grandSlamBranch))}</div>
+        <div class="bbadge-branch" style="color:#8a5b06;">${escapeHtml(branchName(grandSlamBranch))}</div>
       </div>` : '';
   // 우측 랭킹 패널: 종목별 1/2/3위 지점을 보여줘서 경쟁을 독려한다. "이번달" / "연간누적" 두 모드 지원.
   const rankMode = (state.branchBadgeRankMode==='year') ? 'year' : 'month';
@@ -2257,21 +2257,28 @@ function renderHomeBranchBadges(){
   return `
     <div class="card" style="margin-bottom:0;overflow:visible;height:100%;box-sizing:border-box;">
       <style>
-        .bbadge-item{ text-align:center; width:82px; }
-        .bbadge-medalwrap{ position:relative; width:60px; height:60px; margin:0 auto; transition:transform .18s ease; }
-        .bbadge-item:hover .bbadge-medalwrap{ transform:translateY(-3px) scale(1.07); }
-        .bbadge-medal{ position:relative; width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:27px; overflow:hidden; z-index:2; }
-        .bbadge-grandslam .bbadge-medal{ font-size:29px; }
-        .bbadge-shine{ position:absolute; top:-6px; left:8px; width:26px; height:16px; background:rgba(255,255,255,.55); border-radius:50%; transform:rotate(-18deg); filter:blur(1px); pointer-events:none; }
-        .bbadge-icon{ position:relative; z-index:1; filter:drop-shadow(0 1px 1px rgba(0,0,0,.15)); }
-        .bbadge-stars{ position:absolute; top:-11px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.25); z-index:3; }
-        .bbadge-ribbon{ position:absolute; bottom:-9px; width:15px; height:20px; z-index:1; clip-path:polygon(0 0,100% 0,100% 78%,50% 100%,0 78%); }
-        .bbadge-ribbon-l{ left:9px; transform:rotate(-14deg); }
-        .bbadge-ribbon-r{ right:9px; transform:rotate(14deg); }
-        .bbadge-label{ font-size:10.5px; line-height:1.3; margin-top:8px; color:var(--text-sub); min-height:26px; }
-        .bbadge-branch{ font-size:11.5px; font-weight:700; }
+        .bbadge-item{ text-align:center; width:94px; flex:0 0 auto; }
+        .bbadge-shieldwrap{ position:relative; width:76px; height:76px; margin:14px auto 0; transition:transform .18s ease; }
+        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-3px) scale(1.06); }
+        .bbadge-shield{
+          position:relative; width:76px; height:86px; margin:0 auto;
+          clip-path:polygon(6% 0%, 94% 0%, 100% 16%, 100% 56%, 50% 100%, 0% 56%, 0% 16%);
+          display:flex; align-items:flex-start; justify-content:center; overflow:hidden;
+        }
+        .bbadge-crown{ position:absolute; top:-15px; left:50%; transform:translateX(-50%); font-size:19px; z-index:3; filter:drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+        .bbadge-leaf{ position:absolute; top:30px; font-size:15px; z-index:1; opacity:.95; }
+        .bbadge-leaf-l{ left:-12px; transform:scaleX(-1) rotate(8deg); }
+        .bbadge-leaf-r{ right:-12px; transform:rotate(8deg); }
+        .bbadge-icon{ position:relative; z-index:2; margin-top:14px; font-size:23px; filter:drop-shadow(0 1px 1px rgba(0,0,0,.2)); }
+        .bbadge-ribbon-text{
+          position:absolute; left:50%; bottom:13px; transform:translateX(-50%); width:96%;
+          background:rgba(0,0,0,.34); color:#fff; font-size:8px; font-weight:800; letter-spacing:-.3px;
+          text-align:center; padding:2px 1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:2;
+        }
+        .bbadge-stars{ position:absolute; top:-32px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.25); z-index:4; }
+        .bbadge-branch{ font-size:11.5px; font-weight:700; margin-top:6px; }
         .bbadge-outer{ display:flex; flex-wrap:wrap; gap:22px; align-items:flex-start; }
-        .bbadge-medals{ display:flex; flex-wrap:wrap; gap:18px 10px; flex:1 1 320px; }
+        .bbadge-medals{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:16px 4px; flex:1 1 320px; }
         .bbadge-rankpanel{ flex:1 1 300px; min-width:260px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
         .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; flex-wrap:wrap; gap:6px; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
@@ -2286,8 +2293,13 @@ function renderHomeBranchBadges(){
         .bbadge-rank-val{ font-weight:700; }
         .bbadge-rank-sep{ margin:0 6px; color:var(--border); }
         .bbadge-rank-empty{ color:#b7b8bf; font-size:11px; }
+        .bbadge-rule-info{ font-size:10.5px; font-weight:600; color:var(--primary); background:#fbe9ee; border-radius:20px; padding:2px 9px; cursor:help; }
       </style>
-      <div style="font-size:12.5px;font-weight:700;color:var(--text-sub);margin-bottom:14px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지 <span style="font-weight:400;">(배지에 마우스를 올리면 세부 기록을 볼 수 있어요)</span></div>
+      <div style="font-size:12.5px;font-weight:700;color:var(--text-sub);margin-bottom:14px;display:flex;align-items:center;flex-wrap:wrap;gap:6px;">
+        <span>🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</span>
+        <span style="font-weight:400;">(배지에 마우스를 올리면 세부 기록을 볼 수 있어요)</span>
+        <span class="bbadge-rule-info" tabindex="0" title="[운영 방식] 매달 종목별로 1위 지점에게 배지가 주어집니다. 같은 지점이 3개월 연속 1위를 하면 배지에 별이 하나씩 붙습니다(3개월=⭐1개). 전 종목에서 동시에 1위를 하면 '그랜드슬램' 배지를 추가로 받습니다.">ⓘ 운영 방식</span>
+      </div>
       <div class="bbadge-outer">
         <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
         ${rankPanelHtml}
@@ -4112,17 +4124,10 @@ function applyBoardSearchAndPaging(prefix, tab, list, searchTextFn, placeholder)
     </div>` : '';
   return { items, barHtml, pagerHtml, filteredCount: filtered.length, totalCount: list.length };
 }
-// 홈 화면 공지 배너는 카드 높이가 고정(210px)이고 본문이 2줄로 잘려 보이므로(CSS -webkit-line-clamp:2),
-// 내용이 길어서 잘릴 가능성이 있는 공지에는 "자세히 보기" 버튼을 노출해 전체 내용을 모달로 볼 수 있게 한다.
-// 실제 렌더링 폭에 따라 정확히 몇 글자에서 잘리는지는 서버 쪽에서 알 수 없으므로, 2줄(가로 폭 기준 대략
-// 40자 내외)을 넉넉히 넘길 만한 글자 수(60자) 또는 줄바꿈이 3줄 이상인 경우를 기준으로 삼는다 -
-// 애매한 경우 버튼을 보여주는 쪽(과다 노출)이 버튼이 없어서 못 보는 것보다 낫다.
-function noticeContentIsLong(content){
-  const text = String(content||'');
-  if(text.length > 60) return true;
-  if(text.split('\n').length > 2) return true;
-  return false;
-}
+// 홈 화면 공지 배너는 카드 높이가 옆 배지 카드와 함께 늘어날 수 있어(고정값이 아님), 실제로
+// 화면에 들어가는 글자 수가 매번 달라진다. 그래서 글자 수로 미리 "길다/짧다"를 판단하는 대신,
+// 렌더링 후 DOM에서 실제로 내용이 잘렸는지(scrollHeight>clientHeight)를 측정해 그 경우에만
+// "자세히 보기" 버튼을 보여준다 → refreshNoticeOverflowUI() 참고.
 // 공지사항 매니저별 읽음 여부 추적. DB.noticeReads[noticeId][empId] = 읽은 시각(ISO 문자열).
 // 관리자 계정은 "매니저"가 아니므로 집계에서 제외한다(SESSION.role==='staff'인 경우만 기록/조회).
 function markNoticeRead(noticeId, empId){
@@ -4179,14 +4184,14 @@ function noticeBodyHtml(n){
     <div class="nb-photos" style="margin:8px 0;">
       ${n.attachments.map(f=>noticeAttachmentHtml(f, 56, null)).join('')}
     </div>` : '';
-  const longContent = noticeContentIsLong(n.content);
-  const moreBtn = longContent ? `<button type="button" class="nb-more-btn" onclick="openNoticeDetail('${n.id}')">자세히 보기 ›</button>` : '';
-  // 매니저(staff) 계정 기준 읽음 처리: 내용이 짧아 카드에 전체가 바로 보이는 공지는 노출된 시점에
-  // 바로 읽음 처리하고, 길어서 "자세히 보기"를 열어야 하는 공지는 실제로 모달을 열 때(openNoticeDetail)
-  // 읽음 처리한다. 경고 문구는 "이번에 처음 노출되기 전"의 읽음 여부를 기준으로 보여준다.
+  // 실제로 잘리는지는 렌더링 후 refreshNoticeOverflowUI()가 측정해서 결정하므로, 버튼은 일단
+  // 항상 만들어두되 화면 깜빡임 없이 숨겨둔다(측정 결과 안 잘렸으면 계속 숨김 상태 유지).
+  const moreBtn = `<button type="button" class="nb-more-btn" style="display:none;" onclick="openNoticeDetail('${n.id}')">자세히 보기 ›</button>`;
+  // 매니저(staff) 계정 기준 읽음 처리: 실제로 안 잘려서 카드에 전체가 다 보이는 공지만 노출 시점에
+  // 바로 읽음 처리하고(판단은 refreshNoticeOverflowUI에서), 잘린 공지는 "자세히 보기"를 열 때
+  // (openNoticeDetail) 읽음 처리한다. 경고 문구는 "이번에 처음 노출되기 전"의 읽음 여부 기준.
   const isStaffViewer = SESSION.role==='staff';
   const wasUnread = isStaffViewer && !isNoticeReadBy(n.id, SESSION.empId);
-  if(isStaffViewer && !longContent) markNoticeRead(n.id, SESSION.empId);
   const unreadWarningHtml = wasUnread ? `<div class="nb-unread-warning">⚠ 아직 조회하지 않은 공지입니다. 꼭 공지를 확인하세요!</div>` : '';
   return `
     <div class="nb-title">${escapeHtml(n.title)}</div>
@@ -4196,6 +4201,26 @@ function noticeBodyHtml(n){
     ${photosHtml}
     <div class="nb-meta">${escapeHtml(n.author)} · ${dtStr}</div>
   `;
+}
+// 공지 배너 본문이 실제로 카드 높이를 넘겨서 잘렸는지 측정해, 잘린 경우에만 "자세히 보기" 버튼을
+// 보여주고, 안 잘린(전체가 다 보이는) 공지는 이 시점에 바로 읽음 처리한다. 배지 카드와 나란히
+// 배치되면서 공지 카드 높이가 매번 달라지므로(고정 210px 아님), 글자 수 대신 실측으로 판단한다.
+function refreshNoticeOverflowUI(){
+  const wrap = document.getElementById('noticeBannerBody');
+  if(!wrap) return;
+  const contentEl = wrap.querySelector('.nb-content');
+  const btn = wrap.querySelector('.nb-more-btn');
+  if(!contentEl) return;
+  const isOverflowing = contentEl.scrollHeight > contentEl.clientHeight + 1;
+  contentEl.classList.toggle('nb-clamped', isOverflowing);
+  if(btn) btn.style.display = isOverflowing ? '' : 'none';
+  if(!isOverflowing && SESSION.role==='staff'){
+    const notices = sortedNotices();
+    if(notices.length>0){
+      const n = notices[state.noticeIndex % notices.length];
+      markNoticeRead(n.id, SESSION.empId);
+    }
+  }
 }
 // "자세히 보기" 클릭 시 잘린 본문 전체를 모달로 보여준다 (배너 자체는 자동 롤링/고정 높이라 인라인으로
 // 펼치면 레이아웃이 깨지므로, 이미지 확대(#imgLightbox)와 같은 방식의 별도 모달을 사용한다).
@@ -4239,6 +4264,7 @@ function updateNoticeBannerDOM(){
   document.querySelectorAll('.nb-dot').forEach((el,i)=>{
     el.classList.toggle('active', i===(state.noticeIndex % notices.length));
   });
+  refreshNoticeOverflowUI();
 }
 function startNoticeRotation(){
   if(noticeTimer) clearInterval(noticeTimer);

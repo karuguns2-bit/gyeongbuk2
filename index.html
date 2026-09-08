@@ -631,7 +631,7 @@
     color:#fff;border-radius:16px;padding:22px 26px;margin-bottom:18px;
     position:relative;overflow:hidden;box-shadow:0 6px 20px rgba(90,0,25,.18);
   }
-  .card.notice-banner{height:210px;display:flex;flex-direction:column;}
+  .card.notice-banner{min-height:210px;display:flex;flex-direction:column;}
   #noticeBannerBody{overflow:hidden;}
   .notice-banner .nb-label{font-size:11.5px;font-weight:700;letter-spacing:.5px;opacity:.85;text-transform:uppercase;flex-shrink:0;}
   /* 공지사항/정보보고/우수 활동 사례 등 게시판 글 카드 공통 타이포그래피(제목/본문/메타)와
@@ -664,7 +664,8 @@
   .rich-editor p{margin:0 0 8px;}
   .rich-editor ul,.rich-editor ol{margin:0 0 8px;padding-left:22px;}
   .notice-banner .nb-title{font-size:17px;font-weight:800;margin:6px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#fff;}
-  .notice-banner .nb-content{font-size:13px;opacity:.95;line-height:1.6;white-space:pre-wrap;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;color:#fff;}
+  .notice-banner .nb-content{font-size:13px;opacity:.95;line-height:1.6;white-space:pre-wrap;overflow:hidden;color:#fff;flex:1 1 auto;position:relative;min-height:0;}
+  .notice-banner .nb-content.nb-clamped::after{content:'';position:absolute;left:0;right:0;bottom:0;height:30px;background:linear-gradient(to bottom, rgba(90,0,25,0), rgba(90,0,25,.92));pointer-events:none;}
   .notice-banner .nb-unread-warning{display:inline-flex;align-items:center;gap:4px;background:#fff;color:#d40000;font-weight:800;font-size:11.5px;padding:4px 10px;border-radius:20px;margin:4px 0 6px;box-shadow:0 2px 6px rgba(0,0,0,.25);}
   .notice-banner .nb-more-btn{
     background:none;border:none;color:#fff;opacity:.9;font-size:11.5px;font-weight:700;
