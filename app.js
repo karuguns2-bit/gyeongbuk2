@@ -1060,6 +1060,8 @@ function migrateDB(){
     DB.subTierContestOptions = JSON.parse(JSON.stringify(SUB_TIER_CONTEST_OPTIONS_SEED))
       .map((o,idx)=>({ id:'stco_seed_'+idx, ...o }));
   }
+  // 지점별 이달의 배지: 연속 우승 스트릭 저장소(finalizeBranchBadgesIfNeeded 참고).
+  if(!DB.branchBadgeStreaks) DB.branchBadgeStreaks = { lastFinalizedPeriod:null, lastWinner:{} };
   // 근무일정(Shiftee) 업로드 데이터: 사번+날짜로 조회하는 평면 구조. 지점별로 파일을 나눠 올려도
   // 사번 단위로 병합되므로 여러 지점 파일을 순서에 상관없이 추가해도 서로 덮어쓰지 않는다.
   if(!DB.workSchedule) DB.workSchedule = { byEmpDate:{}, uploads:[] };
@@ -1968,6 +1970,201 @@ function pctBadge(pct){
   if(pct >= pace-15) return '<span class="badge warn">주의</span>';
   return '<span class="badge bad">부진</span>';
 }
+/* =========================================================================
+   4a. 지점별 이달의 타이틀 배지 (홈 대시보드)
+   2026-09-08 추가: 매니저들의 앱 활용도·실적 달성 동기부여를 위해, 이미 쌓이고 있는 데이터
+   기준으로 매달 종목별 "이 달의 1위 지점"에게 배지를 준다. 배지 자체는 항상 "이번 달"
+   데이터로 실시간 계산해서 보여주고(월말까지 등수가 바뀔 수 있음), 별도의 이력/명예의 전당
+   페이지는 두지 않는다 — 대신 같은 지점이 같은 종목에서 몇 개월 연속으로 우승 중인지만
+   DB.branchBadgeStreaks에 저장해 두어, 배지 위에 별(⭐, 3개월 연속마다 1개 - 축구 유니폼
+   우승 패치와 같은 방식)로 누적 표시한다. 별은 연속 기록이 끊겨도 사라지지 않는다(그 달까지
+   확정된 개월 수 그대로 유지되는 "명예 기록"). 매달 데이터가 아예 없는 종목은 "미정"으로
+   비워둔 배지(회색/점선)로 표시해 도감처럼 채워나가는 재미를 준다.
+   ========================================================================= */
+const BRANCH_BADGE_CATEGORIES = [
+  { id:'goalAchieve', label:'목표달성점', icon:'🎯', grad:['#7ee8fa','#3fa9f5','#2176d2'], shadow:'33,150,243',
+    compute(period){
+      return DB.branches.map(b=>({ branchId:b.id, value: pctOf(branchAchieved(b.id, period), branchTarget(b.id, period)) }))
+        .filter(r=>r.value>0);
+    },
+    fmt(v){ return v.toFixed(1)+'%'; } },
+  { id:'subB2b', label:'소상공인 판촉 우수점', icon:'🏪', grad:['#ffd59e','#ff9a56','#f0640c'], shadow:'240,100,12',
+    compute(period){
+      const sums = {};
+      (DB.subB2bSales||[]).forEach(r=>{
+        if(String(r.saleDate||'').slice(0,7)!==period) return;
+        sums[r.branchId] = (sums[r.branchId]||0) + (Number(r.amountWon)||0);
+      });
+      return Object.entries(sums).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
+    },
+    fmt(v){ return fmtWon(v); } },
+  { id:'infoReport', label:'정보보고우수점', icon:'📝', grad:['#baf7c9','#4fd77c','#0e9e52'], shadow:'14,158,82',
+    compute(period){
+      const counts = {};
+      (DB.infoReports||[]).forEach(r=>{
+        if(!r.branchId || String(r.createdAt||'').slice(0,7)!==period) return;
+        counts[r.branchId] = (counts[r.branchId]||0) + 1;
+      });
+      return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${v}건`; } },
+  { id:'kakaoFriends', label:'카카오 플친 최다보유점', icon:'💛', grad:['#fff4b8','#ffe066','#f4c400'], shadow:'244,196,0',
+    compute(){
+      return DB.branches.map(b=>({ branchId:b.id, value: kakaoFriendsLatestCumulative(b.id) })).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${fmtNum(v)}명`; } },
+  { id:'bestPractice', label:'우수활동 우수점', icon:'🌟', grad:['#e2ceff','#b088ff','#7c3aed'], shadow:'124,58,237',
+    compute(period){
+      const counts = {};
+      (DB.bestPractices||[]).forEach(p=>{
+        if(!p.branchId || p.branchId==='OTHER') return;
+        if(String(p.createdAt||'').slice(0,7)!==period) return;
+        counts[p.branchId] = (counts[p.branchId]||0) + 1;
+      });
+      return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${v}건`; } },
+  { id:'competitiveness', label:'경쟁력우수점', icon:'📊', grad:['#ffc2d6','#ff6f9c','#e0195e'], shadow:'224,25,94',
+    compute(period){
+      const data = competitivenessDataForPeriod(period);
+      if(!data || !data.competitiveness) return [];
+      return Object.entries(data.competitiveness)
+        .filter(([,c])=>c && c.msPct!=null)
+        .map(([branchId,c])=>({branchId, value:c.msPct}));
+    },
+    fmt(v){ return v.toFixed(1)+'%'; } },
+  { id:'prospects', label:'가망고객 관리 우수점', icon:'🤝', grad:['#bfeaff','#5fc9ff','#0ea5e9'], shadow:'14,165,233',
+    compute(period){
+      const counts = {};
+      (DB.prospects||[]).forEach(p=>{
+        if(!p.branchId) return;
+        const d = p.visitDate || String(p.createdAt||'').slice(0,10);
+        if(String(d||'').slice(0,7)!==period) return;
+        counts[p.branchId] = (counts[p.branchId]||0) + 1;
+      });
+      return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${v}건`; } }
+];
+function branchBadgeRanking(catDef, period){
+  return catDef.compute(period).sort((a,b)=>b.value-a.value);
+}
+function branchBadgeWinner(catDef, period){
+  const ranked = branchBadgeRanking(catDef, period);
+  return ranked.length>0 ? ranked[0] : null;
+}
+// 매달 넘어갈 때 "지난달까지 완전히 끝난 달"의 종목별 1위를 확정해 연속 우승 스트릭을 갱신한다.
+// 이번 달(진행 중)은 절대 확정하지 않고 매번 실시간으로 다시 계산한다(월말까지 등수가 바뀔 수 있음).
+// 반환값이 true면 실제로 무언가 갱신된 것이므로, 호출부에서 saveDB()로 저장해야 한다.
+function finalizeBranchBadgesIfNeeded(){
+  if(!DB.branchBadgeStreaks) DB.branchBadgeStreaks = { lastFinalizedPeriod:null, lastWinner:{} };
+  if(!DB.branchBadgeStreaks.lastWinner) DB.branchBadgeStreaks.lastWinner = {};
+  const nowPeriod = periodStr();
+  if(!DB.branchBadgeStreaks.lastFinalizedPeriod){
+    // 최초 실행 시점: 과거 달을 소급해서 확정하지 않고, "이전 달까지는 이미 확정된 것"으로
+    // 기준선만 잡아둔다(이때부터 앞으로의 스트릭만 누적된다).
+    DB.branchBadgeStreaks.lastFinalizedPeriod = addMonthsToPeriod(nowPeriod, -1);
+    return true;
+  }
+  let changed = false;
+  let cursor = addMonthsToPeriod(DB.branchBadgeStreaks.lastFinalizedPeriod, 1);
+  while(cursor < nowPeriod){
+    BRANCH_BADGE_CATEGORIES.forEach(cat=>{
+      const winner = branchBadgeWinner(cat, cursor);
+      const last = DB.branchBadgeStreaks.lastWinner[cat.id];
+      if(winner){
+        const streak = (last && last.branchId===winner.branchId) ? (last.streak+1) : 1;
+        DB.branchBadgeStreaks.lastWinner[cat.id] = { branchId:winner.branchId, streak };
+      } else {
+        DB.branchBadgeStreaks.lastWinner[cat.id] = null;
+      }
+    });
+    DB.branchBadgeStreaks.lastFinalizedPeriod = cursor;
+    cursor = addMonthsToPeriod(cursor, 1);
+    changed = true;
+  }
+  return changed;
+}
+// 홈 대시보드 상단에 붙는 "이달의 지점 배지" 카드. 종목별로 이번 달 1위 지점을 실시간 계산해서
+// 메달 모양 배지로 보여주고(아직 아무도 없는 종목은 회색 점선 배지), 몇 개월 연속 우승 중인지에
+// 따라 배지 위에 별을 붙인다(3개월마다 1개). 전 종목을 한 지점이 싹쓸이하면 그랜드슬램 배지도 추가.
+function renderHomeBranchBadges(){
+  const period = periodStr();
+  const streaks = (DB.branchBadgeStreaks && DB.branchBadgeStreaks.lastWinner) || {};
+  const results = BRANCH_BADGE_CATEGORIES.map(cat=>{
+    const winner = branchBadgeWinner(cat, period);
+    if(!winner) return { cat, winner:null, streakDisplay:0 };
+    const last = streaks[cat.id];
+    const streakDisplay = (last && last.branchId===winner.branchId) ? last.streak+1 : 1;
+    return { cat, winner, streakDisplay };
+  });
+  const withWinner = results.filter(r=>r.winner);
+  const grandSlamBranch = (withWinner.length===BRANCH_BADGE_CATEGORIES.length && withWinner.every(r=>r.winner.branchId===withWinner[0].winner.branchId))
+    ? withWinner[0].winner.branchId : null;
+  const cardsHtml = results.map(r=>{
+    const won = !!r.winner;
+    const stars = won ? Math.floor(r.streakDisplay/3) : 0;
+    const starsHtml = stars>0 ? `<div class="bbadge-stars">${'⭐'.repeat(Math.min(stars,5))}</div>` : '';
+    const branchNm = won ? escapeHtml(branchName(r.winner.branchId)) : '미정';
+    const tooltip = won
+      ? `${r.cat.label} · ${escapeHtml(branchName(r.winner.branchId))} · ${escapeHtml(r.cat.fmt(r.winner.value))}${r.streakDisplay>1?` · ${r.streakDisplay}개월 연속`:''}`
+      : `${r.cat.label} · 이번 달은 아직 1위가 없습니다`;
+    const g = r.cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
+    const sh = r.cat.shadow || '242,163,0';
+    const ribbonHtml = won ? `
+        <div class="bbadge-ribbon bbadge-ribbon-l" style="background:linear-gradient(180deg, rgba(${sh},.9), rgba(${sh},.55));"></div>
+        <div class="bbadge-ribbon bbadge-ribbon-r" style="background:linear-gradient(180deg, rgba(${sh},.9), rgba(${sh},.55));"></div>` : '';
+    return `
+      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
+        <div class="bbadge-medalwrap">
+          ${ribbonHtml}
+          <div class="bbadge-medal" style="${won
+            ? `background:radial-gradient(circle at 32% 26%, #ffffff, ${g[0]} 38%, ${g[1]} 68%, ${g[2]} 100%);box-shadow:0 4px 12px rgba(${sh},.5), inset 0 0 0 2px #fff, inset 0 -3px 4px rgba(0,0,0,.12);`
+            : 'background:#f2f2f4;border:2px dashed #d7d8dd;'}">
+            ${won?'<div class="bbadge-shine"></div>':''}
+            ${starsHtml}
+            <span class="bbadge-icon" style="${won?'':'filter:grayscale(1);opacity:.4;'}">${r.cat.icon}</span>
+          </div>
+        </div>
+        <div class="bbadge-label">${r.cat.label}</div>
+        <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};">${branchNm}</div>
+      </div>`;
+  }).join('');
+  const grandSlamHtml = grandSlamBranch ? `
+      <div class="bbadge-item bbadge-won bbadge-grandslam" title="${escapeHtml(branchName(grandSlamBranch))} · 이번 달 전 종목 석권!">
+        <div class="bbadge-medalwrap">
+          <div class="bbadge-ribbon bbadge-ribbon-l" style="background:linear-gradient(180deg, rgba(20,20,26,.9), rgba(20,20,26,.5));"></div>
+          <div class="bbadge-ribbon bbadge-ribbon-r" style="background:linear-gradient(180deg, rgba(20,20,26,.9), rgba(20,20,26,.5));"></div>
+          <div class="bbadge-medal" style="background:radial-gradient(circle at 32% 26%, #fffdf4, #ffe9a8 30%, #f0b429 62%, #a8720a 100%);box-shadow:0 5px 16px rgba(168,114,10,.55), inset 0 0 0 2px #fff6dd, inset 0 -3px 5px rgba(0,0,0,.18);">
+            <div class="bbadge-shine"></div>
+            <div class="bbadge-stars">✨✨✨</div>
+            <span class="bbadge-icon">👑</span>
+          </div>
+        </div>
+        <div class="bbadge-label">이달의 그랜드슬램</div>
+        <div class="bbadge-branch" style="color:#a8720a;">${escapeHtml(branchName(grandSlamBranch))}</div>
+      </div>` : '';
+  return `
+    <div class="card" style="margin-bottom:16px;overflow:visible;">
+      <style>
+        .bbadge-item{ text-align:center; width:82px; }
+        .bbadge-medalwrap{ position:relative; width:60px; height:60px; margin:0 auto; transition:transform .18s ease; }
+        .bbadge-item:hover .bbadge-medalwrap{ transform:translateY(-3px) scale(1.07); }
+        .bbadge-medal{ position:relative; width:60px; height:60px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:27px; overflow:hidden; z-index:2; }
+        .bbadge-grandslam .bbadge-medal{ font-size:29px; }
+        .bbadge-shine{ position:absolute; top:-6px; left:8px; width:26px; height:16px; background:rgba(255,255,255,.55); border-radius:50%; transform:rotate(-18deg); filter:blur(1px); pointer-events:none; }
+        .bbadge-icon{ position:relative; z-index:1; filter:drop-shadow(0 1px 1px rgba(0,0,0,.15)); }
+        .bbadge-stars{ position:absolute; top:-11px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:11px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.25); z-index:3; }
+        .bbadge-ribbon{ position:absolute; bottom:-9px; width:15px; height:20px; z-index:1; clip-path:polygon(0 0,100% 0,100% 78%,50% 100%,0 78%); }
+        .bbadge-ribbon-l{ left:9px; transform:rotate(-14deg); }
+        .bbadge-ribbon-r{ right:9px; transform:rotate(14deg); }
+        .bbadge-label{ font-size:10.5px; line-height:1.3; margin-top:8px; color:var(--text-sub); min-height:26px; }
+        .bbadge-branch{ font-size:11.5px; font-weight:700; }
+      </style>
+      <div style="font-size:12.5px;font-weight:700;color:var(--text-sub);margin-bottom:14px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지 <span style="font-weight:400;">(배지에 마우스를 올리면 세부 기록을 볼 수 있어요)</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:18px 10px;">${cardsHtml}${grandSlamHtml}</div>
+    </div>`;
+}
 // ---- 목표 달성 예측/이상탐지 (관리자·임원 전용, 홈 대시보드) ----
 // 지금까지의 페이스가 이번달 남은 기간에도 그대로 유지된다고 가정했을 때의 월말 예상
 // 달성률을 계산한다. branchAchieved()는 MSIS실판매등록 기준 예상 목표치(target*1.25)와
@@ -2575,6 +2772,9 @@ function renderClearanceRecommendationWidget(){
     </div>`;
 }
 function renderHome(){
+  // 지점별 이달의 배지: 달이 넘어간 첫 조회 시점에만 실제로 갱신되고(내부에서 기간을 확인),
+  // 평소에는 아무 것도 하지 않는다(migrateDB()의 __migrateBefore/After 비교 방식과 동일한 패턴).
+  if(finalizeBranchBadgesIfNeeded()) saveDB(true);
   const myBranch = canSwitchBranch() ? state.viewBranchId : SESSION.branchId;
   const branch = DB.branches.find(b=>b.id===myBranch);
   // 반드시 "이번 달" 기준으로 명시해서 조회한다 — period를 생략하면 지금까지 업로드된
@@ -2658,6 +2858,7 @@ function renderHome(){
   return `
     <div class="page-title">홈 대시보드</div>
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
+    ${renderHomeBranchBadges()}
     ${renderNoticeBanner()}
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
