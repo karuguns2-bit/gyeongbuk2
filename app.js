@@ -1970,6 +1970,23 @@ function pctBadge(pct){
   if(pct >= pace-15) return '<span class="badge warn">주의</span>';
   return '<span class="badge bad">부진</span>';
 }
+// 달성률 진행 막대 위에 달리는 사람 아이콘(현재 달성률 위치)과 결승선 깃발(100% 지점)을
+// 얹어서 보여주는 헬퍼. 기존 .progress-bar 마크업을 대체하며, 시각적으로 강조가 필요한
+// 큰 KPI 카드(stat-tile)에서만 사용한다 — 표 안의 작은 인라인 막대에는 쓰지 않는다.
+function progressBarRunnerHtml(pct, opts){
+  opts = opts || {};
+  const width = Math.max(0, Math.min(pct||0, 100));
+  const trackBg = opts.trackBg || 'rgba(255,255,255,.55)';
+  const marginTop = opts.marginTop!=null ? opts.marginTop : 4;
+  // 러너 아이콘이 결승 깃발과 겹치지 않도록, 그리고 막대 밖으로 튀어나가지 않도록 살짝 여유를 둔다.
+  const runnerLeft = Math.max(4, Math.min(width, 95));
+  return `
+    <div class="progress-bar-wrap" style="margin-top:${marginTop}px;">
+      <span class="progress-runner" style="left:${runnerLeft}%;">🏃</span>
+      <span class="progress-finish">🏁</span>
+      <div class="progress-bar" style="background:${trackBg};"><div style="width:${width}%"></div></div>
+    </div>`;
+}
 /* =========================================================================
    4a. 지점별 이달의 타이틀 배지 (홈 대시보드)
    2026-09-08 추가: 매니저들의 앱 활용도·실적 달성 동기부여를 위해, 이미 쌓이고 있는 데이터
@@ -2260,7 +2277,7 @@ function renderHomeManagerBadges(){
     const dim = won ? '' : 'filter:grayscale(1);opacity:.5;';
     const totalCount = won ? managerBadgeTotalCount(cat.id, winner.empId, true) : 0;
     const totalTag = totalCount>0 ? ` <span class="bbadge-total">🏅×${totalCount}</span>` : '';
-    const subLabel = won ? `${branchNm}${totalTag}` : cat.desc;
+    const subLabel = `${cat.label}${totalTag}`;
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip} · 누적 ${totalCount}회 획득">
         <div class="bbadge-shieldwrap">
@@ -2276,11 +2293,13 @@ function renderHomeManagerBadges(){
         <div class="bbadge-title-label">${subLabel}</div>
       </div>`;
   }).join('');
+  // 카드를 따로 만들지 않고, 지점 배지 카드 안 좌측 영역(랭킹 패널보다 낮아 남는 여백)에
+  // 이어서 채워 넣는 조각(fragment)만 반환한다 — renderHomeBranchBadges()에서 이어붙여 쓴다.
   return `
-    <div class="card" style="margin-bottom:16px;padding:14px 16px;">
+    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
       <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🧑‍💼 ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
       <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요.</div>
-      <div class="bbadge-medals" style="justify-content:flex-start;gap:10px 18px;flex:1 1 auto;">${cardsHtml}</div>
+      <div class="bbadge-medals" style="justify-content:flex-start;gap:10px 18px;">${cardsHtml}</div>
     </div>`;
 }
 // 매달 넘어갈 때 "지난달까지 완전히 끝난 달"의 종목별 1위를 확정해 연속 우승 스트릭을 갱신한다.
@@ -2442,7 +2461,7 @@ function renderHomeBranchBadges(){
         .bbadge-title-label{ font-size:9px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:12px; }
         .bbadge-total{ font-size:9px; font-weight:700; color:#c9820a; white-space:nowrap; }
         .bbadge-outer{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
-        .bbadge-medals{ display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px 2px; flex:1 1 280px; }
+        .bbadge-medals{ display:flex; flex-wrap:wrap; justify-content:flex-start; gap:8px 14px; }
         .bbadge-rankpanel{ flex:1 1 280px; min-width:240px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:9px 11px; }
         .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
@@ -2462,7 +2481,10 @@ function renderHomeBranchBadges(){
       <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
       <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">전 종목 동시 1위</b> 시 그랜드슬램! (마우스를 올리면 세부 기록을 볼 수 있어요)</div>
       <div class="bbadge-outer">
-        <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
+        <div style="flex:1 1 280px;">
+          <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
+          ${renderHomeManagerBadges()}
+        </div>
         ${rankPanelHtml}
       </div>
     </div>`;
@@ -2753,7 +2775,7 @@ function renderHomeGoalsManagerBanner(){
       <div style="font-weight:700;font-size:13px;">${m.manager}</div>
       <div class="stat-tile-sub">${m.branchCount}개 지점</div>
       <div class="stat-tile-num" style="font-size:19px;margin-top:2px;">${m.pct.toFixed(1)}% ${pctBadge(m.pct)}</div>
-      <div class="progress-bar" style="margin-top:4px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(m.pct,100)}%"></div></div>
+      ${progressBarRunnerHtml(m.pct, {marginTop:4})}
       <div class="stat-tile-sub" style="margin-top:4px;">${fmtKK(m.achieved)} / ${fmtKK(m.target)}</div>
     </div>`).join('');
   return `
@@ -3169,7 +3191,6 @@ function renderHome(){
       <div style="flex:1 1 420px;min-width:320px;">${renderHomeBranchBadges()}</div>
       <div style="flex:1 1 420px;min-width:320px;">${renderNoticeBanner()}</div>
     </div>
-    ${renderHomeManagerBadges()}
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
@@ -3187,7 +3208,7 @@ function renderHome(){
       <div class="card stat-tile ${pct>=100?'stat-tile-green':pct>=80?'stat-tile-amber':'stat-tile-pink'}">
         <div class="stat-tile-label">달성률 ${pctBadge(pct)}</div>
         <div class="stat-tile-num">${pct.toFixed(1)}%</div>
-        <div class="progress-bar" style="margin-top:8px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(pct,100)}%"></div></div>
+        ${progressBarRunnerHtml(pct, {marginTop:8})}
         <div class="stat-tile-sub" style="margin-top:6px;">목표 페이스 ${expectedPacePct().toFixed(1)}%</div>
       </div>
       ${homeCompBranch && homeCompBranch.msPct!=null ? `
@@ -5991,7 +6012,7 @@ function renderGoals(){
                 <div class="stat-tile ${allocAchievedPct>=100?'stat-tile-green':allocAchievedPct>=80?'stat-tile-amber':'stat-tile-pink'}" style="flex:2;min-width:220px;padding:10px 14px;">
                   <div class="stat-tile-label" style="margin-bottom:2px;">합계 달성률</div>
                   <div class="stat-tile-num" style="font-size:17px;">${allocAchievedPct.toFixed(1)}% ${pctBadge(allocAchievedPct)}</div>
-                  <div class="progress-bar" style="margin-top:6px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(allocAchievedPct,100)}%"></div></div>
+                  ${progressBarRunnerHtml(allocAchievedPct, {marginTop:6})}
                 </div>
               </div>
               <div class="table-scroll">
@@ -7705,7 +7726,7 @@ function renderMetricsOverview(){
         <div class="card stat-tile ${(agg.g_tp_rate||0)>=100?'stat-tile-green':(agg.g_tp_rate||0)>=80?'stat-tile-amber':'stat-tile-pink'}" style="min-width:150px;flex:1;">
           <div class="stat-tile-sub">목표 달성률 ${moBadgeRank(rankRate, rankTotalOf)}</div>
           <div class="stat-tile-num" style="font-size:19px;">${moPct(agg.g_tp_rate)} ${pctBadge(agg.g_tp_rate||0)}</div>
-          <div class="progress-bar" style="margin-top:4px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(agg.g_tp_rate||0,100)}%"></div></div>
+          ${progressBarRunnerHtml(agg.g_tp_rate||0, {marginTop:4})}
         </div>
       </div>`;
 
@@ -8111,7 +8132,7 @@ function renderSubscription(){
         <div class="card stat-tile ${(agg.s_sp_rate||0)>=100?'stat-tile-green':(agg.s_sp_rate||0)>=80?'stat-tile-amber':'stat-tile-pink'}" style="min-width:150px;flex:1;">
           <div class="stat-tile-sub">실판 목표 달성률</div>
           <div class="stat-tile-num" style="font-size:19px;">${moPct(agg.s_sp_rate)}</div>
-          <div class="progress-bar" style="margin-top:4px;background:rgba(255,255,255,.55);"><div style="width:${Math.min(agg.s_sp_rate||0,100)}%"></div></div>
+          ${progressBarRunnerHtml(agg.s_sp_rate||0, {marginTop:4})}
         </div>
       </div>
     </div>
