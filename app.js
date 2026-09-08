@@ -2082,7 +2082,7 @@ function bbadgeIconSvg(name){
   return icons[name] || icons.star;
 }
 const BRANCH_BADGE_CATEGORIES = [
-  { id:'goalAchieve', label:'목표달성점', icon:'🎯', svg:'target', grad:['#7ee8fa','#3fa9f5','#2176d2'], shadow:'33,150,243',
+  { id:'goalAchieve', label:'목표달성점', desc:'MSIS실판매등록 기준 목표 달성률 1위 지점', icon:'🎯', svg:'target', grad:['#7ee8fa','#3fa9f5','#2176d2'], shadow:'33,150,243',
     compute(period){
       return DB.branches.map(b=>({ branchId:b.id, value: pctOf(branchAchieved(b.id, period), branchTarget(b.id, period)) }))
         .filter(r=>r.value>0);
@@ -2100,7 +2100,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(sums).map(([branchId,s])=>({branchId, value: pctOf(s.ach, s.tgt)})).filter(r=>r.value>0);
     },
     fmt(v){ return v.toFixed(1)+'%'; } },
-  { id:'subB2b', label:'소상공인 판촉 우수점', icon:'🏪', svg:'trending', grad:['#ffd59e','#ff9a56','#f0640c'], shadow:'240,100,12',
+  { id:'subB2b', label:'소상공인 판촉 우수점', desc:'소상공인 판촉 판매금액 1위 지점', icon:'🏪', svg:'trending', grad:['#ffd59e','#ff9a56','#f0640c'], shadow:'240,100,12',
     compute(period){
       const sums = {};
       (DB.subB2bSales||[]).forEach(r=>{
@@ -2118,7 +2118,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(sums).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
     },
     fmt(v){ return fmtWon(v); } },
-  { id:'infoReport', label:'정보보고우수점', icon:'📝', svg:'clipboard', grad:['#baf7c9','#4fd77c','#0e9e52'], shadow:'14,158,82',
+  { id:'infoReport', label:'정보보고우수점', desc:'정보보고 최다등록 지점', icon:'📝', svg:'clipboard', grad:['#baf7c9','#4fd77c','#0e9e52'], shadow:'14,158,82',
     compute(period){
       const counts = {};
       (DB.infoReports||[]).forEach(r=>{
@@ -2136,7 +2136,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
     },
     fmt(v){ return `${v}건`; } },
-  { id:'kakaoFriends', label:'카카오 플친 최다보유점', icon:'💛', svg:'chat', grad:['#fff4b8','#ffe066','#f4c400'], shadow:'244,196,0',
+  { id:'kakaoFriends', label:'카카오 플친 최다보유점', desc:'카카오 플러스친구 누적 최다보유 지점', icon:'💛', svg:'chat', grad:['#fff4b8','#ffe066','#f4c400'], shadow:'244,196,0',
     compute(){
       return DB.branches.map(b=>({ branchId:b.id, value: kakaoFriendsLatestCumulative(b.id) })).filter(r=>r.value>0);
     },
@@ -2144,7 +2144,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return DB.branches.map(b=>({ branchId:b.id, value: kakaoFriendsLatestCumulative(b.id) })).filter(r=>r.value>0);
     },
     fmt(v){ return `${fmtNum(v)}명`; } },
-  { id:'bestPractice', label:'우수활동 우수점', icon:'🌟', svg:'star', grad:['#e2ceff','#b088ff','#7c3aed'], shadow:'124,58,237',
+  { id:'bestPractice', label:'우수활동 우수점', desc:'우수 활동 사례 최다등록 지점', icon:'🌟', svg:'star', grad:['#e2ceff','#b088ff','#7c3aed'], shadow:'124,58,237',
     compute(period){
       const counts = {};
       (DB.bestPractices||[]).forEach(p=>{
@@ -2164,7 +2164,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
     },
     fmt(v){ return `${v}건`; } },
-  { id:'competitiveness', label:'경쟁력우수점', icon:'📊', svg:'bars', grad:['#ffc2d6','#ff6f9c','#e0195e'], shadow:'224,25,94',
+  { id:'competitiveness', label:'경쟁력우수점', desc:'msis경쟁력 시트 기준 시장점유율(MS%) 1위 지점', icon:'📊', svg:'bars', grad:['#ffc2d6','#ff6f9c','#e0195e'], shadow:'224,25,94',
     compute(period){
       const data = competitivenessDataForPeriod(period);
       if(!data || !data.competitiveness) return [];
@@ -2189,7 +2189,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(sums).map(([branchId,s])=>({branchId, value: s.sum/s.count})).filter(r=>r.value>0);
     },
     fmt(v){ return v.toFixed(1)+'%'; } },
-  { id:'prospects', label:'가망고객 관리 우수점', icon:'🤝', svg:'users', grad:['#bfeaff','#5fc9ff','#0ea5e9'], shadow:'14,165,233',
+  { id:'prospects', label:'가망고객 관리 우수점', desc:'가망고객 관리현황 최다등록 지점', icon:'🤝', svg:'users', grad:['#bfeaff','#5fc9ff','#0ea5e9'], shadow:'14,165,233',
     compute(period){
       const counts = {};
       (DB.prospects||[]).forEach(p=>{
@@ -2211,7 +2211,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
     },
     fmt(v){ return `${v}건`; } },
-  { id:'appLover', label:'앱사랑꾼', icon:'📱', svg:'trophy', grad:['#c9e8ff','#6fb6ff','#1f6fe0'], shadow:'31,111,224',
+  { id:'appLover', label:'앱사랑꾼', desc:'소속 매니저 앱 로그인 횟수 최다 지점', icon:'📱', svg:'trophy', grad:['#c9e8ff','#6fb6ff','#1f6fe0'], shadow:'31,111,224',
     // 소속 매니저(역할=manager)의 앱 로그인 횟수를 합산해 지점별로 비교한다. 로그인 기록은
     // Supabase activity_log 테이블에 별도로 쌓이는 데이터라(DB 본체와 분리), renderHome()에서
     // loadAppLoveStatsIfNeeded()/loadAppLoveYearStatsIfNeeded()로 미리 불러와 캐시해두고,
@@ -2243,7 +2243,7 @@ const BRANCH_BADGE_CATEGORIES = [
       return Object.entries(counts).map(([branchId,value])=>({branchId,value})).filter(r=>r.value>0);
     },
     fmt(v){ return `${v}회`; } },
-  { id:'growthKing', label:'성장왕점', icon:'📈', svg:'arrowUpCircle', grad:['#b2f5ea','#38b2ac','#0f766e'], shadow:'15,118,110',
+  { id:'growthKing', label:'성장왕점', desc:'전년동기비 매출 신장률 1위 지점', icon:'📈', svg:'arrowUpCircle', grad:['#b2f5ea','#38b2ac','#0f766e'], shadow:'15,118,110',
     // [지표 한 눈에 보기]에 이미 있는 "전년동기비"(g_tp_yoy) 공식을 그대로 재사용한다 —
     // moAggregate()가 여러 지점을 합산할 때 쓰는 것과 같은 식이며, 여기서는 지점 row 하나만
     // 놓고 그 지점만의 전년동기비를 계산한다. 규모가 작은 지점도 "많이 늘었으면" 이길 수
@@ -2258,7 +2258,7 @@ const BRANCH_BADGE_CATEGORIES = [
       }).filter(r=>r.value!=null);
     },
     fmt(v){ return (v>=0?'+':'')+v.toFixed(1)+'%'; } },
-  { id:'clearanceKing', label:'소진왕점', icon:'🔥', svg:'flame', grad:['#ffccbc','#ff7043','#bf360c'], shadow:'191,54,12',
+  { id:'clearanceKing', label:'소진왕점', desc:'소진집중 품목 소진율 1위 지점', icon:'🔥', svg:'flame', grad:['#ffccbc','#ff7043','#bf360c'], shadow:'191,54,12',
     // [재고 조회]의 "소진집중 소진율 카운팅 기준선"(DB.inventoryClearanceBaseline) 대비 현재까지
     // 소진된 비율을 지점별로 계산한다. 기준선 스냅샷의 key가 이미 "매장||상품코드||모델명||상품명"
     // 형식이라 앞부분(매장명)만 떼어 matchBranchByInvStore()로 지점에 매칭한다(재고 파일 매장명은
@@ -2287,7 +2287,7 @@ const BRANCH_BADGE_CATEGORIES = [
         .filter(r=>r.value>0);
     },
     fmt(v){ return v.toFixed(1)+'%'; } },
-  { id:'giftSweepKing', label:'사은품싹슬이점', icon:'🎁', svg:'gift', grad:['#f3d9ff','#c77dff','#7b2cbf'], shadow:'123,44,191',
+  { id:'giftSweepKing', label:'사은품싹슬이점', desc:'모바일 상품권·구독연동사은품·기타 사은품 취합 등록 최다 지점', icon:'🎁', svg:'gift', grad:['#f3d9ff','#c77dff','#7b2cbf'], shadow:'123,44,191',
     // 모바일 상품권 취합(giftcardRequests) + 구독연동사은품 취합(contestGifts) + 기타 사은품
     // 취합(subTierContestGifts), 세 등록 게시판을 합산해서 이번 달 가장 많이 등록한 지점에게 준다.
     compute(period){
@@ -2343,7 +2343,7 @@ const MANAGER_BADGE_CATEGORIES = [
       return Object.entries(counts).map(([empId,value])=>({empId,value})).filter(r=>r.value>0);
     },
     fmt(v){ return `${v}건`; } },
-  { id:'subKing', label:'구독 판매왕', desc:'월별 구독판매 누적 최다인원', icon:'📶', svg:'trending', grad:['#b8f5ec','#4fd7c0','#0e9e86'], shadow:'14,158,134',
+  { id:'subKing', label:'구독대장', desc:'월별 구독판매 누적 최다인원', icon:'📶', svg:'trending', grad:['#b8f5ec','#4fd7c0','#0e9e86'], shadow:'14,158,134',
     compute(period){
       const staff = (DB.users||[]).filter(u=>u.role==='staff');
       return staff.map(u=>({empId:u.empId, value: empSubscriptionActual(u.branchId, u.empId, period).qty})).filter(r=>r.value>0);
@@ -2409,6 +2409,10 @@ function managerBadgeWinner(catDef, period){
 function finalizeManagerBadgesIfNeeded(){
   if(!DB.managerBadgeFinalize) DB.managerBadgeFinalize = { lastFinalizedPeriod:null };
   if(!DB.managerBadgeTotals) DB.managerBadgeTotals = {};
+  // 지점 배지와 동일한 방식(DB.branchBadgeStreaks)으로 매니저 개인의 "3개월 연속 1위" 별을
+  // 추적한다 — lastWinner[catId] = {empId, streak}.
+  if(!DB.managerBadgeStreaks) DB.managerBadgeStreaks = { lastWinner:{} };
+  if(!DB.managerBadgeStreaks.lastWinner) DB.managerBadgeStreaks.lastWinner = {};
   const nowPeriod = periodStr();
   if(!DB.managerBadgeFinalize.lastFinalizedPeriod){
     DB.managerBadgeFinalize.lastFinalizedPeriod = addMonthsToPeriod(nowPeriod, -1);
@@ -2419,9 +2423,14 @@ function finalizeManagerBadgesIfNeeded(){
   while(cursor < nowPeriod){
     MANAGER_BADGE_CATEGORIES.forEach(cat=>{
       const winner = managerBadgeWinner(cat, cursor);
+      const last = DB.managerBadgeStreaks.lastWinner[cat.id];
       if(winner){
         if(!DB.managerBadgeTotals[cat.id]) DB.managerBadgeTotals[cat.id] = {};
         DB.managerBadgeTotals[cat.id][winner.empId] = (DB.managerBadgeTotals[cat.id][winner.empId]||0) + 1;
+        const streak = (last && last.empId===winner.empId) ? (last.streak+1) : 1;
+        DB.managerBadgeStreaks.lastWinner[cat.id] = { empId:winner.empId, streak };
+      } else {
+        DB.managerBadgeStreaks.lastWinner[cat.id] = null;
       }
     });
     DB.managerBadgeFinalize.lastFinalizedPeriod = cursor;
@@ -2436,14 +2445,35 @@ function managerBadgeTotalCount(catId, empId, includingThisMonth){
 }
 function renderHomeManagerBadges(){
   const period = periodStr();
-  const cardsHtml = MANAGER_BADGE_CATEGORIES.map(cat=>{
+  const streaks = (DB.managerBadgeStreaks && DB.managerBadgeStreaks.lastWinner) || {};
+  const results = MANAGER_BADGE_CATEGORIES.map(cat=>{
     const winner = managerBadgeWinner(cat, period);
+    if(!winner) return { cat, winner:null, streakDisplay:0 };
+    const last = streaks[cat.id];
+    const streakDisplay = (last && last.empId===winner.empId) ? last.streak+1 : 1;
+    return { cat, winner, streakDisplay };
+  });
+  // 그랜드슬램: 지점은 소속 인원 전체의 합산/각 분야 담당자가 나눠서 종목을 석권할 수 있지만,
+  // 매니저 "개인"이 전 종목(6개)에서 동시에 1위를 하는 건 사실상 불가능에 가까워서, 지우님 요청대로
+  // 전체 종목 수의 과반을 넘는 5개 이상 종목에서 동시 1위면 그랜드슬램으로 인정한다.
+  const MANAGER_GRANDSLAM_MIN = 5;
+  const winsByEmp = {};
+  results.forEach(r=>{ if(r.winner) winsByEmp[r.winner.empId] = (winsByEmp[r.winner.empId]||0) + 1; });
+  let grandSlamEmpId = null, grandSlamCount = 0;
+  Object.entries(winsByEmp).forEach(([empId,count])=>{
+    if(count>=MANAGER_GRANDSLAM_MIN && count>grandSlamCount){ grandSlamEmpId = empId; grandSlamCount = count; }
+  });
+  const cardsHtml = results.map(r=>{
+    const cat = r.cat;
+    const winner = r.winner;
     const won = !!winner;
     const u = won ? (DB.users||[]).find(x=>x.empId===winner.empId) : null;
     const mgrName = won ? escapeHtml(u ? u.name : winner.empId) : '미정';
     const branchNm = (won && u) ? escapeHtml(branchName(u.branchId)) : '';
+    const stars = won ? Math.floor(r.streakDisplay/3) : 0;
+    const starsHtml = stars>0 ? `<div class="bbadge-stars">${'⭐'.repeat(Math.min(stars,5))}</div>` : '';
     const tooltip = won
-      ? `${cat.label}(${cat.desc}) · ${escapeHtml(u?u.name:winner.empId)}${branchNm?`(${branchNm})`:''} · ${escapeHtml(cat.fmt(winner.value))}`
+      ? `${cat.label}(${cat.desc}) · ${escapeHtml(u?u.name:winner.empId)}${branchNm?`(${branchNm})`:''} · ${escapeHtml(cat.fmt(winner.value))}${r.streakDisplay>1?` · ${r.streakDisplay}개월 연속`:''}`
       : `${cat.label}(${cat.desc}) · 이번 달은 아직 1위가 없습니다`;
     const g = cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
     const sh = cat.shadow || '242,163,0';
@@ -2457,6 +2487,7 @@ function renderHomeManagerBadges(){
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip} · 누적 ${totalCount}회 획득">
         <div class="bbadge-shieldwrap">
+          ${starsHtml}
           <div class="bbadge-crown" style="${dim}">👑</div>
           <div class="bbadge-shield" style="${shieldStyle}">
             <span class="bbadge-leaf bbadge-leaf-l" style="${dim}">🌿</span>
@@ -2469,13 +2500,32 @@ function renderHomeManagerBadges(){
         <div class="bbadge-title-label">${subLabel}</div>
       </div>`;
   }).join('');
+  const grandSlamHtml = grandSlamEmpId ? (()=>{
+    const u = (DB.users||[]).find(x=>x.empId===grandSlamEmpId);
+    const name = escapeHtml(u ? u.name : grandSlamEmpId);
+    return `
+      <div class="bbadge-item bbadge-won bbadge-grandslam" title="${name} · 이번 달 ${grandSlamCount}개 종목 동시 1위 그랜드슬램!">
+        <div class="bbadge-shieldwrap">
+          <div class="bbadge-stars">✨✨✨</div>
+          <div class="bbadge-crown">👑</div>
+          <div class="bbadge-shield" style="background:linear-gradient(160deg, #fff2c4 0%, #f0b429 45%, #8a5b06 100%);box-shadow:0 6px 14px rgba(138,91,6,.55), inset 0 0 0 2px rgba(255,246,221,.8);">
+            <span class="bbadge-leaf bbadge-leaf-l">🌿</span>
+            <span class="bbadge-leaf bbadge-leaf-r">🌿</span>
+            <span class="bbadge-icon">${bbadgeIconSvg('trophy')}</span>
+            <div class="bbadge-ribbon-text">그랜드슬램</div>
+          </div>
+        </div>
+        <div class="bbadge-branch" style="color:#8a5b06;">${name}</div>
+        <div class="bbadge-title-label">그랜드슬램</div>
+      </div>`;
+  })() : '';
   // 카드를 따로 만들지 않고, 지점 배지 카드 안 좌측 영역(랭킹 패널보다 낮아 남는 여백)에
   // 이어서 채워 넣는 조각(fragment)만 반환한다 — renderHomeBranchBadges()에서 이어붙여 쓴다.
   return `
     <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
       <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🧑‍💼 ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
-      <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요.</div>
-      <div class="bbadge-medals" style="justify-content:flex-start;gap:10px 18px;">${cardsHtml}</div>
+      <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요. <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${MANAGER_BADGE_CATEGORIES.length}개 중 ${MANAGER_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건을 볼 수 있어요)</div>
+      <div class="bbadge-medals" style="justify-content:flex-start;gap:10px 18px;">${cardsHtml}${grandSlamHtml}</div>
     </div>`;
 }
 // 매달 넘어갈 때 "지난달까지 완전히 끝난 달"의 종목별 1위를 확정해 연속 우승 스트릭을 갱신한다.
@@ -2542,8 +2592,8 @@ function renderHomeBranchBadges(){
     const starsHtml = stars>0 ? `<div class="bbadge-stars">${'⭐'.repeat(Math.min(stars,5))}</div>` : '';
     const branchNm = won ? escapeHtml(branchName(r.winner.branchId)) : '미정';
     const tooltip = won
-      ? `${r.cat.label} · ${escapeHtml(branchName(r.winner.branchId))} · ${escapeHtml(r.cat.fmt(r.winner.value))}${r.streakDisplay>1?` · ${r.streakDisplay}개월 연속`:''}`
-      : `${r.cat.label} · 이번 달은 아직 1위가 없습니다`;
+      ? `${r.cat.label}(${r.cat.desc}) · ${escapeHtml(branchName(r.winner.branchId))} · ${escapeHtml(r.cat.fmt(r.winner.value))}${r.streakDisplay>1?` · ${r.streakDisplay}개월 연속`:''}`
+      : `${r.cat.label}(${r.cat.desc}) · 이번 달은 아직 1위가 없습니다`;
     const g = r.cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
     const sh = r.cat.shadow || '242,163,0';
     const shieldStyle = won
@@ -2655,7 +2705,7 @@ function renderHomeBranchBadges(){
         .bbadge-rule-info{ font-size:10px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:5px 9px; line-height:1.4; margin-bottom:9px; }
       </style>
       <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
-      <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">전 종목 동시 1위</b> 시 그랜드슬램! (마우스를 올리면 세부 기록을 볼 수 있어요)</div>
+      <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">전 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
       <div class="bbadge-outer">
         <div style="flex:1 1 280px;">
           <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
