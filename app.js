@@ -1184,6 +1184,9 @@ function migrateDB(){
   if(DB.inventoryShowAllTeams===undefined) DB.inventoryShowAllTeams = false;
   if(!DB.kakaoFriends) DB.kakaoFriends = [];
   DB.kakaoFriends.forEach(r=>{ if(!r.date) r.date = r.weekStart; if(!r.weekStart && r.date) r.weekStart = getMondayStr(r.date); });
+  // 카카오 플친 관리현황표: 지점별 목표/전월 누적/전주 누적은 관리자가 직접 입력·수정하는 값이다
+  // (주차별 업로드 데이터와 달리 자동 집계되지 않음). "현재"는 기존 주차별 누적 데이터에서 그대로 가져온다.
+  if(!DB.kakaoFriendsMgmt) DB.kakaoFriendsMgmt = {};
   if(!DB.prospects) DB.prospects = [];
   DB.prospects.forEach(p=>{ if(p.purchaseType===undefined) p.purchaseType = null; });
   // 2026-08-24 방문 상담 일지 양식에 맞춰 방문일자/방문시간/고객구분/방문단위/방문경로/상담제품
@@ -2144,6 +2147,22 @@ const BRANCH_BADGE_CATEGORIES = [
       return DB.branches.map(b=>({ branchId:b.id, value: kakaoFriendsLatestCumulative(b.id) })).filter(r=>r.value>0);
     },
     fmt(v){ return `${fmtNum(v)}명`; } },
+  // 카카오 플친 관리현황표의 "전월 누적"(관리자 직접 입력값) 대비 "현재(최신 주차 누적)"의 증가분이
+  // 가장 큰 지점. 전월 누적을 아직 입력하지 않은 지점은 기준이 없어 계산에서 제외한다. 관리현황표는
+  // "이번 달 목표/전월 누적" 스냅샷 성격이라 지난 달 배지 확정 시점에는 값을 줄 수 없으므로
+  // clearanceKing과 동일하게 이번 달(period) 조회일 때만 값을 준다.
+  { id:'kakaoGrowth', label:'카카오 플친 최대 증가점', desc:'전월 누적 대비 이번 달 카카오 플러스친구 증가 인원 1위 지점', icon:'📈', svg:'arrowUpCircle', grad:['#d7f5c9','#8fe06a','#3fa622'], shadow:'63,166,34',
+    compute(period){
+      if(period !== periodStr()) return [];
+      ensureKakaoFriendsMgmt();
+      return DB.branches.map(b=>{
+        const m = DB.kakaoFriendsMgmt[b.id];
+        if(!m || !(Number(m.lastMonthCum)>0)) return null;
+        const diff = kakaoFriendsLatestCumulative(b.id) - Number(m.lastMonthCum);
+        return { branchId:b.id, value: diff };
+      }).filter(Boolean).filter(r=>r.value>0);
+    },
+    fmt(v){ return `+${fmtNum(v)}명`; } },
   { id:'bestPractice', label:'우수활동 우수점', desc:'우수 활동 사례 최다등록 지점', icon:'🌟', svg:'star', grad:['#e2ceff','#b088ff','#7c3aed'], shadow:'124,58,237',
     compute(period){
       const counts = {};
@@ -2324,9 +2343,14 @@ function branchBadgeRankingByMode(catDef, mode, period, year){
 function branchBadgeRanking(catDef, period){
   return catDef.compute(period).sort((a,b)=>b.value-a.value);
 }
+// 동점이면 공동 1위로 인정한다 — 1위 값과 정확히 같은 값을 가진 항목을 모두 배열로 반환한다
+// (1위가 없으면 빈 배열). 예전엔 ranked[0] 하나만 돌려줬지만, 실적이 똑같이 나오는 경우가
+// 실제로 있어서 그 지점들을 전부 "이번 달 1위"로 표시해야 한다는 요청에 따라 바뀌었다.
 function branchBadgeWinner(catDef, period){
   const ranked = branchBadgeRanking(catDef, period);
-  return ranked.length>0 ? ranked[0] : null;
+  if(ranked.length===0) return [];
+  const top = ranked[0].value;
+  return ranked.filter(r=>r.value===top);
 }
 /* =========================================================================
    4a1. 매니저 개인 배지 (홈 대시보드) — 위 지점 배지와 별개로, 매니저 개인의 이번 달 활동/실적
@@ -2399,9 +2423,12 @@ const MANAGER_BADGE_CATEGORIES = [
 function managerBadgeRanking(catDef, period){
   return catDef.compute(period).sort((a,b)=>b.value-a.value);
 }
+// 지점 배지와 동일하게, 실적이 정확히 같으면 공동 1위로 인정해 전부 배열로 반환한다.
 function managerBadgeWinner(catDef, period){
   const ranked = managerBadgeRanking(catDef, period);
-  return ranked.length>0 ? ranked[0] : null;
+  if(ranked.length===0) return [];
+  const top = ranked[0].value;
+  return ranked.filter(r=>r.value===top);
 }
 // 매니저 배지는 연속 스트릭/별 없이 "총 누적 획득 개수"만 관리한다 — 지점 배지의
 // finalizeBranchBadgesIfNeeded()와 동일한 패턴으로, 매달 넘어갈 때 지난달까지 확정된 달의
@@ -2422,15 +2449,22 @@ function finalizeManagerBadgesIfNeeded(){
   let cursor = addMonthsToPeriod(DB.managerBadgeFinalize.lastFinalizedPeriod, 1);
   while(cursor < nowPeriod){
     MANAGER_BADGE_CATEGORIES.forEach(cat=>{
-      const winner = managerBadgeWinner(cat, cursor);
-      const last = DB.managerBadgeStreaks.lastWinner[cat.id];
-      if(winner){
+      // 동점으로 공동 1위가 나올 수 있으므로 winners는 배열이다. lastWinner[cat.id]도 이제
+      // 단일 객체가 아니라 "지난달까지 연속 우승 중이던 사람들"의 배열로 관리한다 — 각자
+      // 자기 스트릭을 독립적으로 이어가고, 이번 달에 빠진 사람은 자연히 스트릭이 끊긴다.
+      const winners = managerBadgeWinner(cat, cursor);
+      const lastArr = DB.managerBadgeStreaks.lastWinner[cat.id] || [];
+      const lastByEmp = {};
+      lastArr.forEach(w=>{ lastByEmp[w.empId] = w.streak; });
+      if(winners.length>0){
         if(!DB.managerBadgeTotals[cat.id]) DB.managerBadgeTotals[cat.id] = {};
-        DB.managerBadgeTotals[cat.id][winner.empId] = (DB.managerBadgeTotals[cat.id][winner.empId]||0) + 1;
-        const streak = (last && last.empId===winner.empId) ? (last.streak+1) : 1;
-        DB.managerBadgeStreaks.lastWinner[cat.id] = { empId:winner.empId, streak };
+        DB.managerBadgeStreaks.lastWinner[cat.id] = winners.map(w=>{
+          DB.managerBadgeTotals[cat.id][w.empId] = (DB.managerBadgeTotals[cat.id][w.empId]||0) + 1;
+          const streak = lastByEmp[w.empId] ? lastByEmp[w.empId]+1 : 1;
+          return { empId:w.empId, streak };
+        });
       } else {
-        DB.managerBadgeStreaks.lastWinner[cat.id] = null;
+        DB.managerBadgeStreaks.lastWinner[cat.id] = [];
       }
     });
     DB.managerBadgeFinalize.lastFinalizedPeriod = cursor;
@@ -2447,23 +2481,31 @@ function renderHomeManagerBadges(){
   const period = periodStr();
   const streaks = (DB.managerBadgeStreaks && DB.managerBadgeStreaks.lastWinner) || {};
   const results = MANAGER_BADGE_CATEGORIES.map(cat=>{
-    const winner = managerBadgeWinner(cat, period);
-    if(!winner) return { cat, winner:null, streakDisplay:0 };
-    const last = streaks[cat.id];
-    const streakDisplay = (last && last.empId===winner.empId) ? last.streak+1 : 1;
-    return { cat, winner, streakDisplay };
+    const winners = managerBadgeWinner(cat, period);
+    if(winners.length===0) return { cat, winners:[], streakByEmp:{} };
+    const lastArr = streaks[cat.id] || [];
+    const lastByEmp = {};
+    lastArr.forEach(w=>{ lastByEmp[w.empId] = w.streak; });
+    const streakByEmp = {};
+    winners.forEach(w=>{ streakByEmp[w.empId] = lastByEmp[w.empId] ? lastByEmp[w.empId]+1 : 1; });
+    return { cat, winners, streakByEmp };
   });
   const cardsHtml = results.map(r=>{
     const cat = r.cat;
-    const winner = r.winner;
-    const won = !!winner;
-    const u = won ? (DB.users||[]).find(x=>x.empId===winner.empId) : null;
-    const mgrName = won ? escapeHtml(u ? u.name : winner.empId) : '미정';
-    const branchNm = (won && u) ? escapeHtml(branchName(u.branchId)) : '';
-    const stars = won ? Math.floor(r.streakDisplay/3) : 0;
+    const winners = r.winners;
+    const won = winners.length>0;
+    const isTie = winners.length>1;
+    // 공동 1위면 이름을 전부 이어붙이고, 별(연속 우승)은 그 중 가장 긴 스트릭 기준으로 하나만 띄운다.
+    const winnerInfo = winners.map(w=>{
+      const u = (DB.users||[]).find(x=>x.empId===w.empId);
+      return { empId:w.empId, name: u ? u.name : w.empId, branchNm: u ? branchName(u.branchId) : '', value:w.value, streak:r.streakByEmp[w.empId] };
+    });
+    const mgrName = won ? winnerInfo.map(w=>escapeHtml(w.name)).join(' · ') : '미정';
+    const maxStreak = won ? Math.max(...winnerInfo.map(w=>w.streak)) : 0;
+    const stars = won ? Math.floor(maxStreak/3) : 0;
     const starsHtml = stars>0 ? `<div class="bbadge-stars">${'⭐'.repeat(Math.min(stars,5))}</div>` : '';
     const tooltip = won
-      ? `${cat.label}(${cat.desc}) · ${escapeHtml(u?u.name:winner.empId)}${branchNm?`(${branchNm})`:''} · ${escapeHtml(cat.fmt(winner.value))}${r.streakDisplay>1?` · ${r.streakDisplay}개월 연속`:''}`
+      ? `${cat.label}(${cat.desc}) · ${isTie?'공동 1위 · ':''}${winnerInfo.map(w=>`${escapeHtml(w.name)}${w.branchNm?`(${escapeHtml(w.branchNm)})`:''} ${escapeHtml(cat.fmt(w.value))}`).join(', ')}${!isTie && maxStreak>1?` · ${maxStreak}개월 연속`:''}`
       : `${cat.label}(${cat.desc}) · 이번 달은 아직 1위가 없습니다`;
     const g = cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
     const sh = cat.shadow || '242,163,0';
@@ -2471,11 +2513,13 @@ function renderHomeManagerBadges(){
       ? `background:linear-gradient(160deg, ${g[0]} 0%, ${g[1]} 45%, ${g[2]} 100%);box-shadow:0 5px 12px rgba(${sh},.5), inset 0 0 0 2px rgba(255,255,255,.6);`
       : 'background:#e7e8ec;box-shadow:inset 0 0 0 2px #d7d8dd;';
     const dim = won ? '' : 'filter:grayscale(1);opacity:.5;';
-    const totalCount = won ? managerBadgeTotalCount(cat.id, winner.empId, true) : 0;
+    // 공동 수상일 때는 사람마다 누적 횟수가 다를 수 있어 하나의 숫자로 뭉뚱그리지 않고 생략한다
+    // (자세한 누적 횟수는 마우스오버 툴팁에서 확인 가능).
+    const totalCount = (won && !isTie) ? managerBadgeTotalCount(cat.id, winners[0].empId, true) : 0;
     const totalTag = totalCount>0 ? ` <span class="bbadge-total">🏅×${totalCount}</span>` : '';
     const subLabel = `${cat.label}${totalTag}`;
     return `
-      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip} · 누적 ${totalCount}회 획득">
+      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
         <div class="bbadge-shieldwrap">
           ${starsHtml}
           <div class="bbadge-crown" style="${dim}">👑</div>
@@ -2486,7 +2530,7 @@ function renderHomeManagerBadges(){
             <div class="bbadge-ribbon-text">${cat.label}</div>
           </div>
         </div>
-        <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};">${mgrName}</div>
+        <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};${isTie?'white-space:normal;line-height:1.25;':''}">${mgrName}</div>
         <div class="bbadge-title-label">${subLabel}</div>
       </div>`;
   }).join('');
@@ -2519,16 +2563,22 @@ function finalizeBranchBadgesIfNeeded(){
   let cursor = addMonthsToPeriod(DB.branchBadgeStreaks.lastFinalizedPeriod, 1);
   while(cursor < nowPeriod){
     BRANCH_BADGE_CATEGORIES.forEach(cat=>{
-      const winner = branchBadgeWinner(cat, cursor);
-      const last = DB.branchBadgeStreaks.lastWinner[cat.id];
-      if(winner){
-        const streak = (last && last.branchId===winner.branchId) ? (last.streak+1) : 1;
-        DB.branchBadgeStreaks.lastWinner[cat.id] = { branchId:winner.branchId, streak };
-        // 해당 지점이 이 종목에서 지금까지 총 몇 번 1위를 했는지 누적 집계(배지 수집 개수 표시용).
+      // 동점 공동 1위를 반영해 winners는 배열이다. lastWinner[cat.id]도 "지난달까지 연속
+      // 우승 중이던 지점들"의 배열로 바꿔, 각 지점이 자기 스트릭을 독립적으로 이어가게 한다.
+      const winners = branchBadgeWinner(cat, cursor);
+      const lastArr = DB.branchBadgeStreaks.lastWinner[cat.id] || [];
+      const lastByBranch = {};
+      lastArr.forEach(w=>{ lastByBranch[w.branchId] = w.streak; });
+      if(winners.length>0){
         if(!DB.branchBadgeTotals[cat.id]) DB.branchBadgeTotals[cat.id] = {};
-        DB.branchBadgeTotals[cat.id][winner.branchId] = (DB.branchBadgeTotals[cat.id][winner.branchId]||0) + 1;
+        DB.branchBadgeStreaks.lastWinner[cat.id] = winners.map(w=>{
+          // 해당 지점이 이 종목에서 지금까지 총 몇 번 1위를 했는지 누적 집계(배지 수집 개수 표시용).
+          DB.branchBadgeTotals[cat.id][w.branchId] = (DB.branchBadgeTotals[cat.id][w.branchId]||0) + 1;
+          const streak = lastByBranch[w.branchId] ? lastByBranch[w.branchId]+1 : 1;
+          return { branchId:w.branchId, streak };
+        });
       } else {
-        DB.branchBadgeStreaks.lastWinner[cat.id] = null;
+        DB.branchBadgeStreaks.lastWinner[cat.id] = [];
       }
     });
     DB.branchBadgeStreaks.lastFinalizedPeriod = cursor;
@@ -2550,30 +2600,38 @@ function renderHomeBranchBadges(){
   const period = periodStr();
   const streaks = (DB.branchBadgeStreaks && DB.branchBadgeStreaks.lastWinner) || {};
   const results = BRANCH_BADGE_CATEGORIES.map(cat=>{
-    const winner = branchBadgeWinner(cat, period);
-    if(!winner) return { cat, winner:null, streakDisplay:0 };
-    const last = streaks[cat.id];
-    const streakDisplay = (last && last.branchId===winner.branchId) ? last.streak+1 : 1;
-    return { cat, winner, streakDisplay };
+    const winners = branchBadgeWinner(cat, period);
+    if(winners.length===0) return { cat, winners:[], streakByBranch:{} };
+    const lastArr = streaks[cat.id] || [];
+    const lastByBranch = {};
+    lastArr.forEach(w=>{ lastByBranch[w.branchId] = w.streak; });
+    const streakByBranch = {};
+    winners.forEach(w=>{ streakByBranch[w.branchId] = lastByBranch[w.branchId] ? lastByBranch[w.branchId]+1 : 1; });
+    return { cat, winners, streakByBranch };
   });
-  const withWinner = results.filter(r=>r.winner);
+  const withWinner = results.filter(r=>r.winners.length>0);
   // 그랜드슬램: 지점 배지가 11개로 늘어나면서 "전 종목 동시 1위"는 사실상 불가능에 가까워져서,
   // 지우님 요청대로 전 종목이 아니라 "5개 이상 종목 동시 1위"로 기준을 완화했다(매니저 개인
   // 그랜드슬램은 별도로 두지 않기로 함 — renderHomeManagerBadges() 옆 주석 참고).
+  // 종목 안에서 공동 1위가 나오면, 그 종목은 공동 1위 지점 모두에게 "1승"으로 인정한다.
   const BRANCH_GRANDSLAM_MIN = 5;
   const branchWinCounts = {};
-  withWinner.forEach(r=>{ branchWinCounts[r.winner.branchId] = (branchWinCounts[r.winner.branchId]||0) + 1; });
+  withWinner.forEach(r=>{ r.winners.forEach(w=>{ branchWinCounts[w.branchId] = (branchWinCounts[w.branchId]||0) + 1; }); });
   let grandSlamBranch = null, grandSlamBranchCount = 0;
   Object.entries(branchWinCounts).forEach(([branchId,count])=>{
     if(count>=BRANCH_GRANDSLAM_MIN && count>grandSlamBranchCount){ grandSlamBranch = branchId; grandSlamBranchCount = count; }
   });
   const cardsHtml = results.map(r=>{
-    const won = !!r.winner;
-    const stars = won ? Math.floor(r.streakDisplay/3) : 0;
+    const winners = r.winners;
+    const won = winners.length>0;
+    const isTie = winners.length>1;
+    const winnerInfo = winners.map(w=>({ branchId:w.branchId, name:branchName(w.branchId), value:w.value, streak:r.streakByBranch[w.branchId] }));
+    const branchNm = won ? winnerInfo.map(w=>escapeHtml(w.name)).join(' · ') : '미정';
+    const maxStreak = won ? Math.max(...winnerInfo.map(w=>w.streak)) : 0;
+    const stars = won ? Math.floor(maxStreak/3) : 0;
     const starsHtml = stars>0 ? `<div class="bbadge-stars">${'⭐'.repeat(Math.min(stars,5))}</div>` : '';
-    const branchNm = won ? escapeHtml(branchName(r.winner.branchId)) : '미정';
     const tooltip = won
-      ? `${r.cat.label}(${r.cat.desc}) · ${escapeHtml(branchName(r.winner.branchId))} · ${escapeHtml(r.cat.fmt(r.winner.value))}${r.streakDisplay>1?` · ${r.streakDisplay}개월 연속`:''}`
+      ? `${r.cat.label}(${r.cat.desc}) · ${isTie?'공동 1위 · ':''}${winnerInfo.map(w=>`${escapeHtml(w.name)} ${escapeHtml(r.cat.fmt(w.value))}`).join(', ')}${!isTie && maxStreak>1?` · ${maxStreak}개월 연속`:''}`
       : `${r.cat.label}(${r.cat.desc}) · 이번 달은 아직 1위가 없습니다`;
     const g = r.cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
     const sh = r.cat.shadow || '242,163,0';
@@ -2581,10 +2639,11 @@ function renderHomeBranchBadges(){
       ? `background:linear-gradient(160deg, ${g[0]} 0%, ${g[1]} 45%, ${g[2]} 100%);box-shadow:0 5px 12px rgba(${sh},.5), inset 0 0 0 2px rgba(255,255,255,.6);`
       : 'background:#e7e8ec;box-shadow:inset 0 0 0 2px #d7d8dd;';
     const dim = won ? '' : 'filter:grayscale(1);opacity:.5;';
-    const totalCount = won ? branchBadgeTotalCount(r.cat.id, r.winner.branchId, true) : 0;
+    // 공동 수상이면 지점마다 누적 횟수가 달라질 수 있어 숫자 하나로 뭉뚱그리지 않고 생략한다.
+    const totalCount = (won && !isTie) ? branchBadgeTotalCount(r.cat.id, winners[0].branchId, true) : 0;
     const totalTag = totalCount>0 ? ` <span class="bbadge-total">🏅×${totalCount}</span>` : '';
     return `
-      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip} · 누적 ${totalCount}회 획득">
+      <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
         <div class="bbadge-shieldwrap">
           ${starsHtml}
           <div class="bbadge-crown" style="${dim}">👑</div>
@@ -2595,7 +2654,7 @@ function renderHomeBranchBadges(){
             <div class="bbadge-ribbon-text">${r.cat.label}</div>
           </div>
         </div>
-        <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};">${branchNm}</div>
+        <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};${isTie?'white-space:normal;line-height:1.25;':''}">${branchNm}</div>
         <div class="bbadge-title-label">${r.cat.label}${totalTag}</div>
       </div>`;
   }).join('');
@@ -14576,6 +14635,98 @@ function deleteKakaoFriendsRow(branchId, date){
   saveDB();
   renderTab('kakaoFriends');
 }
+// ---- 카카오 플친 관리현황표: 목표/전월 누적/전주 누적은 관리자가 직접 입력·수정하는 값이고,
+// "현재(최신 주차 누적)"는 위쪽 주차별 업로드 데이터(kakaoFriendsLatestCumulative)에서 그대로
+// 가져온다. 남은 인원/전월비 증감율/진행률은 이 값들로부터 자동 계산된다.
+function ensureKakaoFriendsMgmt(){
+  if(!DB.kakaoFriendsMgmt) DB.kakaoFriendsMgmt = {};
+  DB.branches.forEach(b=>{
+    if(!DB.kakaoFriendsMgmt[b.id]) DB.kakaoFriendsMgmt[b.id] = { target:0, lastMonthCum:0, lastWeekCum:0 };
+  });
+}
+function kakaoFriendsMgmtRows(){
+  ensureKakaoFriendsMgmt();
+  return DB.branches.map(b=>{
+    const m = DB.kakaoFriendsMgmt[b.id] || { target:0, lastMonthCum:0, lastWeekCum:0 };
+    const target = Number(m.target)||0;
+    const lastMonthCum = Number(m.lastMonthCum)||0;
+    const lastWeekCum = Number(m.lastWeekCum)||0;
+    const current = kakaoFriendsLatestCumulative(b.id);
+    const remaining = target>0 ? Math.max(target - current, 0) : null;
+    const hasBaseline = lastMonthCum>0;
+    const momDiff = hasBaseline ? current - lastMonthCum : null;
+    const momRate = hasBaseline ? (momDiff/lastMonthCum*100) : null;
+    const pct = target>0 ? Math.min(current/target*100, 100) : null;
+    return { branchId:b.id, target, lastMonthCum, lastWeekCum, current, remaining, momDiff, momRate, pct };
+  });
+}
+function toggleKakaoMgmtEdit(){
+  if(SESSION.role!=='admin') return;
+  state.kakaoMgmtEditing = !state.kakaoMgmtEditing;
+  renderTab('kakaoFriends');
+}
+function saveKakaoFriendsMgmt(){
+  if(SESSION.role!=='admin') return;
+  ensureKakaoFriendsMgmt();
+  DB.branches.forEach(b=>{
+    const t = Number(document.getElementById('kfmTarget_'+b.id).value)||0;
+    const lm = Number(document.getElementById('kfmLastMonth_'+b.id).value)||0;
+    const lw = Number(document.getElementById('kfmLastWeek_'+b.id).value)||0;
+    DB.kakaoFriendsMgmt[b.id] = { target:t, lastMonthCum:lm, lastWeekCum:lw };
+  });
+  saveDB();
+  state.kakaoMgmtEditing = false;
+  logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 관리현황표] 목표·전월/전주 누적을 수정했습니다`);
+  renderTab('kakaoFriends');
+}
+function renderKakaoFriendsMgmtTable(){
+  const isAdmin = SESSION.role==='admin';
+  const rows = kakaoFriendsMgmtRows();
+  const bodyHtml = rows.map(r=>`
+    <tr>
+      <td>${branchName(r.branchId)}</td>
+      <td>${fmtNum(r.lastMonthCum)}명</td>
+      <td>${fmtNum(r.lastWeekCum)}명</td>
+      <td>${fmtNum(r.current)}명</td>
+      <td>${r.remaining==null ? '<span class="muted">목표 미입력</span>' : (r.remaining>0 ? fmtNum(r.remaining)+'명' : '<span class="badge good">목표 달성</span>')}</td>
+      <td>${r.momRate==null ? '<span class="muted">-</span>' : `<span style="color:${r.momRate>=0?'var(--primary)':'var(--bad)'};font-weight:700;">${r.momRate>=0?'+':''}${r.momRate.toFixed(1)}%</span>`}</td>
+      <td style="min-width:120px;">${r.pct==null ? '<span class="muted">목표 미입력</span>' : `<div class="progress-bar"><div style="width:${r.pct}%"></div></div><div style="font-size:11px;margin-top:2px;">${r.pct.toFixed(1)}%</div>`}</td>
+    </tr>`).join('');
+  const editToggleHtml = isAdmin ? `<button class="btn btn-sm" onclick="toggleKakaoMgmtEdit()">${state.kakaoMgmtEditing ? '편집 닫기' : '목표·전월/전주 누적 입력'}</button>` : '';
+  const editFormHtml = (isAdmin && state.kakaoMgmtEditing) ? `
+    <div class="card" style="margin:12px 0;background:#fff;">
+      <div class="muted" style="margin-bottom:8px;font-size:12px;">지점별로 이번 달 목표 인원, 전월 말 누적, 전주 누적을 입력해 주세요. '현재(최신 주차 누적)'는 위쪽 주차별 업로드 데이터에서 자동으로 반영되어 여기서 직접 입력하지 않습니다.</div>
+      <div class="grid grid-3">
+        ${DB.branches.map(b=>{
+          const m = (DB.kakaoFriendsMgmt && DB.kakaoFriendsMgmt[b.id]) || {target:0,lastMonthCum:0,lastWeekCum:0};
+          return `
+          <div class="field" style="border:1px solid var(--border);border-radius:8px;padding:8px;">
+            <label style="font-weight:700;">${escapeHtml(b.name)}</label>
+            <div style="display:flex;flex-direction:column;gap:4px;margin-top:4px;">
+              <input id="kfmTarget_${b.id}" type="number" placeholder="목표 인원" value="${m.target||0}" style="width:100%;">
+              <input id="kfmLastMonth_${b.id}" type="number" placeholder="전월 누적" value="${m.lastMonthCum||0}" style="width:100%;">
+              <input id="kfmLastWeek_${b.id}" type="number" placeholder="전주 누적" value="${m.lastWeekCum||0}" style="width:100%;">
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <button class="btn btn-primary" style="margin-top:12px;" onclick="saveKakaoFriendsMgmt()">저장</button>
+    </div>` : '';
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="flex-between" style="margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+        <h3 style="margin:0;">카카오 플친 관리현황표</h3>
+        ${editToggleHtml}
+      </div>
+      ${editFormHtml}
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>지점</th><th>전월 누적</th><th>전주 누적</th><th>현재(최신 주차 누적)</th><th>남은 인원</th><th>전월비 증감율</th><th>진행률</th></tr></thead>
+        <tbody>${bodyHtml || '<tr><td colspan="7" class="muted">지점 데이터가 없습니다.</td></tr>'}</tbody>
+      </table>
+      </div>
+    </div>`;
+}
 function kakaoFriendsLatestChange(){
   const byBranch = kakaoFriendsByBranch();
   const results = [];
@@ -14910,6 +15061,7 @@ function renderKakaoFriends(){
   return `
     <div class="page-title">카카오 플친 관리 현황</div>
     <div class="page-desc">지점별 카카오톡 플러스친구(플친) 컨테스트 현황입니다.</div>
+    ${renderKakaoFriendsMgmtTable()}
     <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;">
       <div style="flex:1;min-width:280px;max-width:420px;display:flex;">
         ${renderKakaoContestResultImage()}
