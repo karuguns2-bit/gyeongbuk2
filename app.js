@@ -14948,14 +14948,12 @@ function renderKakaoContestBanner(){
     <tr>
       <td>${branchName(p.branchId)}</td>
       <td>${fmtNum(p.target)}명</td>
-      <td>${isAdmin ? `<input type="number" class="kc-inline-input" id="kcLastMonthCell_${p.branchId}" value="${p.lastMonthCum}" style="width:84px;">` : `${fmtNum(p.lastMonthCum)}명`}</td>
-      <td>${isAdmin ? `<input type="number" class="kc-inline-input" id="kcLastWeekCell_${p.branchId}" value="${p.lastWeekCum}" style="width:84px;">` : `${fmtNum(p.lastWeekCum)}명`}</td>
       <td>${fmtNum(p.latest)}명</td>
       <td>${p.remaining==null ? '<span class="muted">목표 미입력</span>' : (p.remaining>0 ? fmtNum(p.remaining)+'명' : '<span class="badge good">목표 달성</span>')}</td>
       <td>${p.momDiff==null ? '<span class="muted">-</span>' : `<span style="color:${p.momDiff>=0?'var(--primary)':'var(--bad)'};font-weight:700;">${p.momDiff>=0?'+':''}${fmtNum(p.momDiff)}명</span>`}</td>
       <td style="min-width:120px;">${p.pct==null ? '<span class="muted">-</span>' : `<div class="progress-bar"><div style="width:${p.pct}%"></div></div>`}</td>
       <td>${p.pct==null ? '' : p.pct.toFixed(1)+'%'}</td>
-    </tr>`).join('') || `<tr><td colspan="9" class="muted">등록된 목표가 없습니다.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="7" class="muted">등록된 목표가 없습니다.</td></tr>`;
   const editToggleHtml = isAdmin ? `<button class="btn btn-sm" onclick="toggleKakaoContestEdit()">${state.kakaoContestEditing ? '편집 닫기' : '내용 수정'}</button>` : '';
   const editFormHtml = (isAdmin && state.kakaoContestEditing) ? `
     <div class="card" style="margin:12px 0;background:#fff;">
@@ -14985,13 +14983,9 @@ function renderKakaoContestBanner(){
       <div style="font-weight:700;font-size:15px;margin:4px 0 2px;">${info.title}</div>
       <div class="muted" style="margin-bottom:10px;">${info.subtitle} · ${info.note}</div>
       ${editFormHtml}
-      ${isAdmin ? `<div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-bottom:6px;">
-        <span class="muted" style="font-size:11.5px;">전월 누적 · 전주 누적은 표에서 바로 수정할 수 있어요.</span>
-        <button class="btn btn-sm btn-primary" onclick="saveKakaoLastCumFromTable()">전월·전주 누적 저장</button>
-      </div>` : ''}
       <div style="overflow-x:auto;">
       <table>
-        <thead><tr><th>지점</th><th>목표</th><th>전월 누적</th><th>전주 누적</th><th>현재(최신 주차 누적)</th><th>남은 인원</th><th>전월비 증감수</th><th>진행률</th><th></th></tr></thead>
+        <thead><tr><th>지점</th><th>목표</th><th>현재(최신 주차 누적)</th><th>남은 인원</th><th>전월비 증감수</th><th>진행률</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -15016,24 +15010,9 @@ function updateKakaoContestInfo(){
   logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 컨테스트 안내] 내용을 수정했습니다`);
   renderTab('kakaoFriends');
 }
-// 전월 누적/전주 누적은 목표 인원과 달리 별도 수정창을 열 필요 없이, 컨테스트 안내 표의 해당
-// 칸에서 관리자가 바로 입력하고 이 저장 버튼 하나로 한 번에 반영한다.
-function saveKakaoLastCumFromTable(){
-  if(SESSION.role!=='admin') return;
-  const info = DB.kakaoContestInfo;
-  if(!info.lastMonthCum) info.lastMonthCum = {};
-  if(!info.lastWeekCum) info.lastWeekCum = {};
-  DB.branches.forEach(b=>{
-    const elLM = document.getElementById('kcLastMonthCell_' + b.id);
-    const elLW = document.getElementById('kcLastWeekCell_' + b.id);
-    if(elLM) info.lastMonthCum[b.id] = Number(elLM.value) || 0;
-    if(elLW) info.lastWeekCum[b.id] = Number(elLW.value) || 0;
-  });
-  saveDB();
-  logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 컨테스트 안내] 전월/전주 누적을 수정했습니다`);
-  showToast('전월·전주 누적이 저장되었습니다.', true);
-  renderTab('kakaoFriends');
-}
+// 전월 누적/전주 누적은 이제 카카오 플친 데이터 파일 업로드 시 자동으로 채워지므로(파일의
+// 이전 달 시트 총계 · 이번 달 직전 주차 값 기준), 표에서 별도로 수동 입력받지 않는다. 값 자체는
+// DB.kakaoContestInfo.lastMonthCum/lastWeekCum에 계속 저장되어 전월비 증감수/진행률 계산에 쓰인다.
 function renderKakaoFriendsBanner(){
   const changes = kakaoFriendsLatestChange();
   if(changes.length===0){
