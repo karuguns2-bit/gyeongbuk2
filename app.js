@@ -1158,6 +1158,10 @@ function migrateDB(){
   if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
   // 모바일 상품권 취합 등록 일시 정지 여부 (관리자가 필요 시 켜고 끔, 기본값은 등록 가능)
   if(DB.giftcardRegistrationLocked===undefined || DB.giftcardRegistrationLocked===null) DB.giftcardRegistrationLocked = false;
+  // 모바일 상품권 취합 운영 기간(시작일/종료일) - 관리자가 지정하면 기간 밖에는 자동으로 등록이
+  // 막힌다(수동 일시정지 스위치와 별개로 동작 - 둘 중 하나라도 걸리면 등록 불가).
+  if(DB.giftcardWindowStart===undefined) DB.giftcardWindowStart = null;
+  if(DB.giftcardWindowEnd===undefined) DB.giftcardWindowEnd = null;
   if(!DB.eduSchedules) DB.eduSchedules = { hq: [], inhouse: [], etc: [] };
   if(!DB.eduSchedules.hq) DB.eduSchedules.hq = [];
   if(!DB.eduSchedules.inhouse) DB.eduSchedules.inhouse = [];
@@ -1622,6 +1626,37 @@ function toggleGiftcardLockSetting(checked){
   DB.giftcardRegistrationLocked = !!checked;
   saveDB();
   logActivity('update', `${SESSION.name}님(관리자)이 [모바일 상품권] 등록 ${DB.giftcardRegistrationLocked ? '일시 정지를 설정' : '정지를 해제'}했습니다`);
+  renderTab('collectGiftcard');
+}
+// 모바일 상품권 취합 운영 기간(시작일/종료일) - 관리자가 지정하면 그 기간 밖에는 자동으로 등록이
+// 막힌다. 위 수동 일시정지 스위치와는 별개로 동작하며, 둘 중 하나라도 걸리면 등록할 수 없다.
+function giftcardWindowActive(){
+  if(!DB.giftcardWindowStart && !DB.giftcardWindowEnd) return true;
+  const today = todayStr();
+  if(DB.giftcardWindowStart && today < DB.giftcardWindowStart) return false;
+  if(DB.giftcardWindowEnd && today > DB.giftcardWindowEnd) return false;
+  return true;
+}
+// 등록이 막혀 있으면 그 이유를 안내 문구로 돌려주고(수동 정지가 우선), 등록 가능하면 null을 준다.
+function giftcardRegistrationBlockedReason(){
+  if(DB.giftcardRegistrationLocked) return '관리자가 등록을 일시 정지했습니다.';
+  if(!giftcardWindowActive()){
+    const today = todayStr();
+    if(DB.giftcardWindowStart && today < DB.giftcardWindowStart) return `아직 운영 기간이 아닙니다 (시작일 ${DB.giftcardWindowStart}부터 등록 가능).`;
+    return `운영 기간이 종료되어 등록이 마감되었습니다${DB.giftcardWindowEnd ? ` (종료일 ${DB.giftcardWindowEnd})` : ''}.`;
+  }
+  return null;
+}
+function updateGiftcardWindow(field, val){
+  if(!SESSION || SESSION.role!=='admin') return;
+  if(field==='start') DB.giftcardWindowStart = val || null;
+  else DB.giftcardWindowEnd = val || null;
+  if(DB.giftcardWindowStart && DB.giftcardWindowEnd && DB.giftcardWindowStart > DB.giftcardWindowEnd){
+    alert('종료일은 시작일보다 빠를 수 없습니다.');
+    if(field==='start') DB.giftcardWindowStart = null; else DB.giftcardWindowEnd = null;
+  }
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [모바일 상품권] 운영 기간을 수정했습니다`);
   renderTab('collectGiftcard');
 }
 function branchName(id){ const b=DB.branches.find(x=>x.id===id); return b?b.name:'-'; }
@@ -10261,8 +10296,19 @@ function renderCollectGiftcard(){
           <span class="slider"></span>
         </span>
         <span style="font-size:13.5px;">등록 일시 정지 ${DB.giftcardRegistrationLocked ? '(사용 중 - 매니저 등록이 막혀 있습니다)' : '(사용 안 함)'}</span>
-      </label>` : ''}
-      ${DB.giftcardRegistrationLocked ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-weight:600;">⛔ 8월 모바일상품권 사용기간 종료로 인해 등록이 일시 정지됩니다.</div>` : ''}
+      </label>
+      <div class="form-row" style="align-items:flex-end;margin-bottom:12px;">
+        <div class="field">
+          <label>운영 시작일</label>
+          <input type="date" value="${DB.giftcardWindowStart||''}" onchange="updateGiftcardWindow('start', this.value)" style="width:160px">
+        </div>
+        <div class="field">
+          <label>운영 종료일</label>
+          <input type="date" value="${DB.giftcardWindowEnd||''}" onchange="updateGiftcardWindow('end', this.value)" style="width:160px">
+        </div>
+        <div class="small-note" style="margin-bottom:6px;">비워두면 기간 제한 없이 상시 등록 가능합니다.</div>
+      </div>` : ''}
+      ${giftcardRegistrationBlockedReason() ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-weight:600;">⛔ ${giftcardRegistrationBlockedReason()}</div>` : ''}
       <div class="form-row">
         <div class="field">
           <label>고객명</label>
@@ -10317,7 +10363,7 @@ function renderCollectGiftcard(){
           <label>영수증 증빙 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
           <input id="gcReceipt" type="file" multiple>
         </div>
-        <button class="btn btn-primary" onclick="submitGiftcardRequest()" ${DB.giftcardRegistrationLocked ? 'disabled title="등록이 일시 정지되었습니다"' : ''}>등록</button>
+        <button class="btn btn-primary" onclick="submitGiftcardRequest()" ${giftcardRegistrationBlockedReason() ? `disabled title="${escapeHtml(giftcardRegistrationBlockedReason())}"` : ''}>등록</button>
       </div>
     </div>
 
@@ -10405,7 +10451,8 @@ function applyModelAutocomplete(inputId, hintId, model){
   closeModelHint(hintId);
 }
 function submitGiftcardRequest(){
-  if(DB.giftcardRegistrationLocked){ alert('8월 모바일상품권 사용기간 종료로 인해 등록이 일시 정지됩니다'); return; }
+  const blockedReason = giftcardRegistrationBlockedReason();
+  if(blockedReason){ alert(blockedReason); return; }
   const branchId = document.getElementById('gcBranch').value;
   const transferBranchId = document.getElementById('gcTransferBranch').value;
   const orderNo = document.getElementById('gcOrderNo').value.trim();
@@ -10704,12 +10751,21 @@ function contestGiftTypeOptionLimitLabel(o){
   if(o.limit==null) return '제한 없음';
   return `${o.limit}개 한정 (잔여 ${Math.max(0, o.limit - contestGiftIssuedQty(o.value, null))}개)`;
 }
+// 운영기간(windowStart/windowEnd)은 subTierContestOptionWithinWindow()가 그대로 읽어 판정에
+// 쓴다(구독연동사은품/기타 사은품 옵션 공통 필드명). 관리 목록에는 "9/1~9/14"처럼 간단히 보여준다.
+function contestGiftTypeOptionWindowLabel(o){
+  if(!o.windowStart && !o.windowEnd) return '상시';
+  const fmt = d => d ? d.slice(5).replace('-', '/') : '';
+  if(o.windowStart && o.windowEnd) return `${fmt(o.windowStart)}~${fmt(o.windowEnd)}`;
+  if(o.windowStart) return `${fmt(o.windowStart)}~`;
+  return `~${fmt(o.windowEnd)}`;
+}
 function renderContestGiftTypeOptionAdmin(){
   const list = DB.contestGiftTypeOptions || [];
   const editId = state.cgoEditId;
   const rows = list.map(o=>{
     if(editId===o.id){
-      const mode = o.address ? 'store_out' : 'customer';
+      const mode = o.address==='기타' ? 'etc' : (o.address ? 'store_out' : 'customer');
       return `
     <tr>
       <td><input id="cgoe_${o.id}_value" value="${escapeHtml(o.value)}" style="width:200px"></td>
@@ -10718,9 +10774,15 @@ function renderContestGiftTypeOptionAdmin(){
         <select id="cgoe_${o.id}_mode" style="width:200px">
           <option value="store_out" ${mode==='store_out'?'selected':''}>매장으로 배송</option>
           <option value="customer" ${mode==='customer'?'selected':''}>고객댁으로 배송(주소 검색 필요)</option>
+          <option value="etc" ${mode==='etc'?'selected':''}>기타</option>
         </select>
       </td>
       <td><input id="cgoe_${o.id}_limit" type="number" min="1" value="${o.limit!=null?o.limit:''}" placeholder="무제한" style="width:90px"></td>
+      <td style="white-space:nowrap;">
+        <input id="cgoe_${o.id}_start" type="date" value="${o.windowStart||''}" style="width:130px">
+        ~
+        <input id="cgoe_${o.id}_end" type="date" value="${o.windowEnd||''}" style="width:130px">
+      </td>
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-primary" onclick="saveEditContestGiftTypeOption('${o.id}')">저장</button>
         <button class="btn btn-sm" onclick="cancelEditContestGiftTypeOption()">취소</button>
@@ -10733,13 +10795,14 @@ function renderContestGiftTypeOptionAdmin(){
       <td>${escapeHtml(o.gift||'-')}</td>
       <td class="muted">${o.address ? escapeHtml(o.address) : '고객댁으로 배송'}</td>
       <td class="muted">${contestGiftTypeOptionLimitLabel(o)}</td>
+      <td class="muted">${contestGiftTypeOptionWindowLabel(o)}</td>
       <td style="white-space:nowrap;"><button class="btn btn-sm" onclick="startEditContestGiftTypeOption('${o.id}')">수정</button> <button class="btn btn-sm" onclick="deleteContestGiftTypeOption('${o.id}')">삭제</button></td>
     </tr>`;
-  }).join('') || `<tr><td colspan="5" class="muted">등록된 항목이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="6" class="muted">등록된 항목이 없습니다.</td></tr>`;
   return `
     <div class="card" style="margin-bottom:16px;">
       <h3>컨테스트 항목 관리 (관리자 전용)</h3>
-      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 구분 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다.</div>
+      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 구분 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다. 운영기간을 지정하면 그 기간이 지난 뒤에는 "새 건 등록" 선택지에서 자동으로 사라집니다(비워두면 상시 운영).</div>
       <div class="form-row">
         <div class="field"><label>컨테스트 구분(항목명)</label><input id="cgoNewValue" placeholder="예: 구독 3건 계약 시" style="width:220px"></div>
         <div class="field"><label>사은품명</label><input id="cgoNewGift" placeholder="예: OOO 세트 1EA" style="width:220px"></div>
@@ -10748,16 +10811,25 @@ function renderContestGiftTypeOptionAdmin(){
           <select id="cgoNewAddressMode" style="width:210px">
             <option value="store_out">매장으로 배송</option>
             <option value="customer">고객댁으로 배송(주소 검색 필요)</option>
+            <option value="etc">기타</option>
           </select>
         </div>
         <div class="field">
           <label>한정수량 (선택, 비워두면 무제한)</label>
           <input id="cgoNewLimit" type="number" min="1" placeholder="예: 25" style="width:110px">
         </div>
+        <div class="field">
+          <label>운영 시작일 (선택)</label>
+          <input id="cgoNewStart" type="date" style="width:150px">
+        </div>
+        <div class="field">
+          <label>운영 종료일 (선택)</label>
+          <input id="cgoNewEnd" type="date" style="width:150px">
+        </div>
         <button class="btn btn-primary" onclick="addContestGiftTypeOption()">항목 추가</button>
       </div>
       <table style="margin-top:10px;">
-        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>수령 방식</th><th>한정수량</th><th></th></tr></thead>
+        <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>수령 방식</th><th>한정수량</th><th>운영기간</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -10768,12 +10840,18 @@ function addContestGiftTypeOption(){
   const gift = document.getElementById('cgoNewGift').value.trim();
   const mode = document.getElementById('cgoNewAddressMode').value;
   const limitRaw = document.getElementById('cgoNewLimit').value.trim();
+  const windowStart = document.getElementById('cgoNewStart').value || null;
+  const windowEnd = document.getElementById('cgoNewEnd').value || null;
   if(!value || !gift){ alert('컨테스트 구분과 사은품명을 모두 입력해 주세요.'); return; }
   if(limitRaw && (isNaN(Number(limitRaw)) || Number(limitRaw)<=0)){ alert('한정수량은 1 이상의 숫자로 입력해 주세요.'); return; }
+  if(windowStart && windowEnd && windowStart > windowEnd){ alert('운영 종료일은 시작일보다 빠를 수 없습니다.'); return; }
   if(!DB.contestGiftTypeOptions) DB.contestGiftTypeOptions = [];
   if(DB.contestGiftTypeOptions.some(o=>o.value===value)){ alert('이미 등록된 항목명입니다. 다른 이름을 입력해 주세요.'); return; }
   const entry = { id:'cgto_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), value, gift };
+  if(windowStart) entry.windowStart = windowStart;
+  if(windowEnd) entry.windowEnd = windowEnd;
   if(mode==='store_out') entry.address = '매장으로 배송';
+  else if(mode==='etc') entry.address = '기타';
   // customer(고객댁으로 배송)는 address를 비워둬 등록 화면에서 실제 주소를 검색해서 입력하게 한다.
   if(limitRaw) entry.limit = Number(limitRaw);
   DB.contestGiftTypeOptions.push(entry);
@@ -10797,13 +10875,20 @@ function saveEditContestGiftTypeOption(id){
   const gift = document.getElementById(`cgoe_${id}_gift`).value.trim();
   const mode = document.getElementById(`cgoe_${id}_mode`).value;
   const limitRaw = document.getElementById(`cgoe_${id}_limit`).value.trim();
+  const windowStart = document.getElementById(`cgoe_${id}_start`).value || null;
+  const windowEnd = document.getElementById(`cgoe_${id}_end`).value || null;
   if(!value || !gift){ alert('컨테스트 구분과 사은품명을 모두 입력해 주세요.'); return; }
   if(limitRaw && (isNaN(Number(limitRaw)) || Number(limitRaw)<=0)){ alert('한정수량은 1 이상의 숫자로 입력해 주세요.'); return; }
+  if(windowStart && windowEnd && windowStart > windowEnd){ alert('운영 종료일은 시작일보다 빠를 수 없습니다.'); return; }
   if(DB.contestGiftTypeOptions.some(o=>o.id!==id && o.value===value)){ alert('이미 등록된 항목명입니다. 다른 이름을 입력해 주세요.'); return; }
   opt.value = value;
   opt.gift = gift;
-  if(mode==='store_out') opt.address = '매장으로 배송'; else delete opt.address;
+  if(mode==='store_out') opt.address = '매장으로 배송';
+  else if(mode==='etc') opt.address = '기타';
+  else delete opt.address;
   if(limitRaw) opt.limit = Number(limitRaw); else delete opt.limit;
+  if(windowStart) opt.windowStart = windowStart; else delete opt.windowStart;
+  if(windowEnd) opt.windowEnd = windowEnd; else delete opt.windowEnd;
   state.cgoEditId = null;
   saveDB();
   renderTab('collectContest');
@@ -11437,15 +11522,23 @@ function canEditSubTierContest(r){
 // 유지되고 "새 건 등록" 선택지에서만 빠진다(구독연동사은품 취합의 renderContestGiftTypeOptionAdmin과 동일한 패턴).
 function subTierContestOptionAddressLabel(o){
   if(o.needsAddress) return '고객댁 배송(주소 검색)';
+  if(o.fixedAddress==='기타') return '기타';
   if(o.fixedAddress) return `매장 배송(${escapeHtml(o.fixedAddress)})`;
   return '매장으로 입고';
+}
+function subTierContestOptionWindowLabel(o){
+  if(!o.windowStart && !o.windowEnd) return '상시';
+  const fmt = d => d ? d.slice(5).replace('-', '/') : '';
+  if(o.windowStart && o.windowEnd) return `${fmt(o.windowStart)}~${fmt(o.windowEnd)}`;
+  if(o.windowStart) return `${fmt(o.windowStart)}~`;
+  return `~${fmt(o.windowEnd)}`;
 }
 function renderSubTierContestOptionAdmin(){
   const list = DB.subTierContestOptions || [];
   const editId = state.stcoEditId;
   const rows = list.map(o=>{
     if(editId===o.id){
-      const mode = o.needsAddress ? 'customer' : 'store_out';
+      const mode = o.needsAddress ? 'customer' : (o.fixedAddress==='기타' ? 'etc' : 'store_out');
       return `
     <tr>
       <td><input id="stcoe_${o.id}_value" value="${escapeHtml(o.value)}" style="width:200px"></td>
@@ -11454,9 +11547,15 @@ function renderSubTierContestOptionAdmin(){
         <select id="stcoe_${o.id}_mode" style="width:200px">
           <option value="store_out" ${mode==='store_out'?'selected':''}>매장으로 배송</option>
           <option value="customer" ${mode==='customer'?'selected':''}>고객댁으로 배송(주소 검색 필요)</option>
+          <option value="etc" ${mode==='etc'?'selected':''}>기타</option>
         </select>
       </td>
       <td><input id="stcoe_${o.id}_limit" type="number" min="1" value="${o.limit!=null?o.limit:''}" placeholder="무제한" style="width:90px"></td>
+      <td style="white-space:nowrap;">
+        <input id="stcoe_${o.id}_start" type="date" value="${o.windowStart||''}" style="width:130px">
+        ~
+        <input id="stcoe_${o.id}_end" type="date" value="${o.windowEnd||''}" style="width:130px">
+      </td>
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-primary" onclick="saveEditSubTierContestOption('${o.id}')">저장</button>
         <button class="btn btn-sm" onclick="cancelEditSubTierContestOption()">취소</button>
@@ -11469,13 +11568,14 @@ function renderSubTierContestOptionAdmin(){
       <td>${escapeHtml(o.gift||'-')}</td>
       <td class="muted">${subTierContestOptionAddressLabel(o)}</td>
       <td class="muted">${o.limit!=null ? `${o.limit}개 한정 (잔여 ${Math.max(0, o.limit - subTierContestIssuedCount(o.value, null))}개)` : '제한 없음'}</td>
+      <td class="muted">${subTierContestOptionWindowLabel(o)}</td>
       <td style="white-space:nowrap;"><button class="btn btn-sm" onclick="startEditSubTierContestOption('${o.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubTierContestOption('${o.id}')">삭제</button></td>
     </tr>`;
-  }).join('') || `<tr><td colspan="5" class="muted">등록된 항목이 없습니다.</td></tr>`;
+  }).join('') || `<tr><td colspan="6" class="muted">등록된 항목이 없습니다.</td></tr>`;
   return `
     <div class="card" style="margin-bottom:16px;">
       <h3>컨테스트 항목 관리 (관리자 전용)</h3>
-      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 항목 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다.</div>
+      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 항목 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다. 운영기간을 지정하면 그 기간이 지난 뒤에는 "새 건 등록" 선택지에서 자동으로 사라집니다(비워두면 상시 운영).</div>
       <div class="form-row">
         <div class="field"><label>컨테스트 항목명</label><input id="stcoNewValue" placeholder="예: 워시타워 구재고 판매시" style="width:220px"></div>
         <div class="field"><label>사은품명</label><input id="stcoNewGift" placeholder="예: OOO 세트 1EA" style="width:220px"></div>
@@ -11484,16 +11584,25 @@ function renderSubTierContestOptionAdmin(){
           <select id="stcoNewAddressMode" style="width:210px">
             <option value="store_out">매장으로 배송</option>
             <option value="customer">고객댁으로 배송(주소 검색 필요)</option>
+            <option value="etc">기타</option>
           </select>
         </div>
         <div class="field">
           <label>한정수량 (선택, 비워두면 무제한)</label>
           <input id="stcoNewLimit" type="number" min="1" placeholder="예: 25" style="width:110px">
         </div>
+        <div class="field">
+          <label>운영 시작일 (선택)</label>
+          <input id="stcoNewStart" type="date" style="width:150px">
+        </div>
+        <div class="field">
+          <label>운영 종료일 (선택)</label>
+          <input id="stcoNewEnd" type="date" style="width:150px">
+        </div>
         <button class="btn btn-primary" onclick="addSubTierContestOption()">항목 추가</button>
       </div>
       <table style="margin-top:10px;">
-        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>수령 방식</th><th>한정수량</th><th></th></tr></thead>
+        <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>수령 방식</th><th>한정수량</th><th>운영기간</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>`;
@@ -11504,14 +11613,20 @@ function addSubTierContestOption(){
   const gift = document.getElementById('stcoNewGift').value.trim();
   const mode = document.getElementById('stcoNewAddressMode').value;
   const limitRaw = document.getElementById('stcoNewLimit').value.trim();
+  const windowStart = document.getElementById('stcoNewStart').value || null;
+  const windowEnd = document.getElementById('stcoNewEnd').value || null;
   if(!value || !gift){ alert('컨테스트 항목명과 사은품명을 모두 입력해 주세요.'); return; }
   if(limitRaw && (isNaN(Number(limitRaw)) || Number(limitRaw)<=0)){ alert('한정수량은 1 이상의 숫자로 입력해 주세요.'); return; }
+  if(windowStart && windowEnd && windowStart > windowEnd){ alert('운영 종료일은 시작일보다 빠를 수 없습니다.'); return; }
   if(!DB.subTierContestOptions) DB.subTierContestOptions = [];
   if(DB.subTierContestOptions.some(o=>o.value===value)){ alert('이미 등록된 항목명입니다. 다른 이름을 입력해 주세요.'); return; }
   const entry = { id:'stco_'+Date.now()+'_'+Math.random().toString(36).slice(2,7), value, gift };
   if(mode==='customer') entry.needsAddress = true;
+  else if(mode==='etc') entry.fixedAddress = '기타';
   else if(mode==='store_out') entry.fixedAddress = '매장으로 배송';
   if(limitRaw) entry.limit = Number(limitRaw);
+  if(windowStart) entry.windowStart = windowStart;
+  if(windowEnd) entry.windowEnd = windowEnd;
   DB.subTierContestOptions.push(entry);
   saveDB();
   renderTab('subTierContest');
@@ -11533,14 +11648,20 @@ function saveEditSubTierContestOption(id){
   const gift = document.getElementById(`stcoe_${id}_gift`).value.trim();
   const mode = document.getElementById(`stcoe_${id}_mode`).value;
   const limitRaw = document.getElementById(`stcoe_${id}_limit`).value.trim();
+  const windowStart = document.getElementById(`stcoe_${id}_start`).value || null;
+  const windowEnd = document.getElementById(`stcoe_${id}_end`).value || null;
   if(!value || !gift){ alert('컨테스트 항목명과 사은품명을 모두 입력해 주세요.'); return; }
   if(limitRaw && (isNaN(Number(limitRaw)) || Number(limitRaw)<=0)){ alert('한정수량은 1 이상의 숫자로 입력해 주세요.'); return; }
+  if(windowStart && windowEnd && windowStart > windowEnd){ alert('운영 종료일은 시작일보다 빠를 수 없습니다.'); return; }
   if(DB.subTierContestOptions.some(o=>o.id!==id && o.value===value)){ alert('이미 등록된 항목명입니다. 다른 이름을 입력해 주세요.'); return; }
   opt.value = value;
   opt.gift = gift;
   if(mode==='customer'){ opt.needsAddress = true; delete opt.fixedAddress; }
+  else if(mode==='etc'){ delete opt.needsAddress; opt.fixedAddress = '기타'; }
   else { delete opt.needsAddress; opt.fixedAddress = '매장으로 배송'; }
   if(limitRaw) opt.limit = Number(limitRaw); else delete opt.limit;
+  if(windowStart) opt.windowStart = windowStart; else delete opt.windowStart;
+  if(windowEnd) opt.windowEnd = windowEnd; else delete opt.windowEnd;
   state.stcoEditId = null;
   saveDB();
   renderTab('subTierContest');
