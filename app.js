@@ -10754,7 +10754,7 @@ function contestGiftTypeOptionLimitLabel(o){
 // 운영기간(windowStart/windowEnd)은 subTierContestOptionWithinWindow()가 그대로 읽어 판정에
 // 쓴다(구독연동사은품/기타 사은품 옵션 공통 필드명). 관리 목록에는 "9/1~9/14"처럼 간단히 보여준다.
 function contestGiftTypeOptionWindowLabel(o){
-  if(!o.windowStart && !o.windowEnd) return '상시';
+  if(!o.windowStart && !o.windowEnd) return o.limit!=null ? '한정수량 소진시까지' : '상시';
   const fmt = d => d ? d.slice(5).replace('-', '/') : '';
   if(o.windowStart && o.windowEnd) return `${fmt(o.windowStart)}~${fmt(o.windowEnd)}`;
   if(o.windowStart) return `${fmt(o.windowStart)}~`;
@@ -11527,7 +11527,7 @@ function subTierContestOptionAddressLabel(o){
   return '매장으로 입고';
 }
 function subTierContestOptionWindowLabel(o){
-  if(!o.windowStart && !o.windowEnd) return '상시';
+  if(!o.windowStart && !o.windowEnd) return o.limit!=null ? '한정수량 소진시까지' : '상시';
   const fmt = d => d ? d.slice(5).replace('-', '/') : '';
   if(o.windowStart && o.windowEnd) return `${fmt(o.windowStart)}~${fmt(o.windowEnd)}`;
   if(o.windowStart) return `${fmt(o.windowStart)}~`;
