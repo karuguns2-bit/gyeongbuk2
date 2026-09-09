@@ -2148,22 +2148,23 @@ const BRANCH_BADGE_CATEGORIES = [
       return DB.branches.map(b=>({ branchId:b.id, value: kakaoFriendsLatestCumulative(b.id) })).filter(r=>r.value>0);
     },
     fmt(v){ return `${fmtNum(v)}명`; } },
-  // 카카오 플친 컨테스트 안내 표의 "전월 누적"(관리자 직접 입력값) 대비 "현재(최신 주차 누적)"의
-  // 증가분이 가장 큰 지점. 전월 누적을 아직 입력하지 않은 지점은 기준이 없어 계산에서 제외한다.
-  // 이 값은 "이번 달 전월 누적" 스냅샷 성격이라 지난 달 배지 확정 시점에는 값을 줄 수 없으므로
+  // 카카오 플친 컨테스트 안내 표의 "목표"(파일 업로드 또는 관리자 직접 입력) 대비 "현재(최신 주차
+  // 누적)"의 달성율이 가장 높은 지점. 목표를 아직 입력하지 않은 지점은 기준이 없어 계산에서 제외한다.
+  // 목표/현재는 항상 "지금 이 순간" 값이라 지난 달 배지 확정 시점에는 값을 줄 수 없으므로
   // clearanceKing과 동일하게 이번 달(period) 조회일 때만 값을 준다.
-  { id:'kakaoGrowth', label:'카카오 플친 최대 증가점', desc:'전월 누적 대비 이번 달 카카오 플러스친구 증가 인원 1위 지점', icon:'📈', svg:'arrowUpCircle', grad:['#d7f5c9','#8fe06a','#3fa622'], shadow:'63,166,34',
+  { id:'kakaoGoalRate', label:'카카오 플친 목표달성1위', desc:'카카오 플러스친구 이번 달 목표 달성율 1위 지점', icon:'🎯', svg:'target', grad:['#d7f5c9','#8fe06a','#3fa622'], shadow:'63,166,34',
     compute(period){
       if(period !== periodStr()) return [];
-      const lastMonthCum = (DB.kakaoContestInfo && DB.kakaoContestInfo.lastMonthCum) || {};
+      const targets = (DB.kakaoContestInfo && DB.kakaoContestInfo.targets) || {};
       return DB.branches.map(b=>{
-        const lm = Number(lastMonthCum[b.id])||0;
-        if(!(lm>0)) return null;
-        const diff = kakaoFriendsLatestCumulative(b.id) - lm;
-        return { branchId:b.id, value: diff };
-      }).filter(Boolean).filter(r=>r.value>0);
+        const target = Number(targets[b.id])||0;
+        if(!(target>0)) return null;
+        const current = kakaoFriendsLatestCumulative(b.id);
+        const rate = current/target*100;
+        return { branchId:b.id, value: rate };
+      }).filter(Boolean);
     },
-    fmt(v){ return `+${fmtNum(v)}명`; } },
+    fmt(v){ return `${v.toFixed(1)}%`; } },
   { id:'bestPractice', label:'우수활동 우수점', desc:'우수 활동 사례 최다등록 지점', icon:'🌟', svg:'star', grad:['#e2ceff','#b088ff','#7c3aed'], shadow:'124,58,237',
     compute(period){
       const counts = {};
@@ -4007,7 +4008,7 @@ function renderSystemAdmin(){
 
 <div class="card sysadmin-span4">
       <h3>카카오 플친 데이터 업로드(담당자 : 서영현D)</h3>
-      <div class="muted" style="margin-bottom:8px;font-size:12.5px;">"○○ 주차별 카카오 플러스 친구 추가 활동 결과" 형식(관리자/지점명/총계/주차별 누적/증감/비고)의 파일을 그대로 올리면 지점별·주차별 누적 데이터가 자동으로 반영됩니다. 지점/주차(또는 날짜)/플친수 컬럼만 있는 단순한 파일도 함께 지원합니다.${uploadLogStatusHtml('kakaoFriends')}</div>
+      <div class="muted" style="margin-bottom:8px;font-size:12.5px;">"○○ 주차별 카카오 플러스 친구 추가 활동 결과" 형식(관리자/지점명/목표/총계/달성율/주차별 누적/증감)의 파일을 그대로 올리면 됩니다. 월별로 시트가 나뉜 파일(7월/8월/9월 등)을 올리면 이번 달 시트를 기준으로 지점별·주차별 누적 데이터는 물론 카카오 플친 관리 현황의 목표·전월 누적·전주 누적까지 자동으로 반영됩니다(다음 달엔 "10월" 시트가 생기면 자동으로 인식됩니다). 지점/주차(또는 날짜)/플친수 컬럼만 있는 단순한 파일도 함께 지원합니다.${uploadLogStatusHtml('kakaoFriends')}</div>
       <input type="file" accept=".xlsx,.xls,.csv" onchange="handleKakaoFriendsFile(event)">
       <div id="kakaoFriendsUploadMsg" class="small-note"></div>
     </div>
@@ -14699,6 +14700,10 @@ function kakaoWeekLabelToDate(month, weekNum){
 // 실제 업로드 파일 형식(넓은 표: 관리자/지점명/총계/"N월 M주차"~"증감" 반복/비고, "계"·"이마트 전체" 소계행 포함)을
 // 그대로 인식해서 지점×주차별 누적 플친수를 뽑아낸다. 매주 업로드되는 파일은 그때까지의 전체 이력을
 // 다시 포함하고 있으므로, 매번 발견된 모든 주차 컬럼을 다시 반영(upsert)한다.
+// 2026-09월 시트부터 "N월목표"/"총계"/"달성율" 컬럼이 추가되어, 컨테스트 안내 표(목표/전월·전주
+// 누적)를 파일 업로드만으로 채울 수 있게 됐다. 반환하는 배열에 branchMeta(지점별 목표/총계/주차별
+// 값 목록)를 함께 실어보낸다 — 배열 자체의 형태(길이 체크로 실패 여부 판단)는 그대로 유지하면서
+// 호출부(handleKakaoFriendsFile)가 필요하면 꺼내 쓸 수 있게 하기 위함이다.
 function parseKakaoFriendsWideRows(rows){
   if(!rows || !rows.length) return null;
   let headerRowIdx = -1;
@@ -14713,6 +14718,8 @@ function parseKakaoFriendsWideRows(rows){
   const managerCol = header.findIndex(h=>/관리자/.test(h));
   const branchCol = header.findIndex(h=>/지점명|지점/.test(h));
   if(branchCol<0) return null;
+  const targetCol = header.findIndex(h=>/목표/.test(h));
+  const totalCol = header.findIndex(h=>/^총계$/.test(h));
   const weekCols = [];
   header.forEach((h,idx)=>{
     const m = /^(\d+)월\s*(\d+)주차$/.exec(h);
@@ -14720,6 +14727,7 @@ function parseKakaoFriendsWideRows(rows){
   });
   if(weekCols.length===0) return null;
   const out = [];
+  const branchMeta = {}; // branchId -> { target, total, weekValues:[{month,week,value}] }
   let currentManager = null;
   for(let r=headerRowIdx+1; r<rows.length; r++){
     const row = rows[r]; if(!row) continue;
@@ -14728,12 +14736,22 @@ function parseKakaoFriendsWideRows(rows){
     const branchRaw = row[branchCol];
     const bn = branchRaw==null ? '' : String(branchRaw).trim();
     if(!bn || bn==='계' || bn==='소계' || bn==='합계' || currentManager==='이마트 전체') continue;
-    const bnStripped = bn.replace(/\s/g,'');
-    const branch = DB.branches.find(b=>{
-      const bnameStripped = b.name.replace(/\s/g,'');
-      return bnameStripped===bnStripped || bnameStripped.includes(bnStripped) || bnStripped.includes(bnameStripped);
-    });
+    // "(신)이마트" 접두어를 뗀 뒤 공백만 제거하고 정확히 일치하는 지점을 우선 찾는다. 예전에는
+    // 부분포함(includes)만으로 매칭했는데, "구미점"이 "동구미점" 문자열에 부분 포함되는 것처럼
+    // 서로를 포함하는 지점명이 실제로 있어서 배열 순서상 먼저 나오는 쪽(구미점)으로 잘못
+    // 매칭되고 동구미점 데이터가 통째로 유실되는 실제 버그가 있었다(목표/전월누적을 이 파서
+    // 결과로 채우기 시작하면서 더 중요해짐). 정확 일치를 찾지 못했을 때만 최후 수단으로
+    // 부분포함 매칭을 시도한다.
+    const bnStripped = stripEmartPrefix(bn).replace(/\s/g,'');
+    let branch = DB.branches.find(b=> b.name.replace(/\s/g,'')===bnStripped);
+    if(!branch){
+      branch = DB.branches.find(b=>{
+        const bnameStripped = b.name.replace(/\s/g,'');
+        return bnameStripped.includes(bnStripped) || bnStripped.includes(bnameStripped);
+      });
+    }
     if(!branch) continue;
+    const weekValues = [];
     weekCols.forEach(wc=>{
       const raw = row[wc.idx];
       if(raw==null || raw===''){ return; }
@@ -14742,10 +14760,21 @@ function parseKakaoFriendsWideRows(rows){
       const date = kakaoWeekLabelToDate(wc.month, wc.week);
       if(!date) return;
       out.push({ id:'kf_'+branch.id+'_'+date, branchId:branch.id, date, weekStart:date, weekLabel:wc.label, count, createdAt:new Date().toISOString() });
+      weekValues.push({ month:wc.month, week:wc.week, value:count });
     });
+    const meta = { weekValues };
+    if(targetCol>=0){ const t = Number(row[targetCol]); if(Number.isFinite(t)) meta.target = t; }
+    if(totalCol>=0){ const t = Number(row[totalCol]); if(Number.isFinite(t)) meta.total = t; }
+    branchMeta[branch.id] = meta;
   }
+  out.branchMeta = branchMeta;
   return out;
 }
+// 2026-09월부터 파일이 "7월"/"8월"/"9월"처럼 월별 시트로 나뉘어 오는 형식으로 바뀌었다(예전에는
+// 시트 하나 안에 여러 달 주차 컬럼이 나란히 있었음). 이번 달({N}월) 시트를 기준으로 적용하고,
+// 다음 달에는 자연히 "{N+1}월" 시트가 생겨날 것이므로 별도 코드 수정 없이 그대로 인식된다.
+// 시트가 여러 개 있으면(월별로 나뉜 새 형식) 전부 파싱해서 DB.kakaoFriends 이력에 반영하고,
+// 그 중 "이번 달"/"지난 달" 시트의 branchMeta로 컨테스트 안내 표(목표/전월·전주 누적)까지 채운다.
 function handleKakaoFriendsFile(evt){
   const file = evt.target.files && evt.target.files[0];
   if(!file) return;
@@ -14755,20 +14784,60 @@ function handleKakaoFriendsFile(evt){
     try{
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, {type:'array'});
-      const sheetName = wb.SheetNames[0];
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
-      const parsed = parseKakaoFriendsWideRows(rows) || parseKakaoFriendsRows(rows);
-      if(parsed.length===0){ showUploadResult('kakaoFriendsUploadMsg', false, '데이터를 인식하지 못했습니다. 지점/주차(또는 날짜)/플친수 컬럼이 있는지 확인해 주세요.'); return; }
+      const now = new Date();
+      const curMonth = now.getMonth()+1;
+      const prevMonth = curMonth===1 ? 12 : curMonth-1;
+      const monthSheetNames = wb.SheetNames.filter(n=>/^\s*\d+\s*월\s*$/.test(n));
+      let parsed;
+      let curMeta = null, prevMeta = null;
+      if(monthSheetNames.length>0){
+        let allParsed = [];
+        monthSheetNames.forEach(sn=>{
+          const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], {header:1, defval:null, raw:true});
+          const p = parseKakaoFriendsWideRows(rows);
+          if(!p) return;
+          allParsed = allParsed.concat(p);
+          const m = Number(String(sn).replace(/[^\d]/g,''));
+          if(m===curMonth) curMeta = p.branchMeta;
+          if(m===prevMonth) prevMeta = p.branchMeta;
+        });
+        parsed = allParsed;
+      } else {
+        const sheetName = wb.SheetNames[0];
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {header:1, defval:null, raw:true});
+        parsed = parseKakaoFriendsWideRows(rows) || parseKakaoFriendsRows(rows);
+      }
+      if(!parsed || parsed.length===0){ showUploadResult('kakaoFriendsUploadMsg', false, '데이터를 인식하지 못했습니다. 지점/주차(또는 날짜)/플친수 컬럼이 있는지 확인해 주세요.'); return; }
       const keyOf = r => r.branchId + '|' + r.weekStart;
       const newKeys = new Set(parsed.map(keyOf));
       DB.kakaoFriends = (DB.kakaoFriends||[]).filter(r=> !newKeys.has(keyOf(r))).concat(parsed);
+      let contestMsg = '';
+      if(curMeta){
+        if(!DB.kakaoContestInfo) DB.kakaoContestInfo = JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO));
+        if(!DB.kakaoContestInfo.targets) DB.kakaoContestInfo.targets = {};
+        if(!DB.kakaoContestInfo.lastMonthCum) DB.kakaoContestInfo.lastMonthCum = {};
+        if(!DB.kakaoContestInfo.lastWeekCum) DB.kakaoContestInfo.lastWeekCum = {};
+        Object.entries(curMeta).forEach(([branchId, meta])=>{
+          if(meta.target!=null) DB.kakaoContestInfo.targets[branchId] = meta.target;
+          const prevTotal = (prevMeta && prevMeta[branchId] && prevMeta[branchId].total!=null) ? prevMeta[branchId].total : null;
+          if(prevTotal!=null) DB.kakaoContestInfo.lastMonthCum[branchId] = prevTotal;
+          const weeksSorted = (meta.weekValues||[]).slice().sort((a,b)=> (a.month-b.month) || (a.week-b.week));
+          if(weeksSorted.length>=2){
+            DB.kakaoContestInfo.lastWeekCum[branchId] = weeksSorted[weeksSorted.length-2].value;
+          } else if(prevTotal!=null){
+            // 이번 달 첫 주차뿐이면 "지난주"는 곧 지난달 마지막 주(=전월 누적)와 같다.
+            DB.kakaoContestInfo.lastWeekCum[branchId] = prevTotal;
+          }
+        });
+        contestMsg = ' 컨테스트 안내 표(목표·전월/전주 누적)도 함께 갱신됐어요.';
+      }
       touchTabContent('kakaoFriends');
       recordUploadLog('kakaoFriends', file);
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [카카오 플친 관리] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
-      showUploadResult('kakaoFriendsUploadMsg', true, `${parsed.length}건의 플친 데이터가 반영되었습니다.`);
+      showUploadResult('kakaoFriendsUploadMsg', true, `${parsed.length}건의 플친 데이터가 반영되었습니다.${contestMsg}`);
     } catch(err){
       showUploadResult('kakaoFriendsUploadMsg', false, '파일을 처리하는 중 오류가 발생했습니다. 파일 형식을 확인해 주세요.');
     }
