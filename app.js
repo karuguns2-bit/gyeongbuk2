@@ -2455,7 +2455,24 @@ const MANAGER_BADGE_CATEGORIES = [
       });
       return Object.entries(byEmp).map(([empId,value])=>({empId,value})).filter(r=>r.value>0);
     },
-    fmt(v){ return fmtWon(v); } }
+    fmt(v){ return fmtWon(v); } },
+  { id:'noticeRadar', label:'공지레이더', desc:'당월 공지사항 조회수 최다 매니저', icon:'📡', svg:'target', grad:['#d0e8ff','#5b9dff','#1a5fd6'], shadow:'26,95,214',
+    // 그 달에 올라온 공지(DB.notices, createdAt 기준)를 대상으로, 각 매니저가 실제로 열람 확인한
+    // 건수(DB.noticeReads[noticeId][empId])를 센다. 그 달에 올라온 공지가 하나도 없으면 순위를
+    // 매길 대상이 없으므로 빈 배열을 반환한다(공지 자체가 과거 데이터라 지난 달 배지 확정 시점에도
+    // 정확히 재계산 가능 — kakaoGoalRate처럼 "이번 달만" 제한을 둘 필요가 없다).
+    compute(period){
+      const noticesInPeriod = (DB.notices||[]).filter(n=> String(n.createdAt||'').slice(0,7)===period);
+      if(noticesInPeriod.length===0) return [];
+      const reads = DB.noticeReads || {};
+      const staff = (DB.users||[]).filter(u=>u.role==='staff');
+      return staff.map(u=>{
+        let value = 0;
+        noticesInPeriod.forEach(n=>{ if(reads[n.id] && reads[n.id][u.empId]) value++; });
+        return { empId: u.empId, value };
+      }).filter(r=>r.value>0);
+    },
+    fmt(v){ return `${v}건 열람`; } }
 ];
 function managerBadgeRanking(catDef, period){
   return catDef.compute(period).sort((a,b)=>b.value-a.value);
