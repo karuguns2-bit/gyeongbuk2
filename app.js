@@ -4418,8 +4418,11 @@ function renderHomeNoticeTicker(){
     // 절반(-50%)만 이동하는 애니메이션을 반복시킨다. 공지가 1~2개뿐이면 반복감이 어색하므로
     // 그때는 애니메이션 없이 고정으로 보여준다.
     const scroll = notices.length>=3;
+    // 속도가 너무 빠르면 다 읽기 전에 지나가 버리므로, 공지 개수(=흘러가야 할 글자량)에 비례해서
+    // 애니메이션 길이를 늘린다 — 공지가 많아져도 체감 속도는 비슷하게 유지된다.
+    const scrollDuration = Math.max(30, notices.length * 9);
     wrapInner = scroll
-      ? `<div class="nb-ticker-track nb-ticker-scroll">${itemsHtml}<span class="nb-ticker-sep">·</span>${itemsHtml}</div>`
+      ? `<div class="nb-ticker-track nb-ticker-scroll" style="animation-duration:${scrollDuration}s;">${itemsHtml}<span class="nb-ticker-sep">·</span>${itemsHtml}</div>`
       : `<div class="nb-ticker-track">${itemsHtml}</div>`;
   }
   return `
@@ -4428,7 +4431,7 @@ function renderHomeNoticeTicker(){
       .nb-ticker-label{ flex-shrink:0; font-size:13px; }
       .nb-ticker-wrap{ flex:1 1 auto; overflow:hidden; white-space:nowrap; position:relative; height:18px; }
       .nb-ticker-track{ display:inline-flex; align-items:center; white-space:nowrap; position:absolute; left:0; top:0; }
-      .nb-ticker-track.nb-ticker-scroll{ animation:nbTickerScroll 24s linear infinite; }
+      .nb-ticker-track.nb-ticker-scroll{ animation:nbTickerScroll 30s linear infinite; }
       .nb-ticker:hover .nb-ticker-track.nb-ticker-scroll{ animation-play-state:paused; }
       @keyframes nbTickerScroll{ 0%{ transform:translateX(0); } 100%{ transform:translateX(-50%); } }
       .nb-ticker-item{ font-size:12.5px; font-weight:600; color:var(--text); cursor:pointer; padding:0 4px; }
@@ -15361,6 +15364,20 @@ const PROSPECT_VISIT_UNIT_OPTIONS = ['가족단위', '부부', '1인', '지인�
 // '대형마트 방송'/'카플친'과 사실상 같은 항목이라 중복 추가하지 않았다.
 const PROSPECT_VISIT_CHANNEL_OPTIONS = ['워크인', '전단지(POP,현수막)', '카플친', '당근', '온라인DB', '이업종 연계(식품관,테넌트)', '대형마트 방송', '행사장', '기존 구매고객', '단골 고객', '지인소개', '임직원', '아파트 광고(엘리베이터,게시판)', '기타'];
 const PROSPECT_PRODUCT_CATEGORY_OPTIONS = ['대형가전', '소형가전', 'PC', '혼수', '이사'];
+// 2026-09 추가: 가망고객 관리현황 표에 항목별(범주형 컬럼) 필터 단추를 만들어 수시로 조합해서
+// 걸러볼 수 있게 했다 — 담당자/지점/방문일자는 이미 관리자 전용 조회 패널이 있었으므로 여기서는
+// 나머지 범주형 컬럼(방문시간/고객구분/방문단위/방문경로/상담제품 대분류/구매유형/해피콜/판매여부)만
+// 다루고, 관리자뿐 아니라 일반 매니저(본인 등록 건만 보이는 화면)에게도 동일하게 적용된다.
+const PROSPECT_FILTERABLE_FIELDS = [
+  { key:'visitTime', label:'방문시간', options: PROSPECT_VISIT_TIME_OPTIONS },
+  { key:'customerAgeGroup', label:'고객구분', options: PROSPECT_AGE_GROUP_OPTIONS },
+  { key:'visitUnit', label:'방문단위', options: PROSPECT_VISIT_UNIT_OPTIONS },
+  { key:'visitChannel', label:'방문경로', options: PROSPECT_VISIT_CHANNEL_OPTIONS },
+  { key:'productCategory', label:'상담제품(대분류)', options: PROSPECT_PRODUCT_CATEGORY_OPTIONS },
+  { key:'purchaseType', label:'구매유형', options: PROSPECT_PURCHASE_TYPE_OPTIONS },
+  { key:'happyCall', label:'해피콜', options: PROSPECT_HAPPY_CALL_OPTIONS },
+  { key:'saleStatus', label:'판매여부', options: PROSPECT_SALE_STATUS_OPTIONS }
+];
 function myProspects(){
   return (DB.prospects||[]).filter(p=>p.empId===SESSION.empId);
 }
@@ -15377,18 +15394,62 @@ function prospectRepOptions(branchId){
 }
 function visibleProspects(){
   if(!SESSION) return [];
+  let list;
   // 임원(조회 전용)도 관리자처럼 전체 가망고객을 조회할 수 있다 — 수정/삭제는 어차피
   // canManage(=p.empId===SESSION.empId) 기준이라 admin도 남의 건은 못 고치는 것과 동일하게,
   // 임원도 조회만 가능하고 편집은 되지 않는다.
-  if(!canSwitchBranch()) return (DB.prospects||[]).filter(p=>p.empId===SESSION.empId);
-  let list = DB.prospects||[];
-  if(state.prospectFilterBranchId) list = list.filter(p=>p.branchId===state.prospectFilterBranchId);
-  if(state.prospectFilterEmpId) list = list.filter(p=>p.empId===state.prospectFilterEmpId);
-  // 관리자/임원 전용 달력 기간 조회 — 방문일자(visitDate) 기준. 방문일자가 비어있는 건은
-  // 기간을 지정한 상태에서는 어느 날짜에 속하는지 알 수 없으므로 결과에서 제외한다.
-  if(state.prospectFilterDateFrom) list = list.filter(p=>p.visitDate && p.visitDate >= state.prospectFilterDateFrom);
-  if(state.prospectFilterDateTo) list = list.filter(p=>p.visitDate && p.visitDate <= state.prospectFilterDateTo);
+  if(!canSwitchBranch()){
+    list = (DB.prospects||[]).filter(p=>p.empId===SESSION.empId);
+  } else {
+    list = DB.prospects||[];
+    if(state.prospectFilterBranchId) list = list.filter(p=>p.branchId===state.prospectFilterBranchId);
+    if(state.prospectFilterEmpId) list = list.filter(p=>p.empId===state.prospectFilterEmpId);
+    // 관리자/임원 전용 달력 기간 조회 — 방문일자(visitDate) 기준. 방문일자가 비어있는 건은
+    // 기간을 지정한 상태에서는 어느 날짜에 속하는지 알 수 없으므로 결과에서 제외한다.
+    if(state.prospectFilterDateFrom) list = list.filter(p=>p.visitDate && p.visitDate >= state.prospectFilterDateFrom);
+    if(state.prospectFilterDateTo) list = list.filter(p=>p.visitDate && p.visitDate <= state.prospectFilterDateTo);
+  }
+  // 항목별 필터(방문시간/고객구분/방문단위/방문경로/상담제품 대분류/구매유형/해피콜/판매여부)는
+  // 관리자·매니저 화면 모두에 공통으로 적용된다.
+  if(state.prospectFieldFilters){
+    PROSPECT_FILTERABLE_FIELDS.forEach(f=>{
+      const v = state.prospectFieldFilters[f.key];
+      if(v) list = list.filter(p=>p[f.key]===v);
+    });
+  }
   return list;
+}
+function setProspectFieldFilter(key, value){
+  if(!state.prospectFieldFilters) state.prospectFieldFilters = {};
+  state.prospectFieldFilters[key] = value || null;
+  renderTab('prospects');
+}
+function clearProspectFieldFilters(){
+  state.prospectFieldFilters = {};
+  renderTab('prospects');
+}
+// 가망고객 관리현황 표 위에 붙는 항목별 필터 단추 카드. 관리자 전용인 지점/담당자/방문일자
+// 조회 패널(adminFilterHtml)과 달리, 이 카드는 모든 사용자(매니저 본인 목록 포함)에게 보인다.
+function renderProspectFieldFilters(){
+  if(!state.prospectFieldFilters) state.prospectFieldFilters = {};
+  const activeCount = PROSPECT_FILTERABLE_FIELDS.filter(f=>state.prospectFieldFilters[f.key]).length;
+  const groupsHtml = PROSPECT_FILTERABLE_FIELDS.map(f=>{
+    const active = state.prospectFieldFilters[f.key];
+    const allPill = `<span class="branch-pill ${!active?'active':''}" onclick="setProspectFieldFilter('${f.key}','')">전체</span>`;
+    const optPills = f.options.map(o=>`<span class="branch-pill ${active===o?'active':''}" onclick="setProspectFieldFilter('${f.key}','${escapeHtml(o).replace(/'/g,"\\'")}')">${escapeHtml(o)}</span>`).join('');
+    return `
+      <div style="margin-bottom:9px;">
+        <div class="muted" style="font-size:11.5px;font-weight:700;margin-bottom:3px;">${f.label}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px;">${allPill}${optPills}</div>
+      </div>`;
+  }).join('');
+  return `
+    <div class="card" style="margin-bottom:16px;">
+      <h3>항목별 필터${activeCount>0?` <span class="badge warn">${activeCount}개 적용중</span>`:''}</h3>
+      <div class="small-note" style="margin-bottom:8px;">아래 항목 단추를 눌러 원하는 조건으로 수시로 필터링할 수 있습니다. 여러 항목을 동시에 조합할 수 있습니다.</div>
+      ${groupsHtml}
+      ${activeCount>0 ? `<button class="btn btn-sm" onclick="clearProspectFieldFilters()">필터 전체 초기화</button>` : ''}
+    </div>`;
 }
 function setProspectFilterBranch(branchId){
   state.prospectFilterBranchId = branchId || null;
@@ -15566,6 +15627,7 @@ function renderProspects(){
     <div class="page-desc">${isAdmin ? '관리자는 전체 지점/담당자의 가망고객 현황을 지점별·개인별로 조회할 수 있습니다. 다른 담당자가 등록한 건은 조회만 가능하며 수정·삭제는 본인 등록 건만 할 수 있습니다.' : '개인정보 보호를 위해 본인 사번으로 로그인한 경우 본인이 등록한 가망고객만 조회·등록·관리할 수 있습니다. (다른 직원의 가망고객 정보는 조회되지 않습니다)'}</div>
 
     ${adminFilterHtml}
+    ${renderProspectFieldFilters()}
 
     <div class="card ai-box" style="margin-bottom:16px;">
       <div class="ai-title">📋 이번 달 가망고객 관리 현황 및 피드백</div>
