@@ -2744,6 +2744,11 @@ function renderHomeBranchBadges(){
         <div class="bbadge-rank-list">${listHtml}</div>
       </div>`;
   }).join('');
+  // 칸이 남는 마지막 줄에 빈 여백이 생기지 않도록, 종목 개수를 나누어 떨어지는 열 개수를
+  // 우선순위대로 골라 딱 맞게 채운다(딱 맞는 값이 없으면 4열을 기본값으로 쓴다).
+  const rankColPrefs = [4,3,5,6,2];
+  const rankCatCount = BRANCH_BADGE_CATEGORIES.length;
+  const rankCols = rankColPrefs.find(c=> rankCatCount % c === 0) || 4;
   const rankPanelHtml = `
     <div class="bbadge-rankpanel">
       <div class="bbadge-rank-header">
@@ -2753,7 +2758,7 @@ function renderHomeBranchBadges(){
           <button type="button" class="bbadge-rank-tab${rankMode==='year'?' active':''}" onclick="setBranchBadgeRankMode('year')">${rankYear}년 누적</button>
         </div>
       </div>
-      <div class="bbadge-rank-grid">${rankRowsHtml}</div>
+      <div class="bbadge-rank-grid" style="grid-template-columns:repeat(${rankCols},1fr);">${rankRowsHtml}</div>
     </div>`;
   return `
     <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:14px 16px;">
@@ -2825,10 +2830,13 @@ function renderHomeBranchBadges(){
         .bbadge-rank-toggle{ display:flex; gap:4px; }
         .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9px; cursor:pointer; color:var(--text-sub); }
         .bbadge-rank-tab.active{ background:var(--primary); color:#fff; border-color:var(--primary); font-weight:700; }
-        .bbadge-rank-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:6px 8px; }
-        .bbadge-rank-row{ padding:5px 7px; background:#fff; border:1px solid var(--border); border-radius:8px; }
-        .bbadge-rank-cat{ font-size:9px; font-weight:700; color:var(--text-sub); margin-bottom:2px; display:flex; gap:4px; align-items:center; }
-        .bbadge-rank-list{ font-size:9.5px; line-height:1.5; }
+        .bbadge-rank-grid{ display:grid; gap:8px 10px; }
+        @media (max-width:820px){
+          .bbadge-rank-grid{ grid-template-columns:repeat(auto-fit,minmax(160px,1fr)) !important; }
+        }
+        .bbadge-rank-row{ padding:8px 10px; background:#fff; border:1px solid var(--border); border-radius:8px; }
+        .bbadge-rank-cat{ font-size:10.5px; font-weight:700; color:var(--text-sub); margin-bottom:4px; display:flex; gap:5px; align-items:center; }
+        .bbadge-rank-list{ font-size:11px; line-height:1.7; }
         .bbadge-rank-entry{ white-space:nowrap; font-weight:600; }
         .bbadge-rank-medal{ margin-right:1px; }
         .bbadge-rank-val{ font-weight:700; }
