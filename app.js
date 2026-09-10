@@ -15392,7 +15392,14 @@ function prospectRepOptions(branchId){
   });
   return Array.from(seen.entries()).map(([empId,name])=>({empId,name})).sort((a,b)=>String(a.name).localeCompare(String(b.name)));
 }
-function visibleProspects(){
+// 방문시간/고객구분/방문단위/방문경로/상담제품(대분류)/구매유형/해피콜/판매여부처럼 값이
+// 비어있을(null) 수 있는 컬럼을 필터 체크리스트에서 표현하기 위한 빈 값 센티넬.
+// 실제 옵션 문자열은 절대 빈 문자열이 될 수 없으므로 안전하게 구분자로 쓸 수 있다.
+const PROSPECT_BLANK_FILTER_VALUE = '';
+// 지점/담당자/방문일자 조회(admin 전용)까지만 적용된, 항목별 필터 적용 "이전" 목록.
+// 엑셀 자동필터처럼 각 컬럼의 체크리스트 옵션/개수를 "다른 컬럼에 걸린 필터"까지는 반영하되
+// 자기 자신의 필터는 제외하고 계산하기 위한 공용 베이스로 쓰인다.
+function prospectsBeforeFieldFilters(){
   if(!SESSION) return [];
   let list;
   // 임원(조회 전용)도 관리자처럼 전체 가망고객을 조회할 수 있다 — 수정/삭제는 어차피
@@ -15409,47 +15416,106 @@ function visibleProspects(){
     if(state.prospectFilterDateFrom) list = list.filter(p=>p.visitDate && p.visitDate >= state.prospectFilterDateFrom);
     if(state.prospectFilterDateTo) list = list.filter(p=>p.visitDate && p.visitDate <= state.prospectFilterDateTo);
   }
+  return list;
+}
+function visibleProspects(){
+  let list = prospectsBeforeFieldFilters();
   // 항목별 필터(방문시간/고객구분/방문단위/방문경로/상담제품 대분류/구매유형/해피콜/판매여부)는
-  // 관리자·매니저 화면 모두에 공통으로 적용된다.
+  // 표 컬럼 헤더에 엑셀 자동필터 형태로 붙어있으며, 관리자·매니저 화면 모두에 공통 적용된다.
+  // state.prospectFieldFilters[key]가 배열이면 "체크된 값만" 보여주는 것이고, 없으면(=undefined)
+  // 전체(필터 없음) 상태다.
   if(state.prospectFieldFilters){
     PROSPECT_FILTERABLE_FIELDS.forEach(f=>{
-      const v = state.prospectFieldFilters[f.key];
-      if(v) list = list.filter(p=>p[f.key]===v);
+      const sel = state.prospectFieldFilters[f.key];
+      if(sel) list = list.filter(p => sel.includes(p[f.key] || PROSPECT_BLANK_FILTER_VALUE));
     });
   }
   return list;
 }
-function setProspectFieldFilter(key, value){
+// key 컬럼을 "제외한" 나머지 항목별 필터까지 적용된 풀 — 그 컬럼 드롭다운에 표시할
+// 옵션/개수를 계산하는 기준이 된다(엑셀 자동필터의 동적 목록 갱신과 동일한 방식).
+function prospectFieldOptionsPool(excludeKey){
+  let list = prospectsBeforeFieldFilters();
+  if(state.prospectFieldFilters){
+    PROSPECT_FILTERABLE_FIELDS.forEach(f=>{
+      if(f.key===excludeKey) return;
+      const sel = state.prospectFieldFilters[f.key];
+      if(sel) list = list.filter(p => sel.includes(p[f.key] || PROSPECT_BLANK_FILTER_VALUE));
+    });
+  }
+  return list;
+}
+function prospectFieldAllValues(f, pool){
+  const hasBlank = pool.some(p=>!p[f.key]);
+  return hasBlank ? [...f.options, PROSPECT_BLANK_FILTER_VALUE] : [...f.options];
+}
+function toggleProspectFilterDropdown(key){
+  state.prospectFilterOpenField = (state.prospectFilterOpenField===key) ? null : key;
+  renderTab('prospects');
+}
+function closeProspectFilterDropdown(){
+  state.prospectFilterOpenField = null;
+  renderTab('prospects');
+}
+function toggleProspectFilterValue(key, rawValue){
   if(!state.prospectFieldFilters) state.prospectFieldFilters = {};
-  state.prospectFieldFilters[key] = value || null;
+  const f = PROSPECT_FILTERABLE_FIELDS.find(x=>x.key===key);
+  const pool = prospectFieldOptionsPool(key);
+  const allValues = prospectFieldAllValues(f, pool);
+  let sel = state.prospectFieldFilters[key];
+  if(!sel) sel = allValues.slice();
+  const idx = sel.indexOf(rawValue);
+  if(idx>=0) sel.splice(idx,1); else sel.push(rawValue);
+  // 전체 값이 다 체크된 상태로 되돌아오면 "필터 없음"(전체 표시) 상태로 되돌린다.
+  if(allValues.length>0 && allValues.every(v=>sel.includes(v))){
+    delete state.prospectFieldFilters[key];
+  } else {
+    state.prospectFieldFilters[key] = sel;
+  }
+  renderTab('prospects');
+}
+function setAllProspectFilterValues(key, checked){
+  if(!state.prospectFieldFilters) state.prospectFieldFilters = {};
+  if(checked){
+    delete state.prospectFieldFilters[key]; // 전체 선택 = 필터 해제
+  } else {
+    state.prospectFieldFilters[key] = []; // 전체 해제 = 조건에 맞는 건 없음
+  }
   renderTab('prospects');
 }
 function clearProspectFieldFilters(){
   state.prospectFieldFilters = {};
+  state.prospectFilterOpenField = null;
   renderTab('prospects');
 }
-// 가망고객 관리현황 표 위에 붙는 항목별 필터 단추 카드. 관리자 전용인 지점/담당자/방문일자
-// 조회 패널(adminFilterHtml)과 달리, 이 카드는 모든 사용자(매니저 본인 목록 포함)에게 보인다.
-function renderProspectFieldFilters(){
+// 표 컬럼 헤더 하나(엑셀 자동필터 스타일 드롭다운 포함)를 렌더링한다.
+function renderProspectFilterTh(f){
   if(!state.prospectFieldFilters) state.prospectFieldFilters = {};
-  const activeCount = PROSPECT_FILTERABLE_FIELDS.filter(f=>state.prospectFieldFilters[f.key]).length;
-  const groupsHtml = PROSPECT_FILTERABLE_FIELDS.map(f=>{
-    const active = state.prospectFieldFilters[f.key];
-    const allPill = `<span class="branch-pill ${!active?'active':''}" onclick="setProspectFieldFilter('${f.key}','')">전체</span>`;
-    const optPills = f.options.map(o=>`<span class="branch-pill ${active===o?'active':''}" onclick="setProspectFieldFilter('${f.key}','${escapeHtml(o).replace(/'/g,"\\'")}')">${escapeHtml(o)}</span>`).join('');
-    return `
-      <div style="margin-bottom:9px;">
-        <div class="muted" style="font-size:11.5px;font-weight:700;margin-bottom:3px;">${f.label}</div>
-        <div style="display:flex;flex-wrap:wrap;gap:5px;">${allPill}${optPills}</div>
-      </div>`;
+  const isOpen = state.prospectFilterOpenField === f.key;
+  const activeSel = state.prospectFieldFilters[f.key];
+  const active = !!activeSel;
+  const pool = prospectFieldOptionsPool(f.key);
+  const allValues = prospectFieldAllValues(f, pool);
+  const selected = activeSel || allValues;
+  const countFor = (v) => pool.filter(p => (p[f.key] || PROSPECT_BLANK_FILTER_VALUE) === v).length;
+  const allChecked = allValues.length>0 && allValues.every(v=>selected.includes(v));
+  const itemsHtml = allValues.map(v=>{
+    const checked = selected.includes(v);
+    const vLabel = v===PROSPECT_BLANK_FILTER_VALUE ? '(비어있음)' : escapeHtml(v);
+    const vAttr = String(v).replace(/'/g,"\\'");
+    return `<label class="pf-item"><input type="checkbox" ${checked?'checked':''} onchange="toggleProspectFilterValue('${f.key}','${vAttr}')"><span>${vLabel}</span><span class="pf-count">${countFor(v)}</span></label>`;
   }).join('');
-  return `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>항목별 필터${activeCount>0?` <span class="badge warn">${activeCount}개 적용중</span>`:''}</h3>
-      <div class="small-note" style="margin-bottom:8px;">아래 항목 단추를 눌러 원하는 조건으로 수시로 필터링할 수 있습니다. 여러 항목을 동시에 조합할 수 있습니다.</div>
-      ${groupsHtml}
-      ${activeCount>0 ? `<button class="btn btn-sm" onclick="clearProspectFieldFilters()">필터 전체 초기화</button>` : ''}
-    </div>`;
+  const dropdownHtml = isOpen ? `
+    <div class="pf-dropdown" onclick="event.stopPropagation()">
+      <label class="pf-item pf-item-all"><input type="checkbox" ${allChecked?'checked':''} onchange="setAllProspectFilterValues('${f.key}', this.checked)"><span>(전체 선택)</span></label>
+      <div class="pf-dropdown-list">${itemsHtml || '<div class="muted" style="font-size:11px;padding:6px 10px;">표시할 값이 없습니다</div>'}</div>
+      <div class="pf-dropdown-actions"><button type="button" class="btn btn-sm" onclick="closeProspectFilterDropdown()">닫기</button></div>
+    </div>` : '';
+  return `<th class="nowrap-cell pf-th">
+    <span class="pf-th-label">${f.label}</span>
+    <button type="button" class="pf-filter-btn ${active?'active':''}" onclick="event.stopPropagation();toggleProspectFilterDropdown('${f.key}')" title="필터">▾</button>
+    ${dropdownHtml}
+  </th>`;
 }
 function setProspectFilterBranch(branchId){
   state.prospectFilterBranchId = branchId || null;
@@ -15522,6 +15588,9 @@ function prospectFeedback(){
 }
 function renderProspects(){
   const isAdmin = canSwitchBranch();
+  const pf = {};
+  PROSPECT_FILTERABLE_FIELDS.forEach(f=>{ pf[f.key] = f; });
+  const pfActiveCount = state.prospectFieldFilters ? Object.keys(state.prospectFieldFilters).length : 0;
   const list = [...visibleProspects()].sort((a,b)=> String(b.createdAt).localeCompare(String(a.createdAt)));
   const feedback = prospectFeedback();
   // 등록 건수가 계속 늘어나므로 다른 게시판들과 동일한 10/20/전체 목록 개수 설정 + 검색을 적용한다.
@@ -15627,7 +15696,6 @@ function renderProspects(){
     <div class="page-desc">${isAdmin ? '관리자는 전체 지점/담당자의 가망고객 현황을 지점별·개인별로 조회할 수 있습니다. 다른 담당자가 등록한 건은 조회만 가능하며 수정·삭제는 본인 등록 건만 할 수 있습니다.' : '개인정보 보호를 위해 본인 사번으로 로그인한 경우 본인이 등록한 가망고객만 조회·등록·관리할 수 있습니다. (다른 직원의 가망고객 정보는 조회되지 않습니다)'}</div>
 
     ${adminFilterHtml}
-    ${renderProspectFieldFilters()}
 
     <div class="card ai-box" style="margin-bottom:16px;">
       <div class="ai-title">📋 이번 달 가망고객 관리 현황 및 피드백</div>
@@ -15682,10 +15750,14 @@ function renderProspects(){
     </div>
 
     <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+        <div class="small-note">표 항목 이름 옆 ▾ 단추를 누르면 엑셀처럼 값을 체크/해제해서 필터링할 수 있습니다.</div>
+        ${pfActiveCount>0 ? `<button class="btn btn-sm" onclick="clearProspectFieldFilters()">항목 필터 전체 초기화 (${pfActiveCount})</button>` : ''}
+      </div>
       ${paging.barHtml}
       <div class="table-scroll">
       <table>
-        <thead><tr>${isAdmin?'<th class="nowrap-cell">담당자</th><th class="nowrap-cell">지점</th>':''}<th class="nowrap-cell">방문일자</th><th class="nowrap-cell">방문시간</th><th class="nowrap-cell">고객구분</th><th class="nowrap-cell">방문단위</th><th class="nowrap-cell">방문경로</th><th class="nowrap-cell">상담제품(대분류)</th><th class="nowrap-cell">고객명</th><th class="nowrap-cell">연락처</th><th class="nowrap-cell">구매희망품목</th><th class="nowrap-cell">구매희망일</th><th>상담제품(상세)</th><th class="nowrap-cell">구매유형</th><th class="nowrap-cell">예상금액</th><th class="nowrap-cell">해피콜</th><th class="nowrap-cell">판매여부</th><th class="nowrap-cell">등록일시</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${isAdmin?'<th class="nowrap-cell">담당자</th><th class="nowrap-cell">지점</th>':''}<th class="nowrap-cell">방문일자</th>${renderProspectFilterTh(pf.visitTime)}${renderProspectFilterTh(pf.customerAgeGroup)}${renderProspectFilterTh(pf.visitUnit)}${renderProspectFilterTh(pf.visitChannel)}${renderProspectFilterTh(pf.productCategory)}<th class="nowrap-cell">고객명</th><th class="nowrap-cell">연락처</th><th class="nowrap-cell">구매희망품목</th><th class="nowrap-cell">구매희망일</th><th>상담제품(상세)</th>${renderProspectFilterTh(pf.purchaseType)}<th class="nowrap-cell">예상금액</th>${renderProspectFilterTh(pf.happyCall)}${renderProspectFilterTh(pf.saleStatus)}<th class="nowrap-cell">등록일시</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
@@ -16365,6 +16437,10 @@ function toggleMobileGlobalSearch(){
 }
 document.addEventListener('click', function(e){
   if(!e.target.closest('.gs-wrap') && !e.target.closest('.mt-search-toggle')) closeGlobalSearch();
+  if(state.prospectFilterOpenField && !e.target.closest('.pf-th')){
+    state.prospectFilterOpenField = null;
+    if(state.tab==='prospects') renderTab('prospects');
+  }
 });
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape') closeGlobalSearch();
