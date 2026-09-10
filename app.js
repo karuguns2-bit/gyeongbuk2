@@ -15449,43 +15449,71 @@ function prospectFieldAllValues(f, pool){
   const hasBlank = pool.some(p=>!p[f.key]);
   return hasBlank ? [...f.options, PROSPECT_BLANK_FILTER_VALUE] : [...f.options];
 }
+// 엑셀 자동필터처럼, 드롭다운 안에서 체크박스를 눌러도 표에는 바로 반영되지 않고
+// "확인" 버튼을 눌러야 실제 필터(state.prospectFieldFilters)에 적용된다.
+// 그 사이의 임시 선택 상태는 state.prospectFilterDraft = { key, values }에 담아둔다.
 function toggleProspectFilterDropdown(key){
-  state.prospectFilterOpenField = (state.prospectFilterOpenField===key) ? null : key;
+  if(state.prospectFilterOpenField===key){
+    // 이미 열려있던 걸 다시 누르면 확정 없이 닫는다(변경사항 취소).
+    state.prospectFilterOpenField = null;
+    state.prospectFilterDraft = null;
+    renderTab('prospects');
+    return;
+  }
+  const f = PROSPECT_FILTERABLE_FIELDS.find(x=>x.key===key);
+  const pool = prospectFieldOptionsPool(key);
+  const allValues = prospectFieldAllValues(f, pool);
+  const committed = state.prospectFieldFilters && state.prospectFieldFilters[key];
+  state.prospectFilterOpenField = key;
+  state.prospectFilterDraft = { key, values: (committed || allValues).slice() };
   renderTab('prospects');
 }
 function closeProspectFilterDropdown(){
+  // "닫기" = 확정하지 않고 취소.
   state.prospectFilterOpenField = null;
+  state.prospectFilterDraft = null;
   renderTab('prospects');
 }
 function toggleProspectFilterValue(key, rawValue){
+  if(!state.prospectFilterDraft || state.prospectFilterDraft.key!==key) return;
+  const sel = state.prospectFilterDraft.values;
+  const idx = sel.indexOf(rawValue);
+  if(idx>=0) sel.splice(idx,1); else sel.push(rawValue);
+  renderTab('prospects');
+}
+function setAllProspectFilterValues(key, checked){
+  if(!state.prospectFilterDraft || state.prospectFilterDraft.key!==key) return;
+  if(checked){
+    const f = PROSPECT_FILTERABLE_FIELDS.find(x=>x.key===key);
+    const pool = prospectFieldOptionsPool(key);
+    state.prospectFilterDraft.values = prospectFieldAllValues(f, pool);
+  } else {
+    state.prospectFilterDraft.values = [];
+  }
+  renderTab('prospects');
+}
+// 드롭다운의 "확인" — 임시 선택값을 실제 필터로 확정 적용하고 닫는다.
+function applyProspectFilter(key){
+  if(!state.prospectFilterDraft || state.prospectFilterDraft.key!==key) return;
   if(!state.prospectFieldFilters) state.prospectFieldFilters = {};
   const f = PROSPECT_FILTERABLE_FIELDS.find(x=>x.key===key);
   const pool = prospectFieldOptionsPool(key);
   const allValues = prospectFieldAllValues(f, pool);
-  let sel = state.prospectFieldFilters[key];
-  if(!sel) sel = allValues.slice();
-  const idx = sel.indexOf(rawValue);
-  if(idx>=0) sel.splice(idx,1); else sel.push(rawValue);
-  // 전체 값이 다 체크된 상태로 되돌아오면 "필터 없음"(전체 표시) 상태로 되돌린다.
+  const sel = state.prospectFilterDraft.values;
+  // 전체 값이 다 체크된 상태면 "필터 없음"(전체 표시) 상태로 되돌린다.
   if(allValues.length>0 && allValues.every(v=>sel.includes(v))){
     delete state.prospectFieldFilters[key];
   } else {
-    state.prospectFieldFilters[key] = sel;
+    state.prospectFieldFilters[key] = sel.slice();
   }
-  renderTab('prospects');
-}
-function setAllProspectFilterValues(key, checked){
-  if(!state.prospectFieldFilters) state.prospectFieldFilters = {};
-  if(checked){
-    delete state.prospectFieldFilters[key]; // 전체 선택 = 필터 해제
-  } else {
-    state.prospectFieldFilters[key] = []; // 전체 해제 = 조건에 맞는 건 없음
-  }
+  state.prospectFilterOpenField = null;
+  state.prospectFilterDraft = null;
   renderTab('prospects');
 }
 function clearProspectFieldFilters(){
   state.prospectFieldFilters = {};
   state.prospectFilterOpenField = null;
+  state.prospectFilterDraft = null;
   renderTab('prospects');
 }
 // 표 컬럼 헤더 하나(엑셀 자동필터 스타일 드롭다운 포함)를 렌더링한다.
@@ -15496,10 +15524,12 @@ function renderProspectFilterTh(f){
   const active = !!activeSel;
   const pool = prospectFieldOptionsPool(f.key);
   const allValues = prospectFieldAllValues(f, pool);
-  const selected = activeSel || allValues;
+  // 드롭다운이 열려있는 동안은 "확인" 전 임시 선택값(draft)을 체크박스에 보여주고,
+  // 닫혀있을 때는 이미 확정된 필터(activeSel) 기준으로 ▾ 단추 강조만 표시한다.
+  const draftSel = (isOpen && state.prospectFilterDraft && state.prospectFilterDraft.key===f.key) ? state.prospectFilterDraft.values : (activeSel || allValues);
   const countFor = (v) => pool.filter(p => (p[f.key] || PROSPECT_BLANK_FILTER_VALUE) === v).length;
   const itemsHtml = allValues.map(v=>{
-    const checked = selected.includes(v);
+    const checked = draftSel.includes(v);
     const vLabel = v===PROSPECT_BLANK_FILTER_VALUE ? '(비어있음)' : escapeHtml(v);
     const vAttr = String(v).replace(/'/g,"\\'");
     return `<label class="pf-item"><input type="checkbox" ${checked?'checked':''} onchange="toggleProspectFilterValue('${f.key}','${vAttr}')"><span>${vLabel}</span><span class="pf-count">${countFor(v)}</span></label>`;
@@ -15511,7 +15541,10 @@ function renderProspectFilterTh(f){
         <button type="button" class="pf-bulk-btn" onclick="setAllProspectFilterValues('${f.key}', false)">전체 해제</button>
       </div>
       <div class="pf-dropdown-list">${itemsHtml || '<div class="muted" style="font-size:11px;padding:6px 10px;">표시할 값이 없습니다</div>'}</div>
-      <div class="pf-dropdown-actions"><button type="button" class="btn btn-sm" onclick="closeProspectFilterDropdown()">닫기</button></div>
+      <div class="pf-dropdown-actions">
+        <button type="button" class="btn btn-sm" onclick="closeProspectFilterDropdown()">취소</button>
+        <button type="button" class="btn btn-sm btn-primary" onclick="applyProspectFilter('${f.key}')">확인</button>
+      </div>
     </div>` : '';
   return `<th class="nowrap-cell pf-th">
     <span class="pf-th-label">${f.label}</span>
@@ -16441,6 +16474,7 @@ document.addEventListener('click', function(e){
   if(!e.target.closest('.gs-wrap') && !e.target.closest('.mt-search-toggle')) closeGlobalSearch();
   if(state.prospectFilterOpenField && !e.target.closest('.pf-th')){
     state.prospectFilterOpenField = null;
+    state.prospectFilterDraft = null;
     if(state.tab==='prospects') renderTab('prospects');
   }
 });
