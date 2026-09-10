@@ -2813,14 +2813,14 @@ function renderHomeBranchBadges(){
         .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:11px; }
         .bbadge-total{ font-size:8.5px; font-weight:700; color:#c9820a; white-space:nowrap; }
         .bbadge-outer{ display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; }
-        .bbadge-leftcol{ flex:0 1 480px; min-width:280px; }
+        .bbadge-leftcol{ flex:0 1 auto; min-width:300px; }
         .bbadge-medals{
           display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:6px 10px;
           overflow-x:auto; overflow-y:visible; padding:6px 4px 10px; scrollbar-width:thin;
         }
         .bbadge-medals::-webkit-scrollbar{ height:6px; }
         .bbadge-medals::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
-        .bbadge-rankpanel{ flex:1 1 380px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:8px 10px; }
+        .bbadge-rankpanel{ flex:1 1 220px; max-width:620px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:8px 10px; }
         .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
         .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9px; cursor:pointer; color:var(--text-sub); }
