@@ -2813,19 +2813,19 @@ function renderHomeBranchBadges(){
         .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:11px; }
         .bbadge-total{ font-size:8.5px; font-weight:700; color:#c9820a; white-space:nowrap; }
         .bbadge-outer{ display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; }
-        .bbadge-leftcol{ flex:1 1 460px; min-width:0; }
+        .bbadge-leftcol{ flex:0 1 480px; min-width:280px; }
         .bbadge-medals{
           display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:6px 10px;
           overflow-x:auto; overflow-y:visible; padding:6px 4px 10px; scrollbar-width:thin;
         }
         .bbadge-medals::-webkit-scrollbar{ height:6px; }
         .bbadge-medals::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
-        .bbadge-rankpanel{ flex:1 1 280px; max-width:360px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:8px 10px; }
+        .bbadge-rankpanel{ flex:1 1 380px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:8px 10px; }
         .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
         .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9px; cursor:pointer; color:var(--text-sub); }
         .bbadge-rank-tab.active{ background:var(--primary); color:#fff; border-color:var(--primary); font-weight:700; }
-        .bbadge-rank-grid{ display:grid; grid-template-columns:1fr; gap:5px; }
+        .bbadge-rank-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:6px 8px; }
         .bbadge-rank-row{ padding:5px 7px; background:#fff; border:1px solid var(--border); border-radius:8px; }
         .bbadge-rank-cat{ font-size:9px; font-weight:700; color:var(--text-sub); margin-bottom:2px; display:flex; gap:4px; align-items:center; }
         .bbadge-rank-list{ font-size:9.5px; line-height:1.5; }
@@ -2835,9 +2835,6 @@ function renderHomeBranchBadges(){
         .bbadge-rank-sep{ margin:0 5px; color:var(--border); }
         .bbadge-rank-empty{ color:#b7b8bf; font-size:9.5px; }
         .bbadge-rule-info{ font-size:9.5px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:5px 9px; line-height:1.4; margin-bottom:8px; }
-        @media (max-width:900px){
-          .bbadge-rankpanel{ max-width:none; }
-        }
       </style>
       <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:5px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
       <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${BRANCH_BADGE_CATEGORIES.length}개 중 ${BRANCH_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>

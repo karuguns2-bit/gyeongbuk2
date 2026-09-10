@@ -635,9 +635,11 @@
   }
   .us-opt-btn.active{ background:var(--primary);border-color:var(--primary);color:#fff; }
   /* 홈 대시보드 개인화 위젯(교육 안내/근무 일정/AI 분석) - 드래그로 순서를 바꿀 수 있다 */
-  #homeWidgetList{ display:flex; flex-direction:column; gap:16px; margin-bottom:16px; }
-  .home-widget-item{ display:flex; align-items:stretch; gap:6px; }
+  #homeWidgetList{ display:flex; flex-wrap:wrap; gap:16px; margin-bottom:16px; }
+  .home-widget-item{ display:flex; align-items:stretch; gap:6px; flex:1 1 100%; min-width:0; }
   .home-widget-item.dragging{ opacity:.4; }
+  /* 근무 일정 / AI 분석 피드백은 공백이 많아 같은 줄에 절반씩(50/50) 배치한다 */
+  .home-widget-item[data-widget-key="attendance"], .home-widget-item[data-widget-key="aiFeedback"]{ flex:1 1 calc(50% - 8px); }
   .home-widget-handle{
     flex-shrink:0; width:20px; display:flex; align-items:center; justify-content:center;
     color:var(--text-sub); cursor:grab; font-size:12px; letter-spacing:-2px; border-radius:6px;
