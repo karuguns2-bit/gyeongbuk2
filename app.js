@@ -2753,7 +2753,7 @@ function renderHomeBranchBadges(){
           <button type="button" class="bbadge-rank-tab${rankMode==='year'?' active':''}" onclick="setBranchBadgeRankMode('year')">${rankYear}년 누적</button>
         </div>
       </div>
-      ${rankRowsHtml}
+      <div class="bbadge-rank-grid">${rankRowsHtml}</div>
     </div>`;
   return `
     <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:14px 16px;">
@@ -2812,20 +2812,20 @@ function renderHomeBranchBadges(){
         .bbadge-branch{ font-size:10.5px; font-weight:700; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .bbadge-title-label{ font-size:9px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:12px; }
         .bbadge-total{ font-size:9px; font-weight:700; color:#c9820a; white-space:nowrap; }
-        .bbadge-outer{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
+        .bbadge-outer{ display:block; }
         .bbadge-medals{
           display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:8px 14px;
           overflow-x:auto; overflow-y:visible; padding:8px 4px 12px; scrollbar-width:thin;
         }
         .bbadge-medals::-webkit-scrollbar{ height:6px; }
         .bbadge-medals::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
-        .bbadge-rankpanel{ flex:1 1 280px; min-width:240px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:9px 11px; }
-        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
+        .bbadge-rankpanel{ margin-top:12px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:9px 11px; }
+        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
         .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9.5px; cursor:pointer; color:var(--text-sub); }
         .bbadge-rank-tab.active{ background:var(--primary); color:#fff; border-color:var(--primary); font-weight:700; }
-        .bbadge-rank-row{ padding:4px 0; border-top:1px solid var(--border); }
-        .bbadge-rank-row:first-of-type{ border-top:none; }
+        .bbadge-rank-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:8px 10px; }
+        .bbadge-rank-row{ padding:6px 8px; background:#fff; border:1px solid var(--border); border-radius:8px; }
         .bbadge-rank-cat{ font-size:9.5px; font-weight:700; color:var(--text-sub); margin-bottom:2px; display:flex; gap:4px; align-items:center; }
         .bbadge-rank-list{ font-size:10px; line-height:1.5; }
         .bbadge-rank-entry{ white-space:nowrap; font-weight:600; }
@@ -2838,10 +2838,8 @@ function renderHomeBranchBadges(){
       <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
       <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${BRANCH_BADGE_CATEGORIES.length}개 중 ${BRANCH_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
       <div class="bbadge-outer">
-        <div style="flex:1 1 280px;">
-          <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
-          ${renderHomeManagerBadges()}
-        </div>
+        <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
+        ${renderHomeManagerBadges()}
         ${rankPanelHtml}
       </div>
     </div>`;
