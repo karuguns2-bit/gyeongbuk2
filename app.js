@@ -3545,10 +3545,13 @@ function renderHome(){
   };
 
   return `
-    <div class="page-title">홈 대시보드</div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px;">
+      <div class="page-title" style="margin:0;">홈 대시보드</div>
+      ${renderHomeNoticeTicker()}
+    </div>
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
+    ${state.noticeFormOpen ? renderNoticeForm() : ''}
     <div style="margin-bottom:16px;">${renderHomeBranchBadges()}</div>
-    <div style="margin-bottom:16px;">${renderNoticeBanner()}</div>
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
@@ -4388,6 +4391,83 @@ function renderNoticeBanner(){
     ${state.noticeFormOpen ? renderNoticeForm() : ''}
   `;
 }
+// 2026-09: 홈 대시보드 상단 큰 공지사항 카드를 완전히 제거하고, 대신 "홈 대시보드" 제목 옆에
+// 뉴스 티커처럼 공지 제목들이 오른쪽에서 왼쪽으로 흘러가는 얇은 바로 대체했다(지우님 요청).
+// 클릭하면 기존 openNoticeDetail() 모달을 그대로 재사용해서 열기 때문에, 매니저 읽음 처리
+// (markNoticeRead)와 공지레이더 배지 집계는 그대로 유지된다. 작성/수정/삭제도 이 모달과
+// 티커의 + 버튼을 통해 처리하므로, 예전의 회전식 배너(renderNoticeBanner)에서 쓰던 인덱스
+// 기반 함수(goToNotice/shiftNotice/editCurrentNotice 등)는 더 이상 호출되지 않는다(다른 곳에서
+// 참조하지 않는지 확인했고, 안전하게 남겨둔 죽은 코드다 — 굳이 지우지 않아 회귀 위험을 줄였다).
+function renderHomeNoticeTicker(){
+  const isAdmin = SESSION.role==='admin';
+  if(state.noticeFormOpen===undefined) state.noticeFormOpen = false;
+  if(state.noticeEditId===undefined) state.noticeEditId = null;
+  const notices = sortedNotices();
+  const isStaffViewer = SESSION.role==='staff';
+  const addBtn = isAdmin ? `<button type="button" class="nb-ticker-add" onclick="openNoticeForm()" title="공지 작성">+</button>` : '';
+  let wrapInner;
+  if(notices.length===0){
+    wrapInner = `<span class="nb-ticker-empty">등록된 공지사항이 없습니다.${isAdmin ? ' 오른쪽 + 버튼으로 작성해 보세요.' : ''}</span>`;
+  } else {
+    const itemHtml = n=>{
+      const unread = isStaffViewer && !isNoticeReadBy(n.id, SESSION.empId);
+      return `<span class="nb-ticker-item${unread?' nb-ticker-unread':''}" onclick="openNoticeDetail('${n.id}')">${unread?'<span class="nb-ticker-dot"></span>':''}${escapeHtml(n.title)}</span>`;
+    };
+    const itemsHtml = notices.map(itemHtml).join('<span class="nb-ticker-sep">·</span>');
+    // 티커가 자연스럽게 이어지도록(끊기지 않는 것처럼) 목록을 통째로 두 번 이어붙이고 정확히
+    // 절반(-50%)만 이동하는 애니메이션을 반복시킨다. 공지가 1~2개뿐이면 반복감이 어색하므로
+    // 그때는 애니메이션 없이 고정으로 보여준다.
+    const scroll = notices.length>=3;
+    wrapInner = scroll
+      ? `<div class="nb-ticker-track nb-ticker-scroll">${itemsHtml}<span class="nb-ticker-sep">·</span>${itemsHtml}</div>`
+      : `<div class="nb-ticker-track">${itemsHtml}</div>`;
+  }
+  return `
+    <style>
+      .nb-ticker{ flex:1 1 260px; min-width:200px; display:flex; align-items:center; gap:8px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:20px; padding:6px 8px 6px 12px; overflow:hidden; box-sizing:border-box; }
+      .nb-ticker-label{ flex-shrink:0; font-size:13px; }
+      .nb-ticker-wrap{ flex:1 1 auto; overflow:hidden; white-space:nowrap; position:relative; height:18px; }
+      .nb-ticker-track{ display:inline-flex; align-items:center; white-space:nowrap; position:absolute; left:0; top:0; }
+      .nb-ticker-track.nb-ticker-scroll{ animation:nbTickerScroll 24s linear infinite; }
+      .nb-ticker:hover .nb-ticker-track.nb-ticker-scroll{ animation-play-state:paused; }
+      @keyframes nbTickerScroll{ 0%{ transform:translateX(0); } 100%{ transform:translateX(-50%); } }
+      .nb-ticker-item{ font-size:12.5px; font-weight:600; color:var(--text); cursor:pointer; padding:0 4px; }
+      .nb-ticker-item:hover{ color:var(--primary); text-decoration:underline; }
+      .nb-ticker-sep{ color:var(--border); margin:0 4px; }
+      .nb-ticker-unread{ color:#d40000; }
+      .nb-ticker-dot{ display:inline-block; width:5px; height:5px; border-radius:50%; background:#d40000; margin-right:4px; }
+      .nb-ticker-empty{ font-size:12.5px; color:var(--text-sub); white-space:nowrap; }
+      .nb-ticker-add{ flex-shrink:0; width:24px; height:24px; border-radius:50%; border:1px solid var(--border); background:#fff; cursor:pointer; font-size:14px; font-weight:700; color:var(--primary); display:flex; align-items:center; justify-content:center; padding:0; line-height:1; }
+      .nb-ticker-add:hover{ background:#f2f2f4; }
+    </style>
+    <div class="nb-ticker">
+      <span class="nb-ticker-label">📢</span>
+      <div class="nb-ticker-wrap">${wrapInner}</div>
+      ${addBtn}
+    </div>`;
+}
+// 티커에서 특정 공지를 클릭하면 여는 상세 모달(openNoticeDetail) 안에서 바로 수정/삭제할 수 있게
+// id 기준으로 동작하는 함수. (예전 editCurrentNotice/deleteCurrentNotice는 회전 배너의
+// state.noticeIndex를 기준으로 "지금 보이는 공지"를 골랐지만, 티커는 그런 인덱스 개념이 없다.)
+function editNoticeById(id){
+  if(SESSION.role!=='admin') return;
+  const n = DB.notices.find(x=>x.id===id);
+  if(!n) return;
+  closeNoticeDetail();
+  state.noticeFormOpen = true;
+  state.noticeEditId = id;
+  renderTab('home');
+}
+function deleteNoticeById(id){
+  if(SESSION.role!=='admin') return;
+  const n = DB.notices.find(x=>x.id===id);
+  if(!n) return;
+  if(!confirm(`"${n.title}" 공지를 삭제할까요?`)) return;
+  DB.notices = DB.notices.filter(x=>x.id!==id);
+  closeNoticeDetail();
+  saveDB();
+  renderTab('home');
+}
 function isImageAttachment(f){
   const v = (f && f.dataUrl) || '';
   if(/^data:image\//i.test(v)) return true;
@@ -4783,9 +4863,18 @@ function openNoticeDetail(id){
     <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:8px;">
       ${n.attachments.map(f=>noticeAttachmentHtml(f, 90, null)).join('')}
     </div>` : '';
+  // 모달(#noticeDetailBody)은 .notice-banner 밖에 있어서 그 스코프에 묶인 .nb-admin-btn
+  // 스타일을 못 받으므로, 같은 룩앤필을 인라인 스타일로 직접 지정한다.
+  const adminBtnStyle = 'background:#f2f2f4;border:1px solid var(--border);color:var(--text);padding:5px 11px;border-radius:20px;font-size:11.5px;cursor:pointer;font-weight:600;';
+  const adminBarHtml = SESSION.role==='admin' ? `
+    <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:10px;">
+      <button type="button" style="${adminBtnStyle}" onclick="editNoticeById('${n.id}')">수정</button>
+      <button type="button" style="${adminBtnStyle}" onclick="deleteNoticeById('${n.id}')">삭제</button>
+    </div>` : '';
   const bodyEl = document.getElementById('noticeDetailBody');
   if(bodyEl){
     bodyEl.innerHTML = `
+      ${adminBarHtml}
       <div style="font-weight:800;font-size:17px;margin-bottom:10px;">${escapeHtml(n.title)}</div>
       <div style="font-size:13.5px;line-height:1.75;">${richContentHtml(n.content)}</div>
       ${photosHtml}
