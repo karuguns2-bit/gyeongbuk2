@@ -2749,6 +2749,9 @@ function renderHomeBranchBadges(){
   const rankColPrefs = [4,3,5,6,2];
   const rankCatCount = BRANCH_BADGE_CATEGORIES.length;
   const rankCols = rankColPrefs.find(c=> rankCatCount % c === 0) || 4;
+  // 세로로도 남는 칸(왼쪽 배지 영역보다 짧아서 생기는 아래쪽 공백) 없이 카드 높이를 꽉 채우도록,
+  // 행도 1fr로 균등 배분해서 박스/글씨가 남는 세로 공간까지 함께 커지게 한다.
+  const rankRows = Math.ceil(rankCatCount / rankCols);
   const rankPanelHtml = `
     <div class="bbadge-rankpanel">
       <div class="bbadge-rank-header">
@@ -2758,7 +2761,7 @@ function renderHomeBranchBadges(){
           <button type="button" class="bbadge-rank-tab${rankMode==='year'?' active':''}" onclick="setBranchBadgeRankMode('year')">${rankYear}년 누적</button>
         </div>
       </div>
-      <div class="bbadge-rank-grid" style="grid-template-columns:repeat(${rankCols},1fr);">${rankRowsHtml}</div>
+      <div class="bbadge-rank-grid" style="grid-template-columns:repeat(${rankCols},1fr);grid-template-rows:repeat(${rankRows},1fr);">${rankRowsHtml}</div>
     </div>`;
   return `
     <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:14px 16px;">
@@ -2817,7 +2820,7 @@ function renderHomeBranchBadges(){
         .bbadge-branch{ font-size:9.5px; font-weight:700; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:11px; }
         .bbadge-total{ font-size:8.5px; font-weight:700; color:#c9820a; white-space:nowrap; }
-        .bbadge-outer{ display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; }
+        .bbadge-outer{ display:flex; align-items:stretch; gap:14px; flex-wrap:wrap; }
         .bbadge-leftcol{ flex:0 1 auto; min-width:300px; }
         .bbadge-medals{
           display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:6px 10px;
@@ -2825,18 +2828,18 @@ function renderHomeBranchBadges(){
         }
         .bbadge-medals::-webkit-scrollbar{ height:6px; }
         .bbadge-medals::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
-        .bbadge-rankpanel{ flex:1 1 220px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:8px 10px; }
-        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
+        .bbadge-rankpanel{ flex:1 1 220px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; }
+        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px; flex-shrink:0; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
         .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9px; cursor:pointer; color:var(--text-sub); }
         .bbadge-rank-tab.active{ background:var(--primary); color:#fff; border-color:var(--primary); font-weight:700; }
-        .bbadge-rank-grid{ display:grid; gap:8px 10px; }
+        .bbadge-rank-grid{ display:grid; gap:10px 12px; flex:1 1 auto; }
         @media (max-width:820px){
-          .bbadge-rank-grid{ grid-template-columns:repeat(auto-fit,minmax(160px,1fr)) !important; }
+          .bbadge-rank-grid{ grid-template-columns:repeat(auto-fit,minmax(160px,1fr)) !important; grid-template-rows:none !important; }
         }
-        .bbadge-rank-row{ padding:8px 10px; background:#fff; border:1px solid var(--border); border-radius:8px; }
-        .bbadge-rank-cat{ font-size:10.5px; font-weight:700; color:var(--text-sub); margin-bottom:4px; display:flex; gap:5px; align-items:center; }
-        .bbadge-rank-list{ font-size:11px; line-height:1.7; }
+        .bbadge-rank-row{ padding:10px 12px; background:#fff; border:1px solid var(--border); border-radius:8px; display:flex; flex-direction:column; justify-content:center; }
+        .bbadge-rank-cat{ font-size:12px; font-weight:700; color:var(--text-sub); margin-bottom:5px; display:flex; gap:5px; align-items:center; }
+        .bbadge-rank-list{ font-size:12.5px; line-height:1.9; }
         .bbadge-rank-entry{ white-space:nowrap; font-weight:600; }
         .bbadge-rank-medal{ margin-right:1px; }
         .bbadge-rank-val{ font-weight:700; }
