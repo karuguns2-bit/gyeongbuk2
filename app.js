@@ -2103,20 +2103,23 @@ function yearPeriodsUpToNow(year){
 // 배지 안의 아이콘을 이모지 대신 큼직하고 또렷한 벡터(SVG) 아이콘으로 그린다 — 이모지는 기기/폰트에
 // 따라 작고 흐릿하게 보일 수 있어서, 방패 배지 안에서 잘 안 보인다는 문의가 있었다. 이름으로 골라
 // 쓰도록 간단한 조회 테이블 형태로 구성.
+// 배지 3D 리디자인(2026-09)에 맞춰 아이콘을 얇은 선 하나짜리에서 듀오톤(반투명 채움+굵은 선)으로
+// 바꿔 육각형 badge 안을 꽉 채우도록 했다. 실제 렌더 크기는 .bbadge-icon svg CSS 규칙이
+// width/height를 덮어써서 결정하므로, 여기 속성값은 기본치일 뿐이다.
 function bbadgeIconSvg(name){
-  const common = 'width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+  const common = 'width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
   const icons = {
-    target: `<svg ${common}><circle cx="12" cy="12" r="9.2"/><circle cx="12" cy="12" r="5.4"/><circle cx="12" cy="12" r="1.7" fill="#fff"/></svg>`,
-    trending: `<svg ${common}><polyline points="3 17 9.5 10.5 13.5 14.5 21 6.5"/><polyline points="14.5 6.5 21 6.5 21 13"/></svg>`,
-    clipboard: `<svg ${common}><rect x="5" y="3.3" width="14" height="18.4" rx="2"/><path d="M9 3.3h6a1 1 0 0 1 1 1v1.2H8V4.3a1 1 0 0 1 1-1z" fill="#fff" stroke="none"/><line x1="8.3" y1="10" x2="15.7" y2="10"/><line x1="8.3" y1="14" x2="15.7" y2="14"/><line x1="8.3" y1="17.7" x2="13" y2="17.7"/></svg>`,
-    chat: `<svg ${common}><path d="M21 11.6a8.5 8.5 0 0 1-8.5 8.5 8.4 8.4 0 0 1-4-.95L3 21l1.85-5.75a8.4 8.4 0 0 1-.95-3.95A8.5 8.5 0 0 1 12.4 2.6a8.5 8.5 0 0 1 8.6 8.6z"/></svg>`,
-    star: `<svg ${common} fill="#fff"><polygon points="12 2.3 15.1 8.9 22.2 9.7 17 14.7 18.3 21.8 12 18.3 5.7 21.8 7 14.7 1.8 9.7 8.9 8.9"/></svg>`,
-    bars: `<svg ${common}><line x1="6" y1="20.5" x2="6" y2="12.5"/><line x1="12" y1="20.5" x2="12" y2="5"/><line x1="18" y1="20.5" x2="18" y2="9.5"/></svg>`,
-    users: `<svg ${common}><path d="M16.7 20.5v-1.9a3.7 3.7 0 0 0-3.7-3.7H6.5a3.7 3.7 0 0 0-3.7 3.7v1.9"/><circle cx="9.6" cy="7.6" r="3.7"/><path d="M21.2 20.5v-1.9a3.7 3.7 0 0 0-2.8-3.6"/><path d="M14.7 4.1a3.7 3.7 0 0 1 0 7.2"/></svg>`,
-    trophy: `<svg ${common}><path d="M8 21h8"/><path d="M12 17v4"/><path d="M7 3.5h10v5a5 5 0 0 1-10 0v-5z"/><path d="M7 4.7H4.3A2.6 2.6 0 0 0 7 9.2"/><path d="M17 4.7h2.7A2.6 2.6 0 0 1 17 9.2"/></svg>`,
-    arrowUpCircle: `<svg ${common}><circle cx="12" cy="12" r="9.2"/><polyline points="8 12.5 12 8 16 12.5"/><line x1="12" y1="8" x2="12" y2="16.5"/></svg>`,
-    flame: `<svg ${common} fill="#fff"><path d="M12 21c-3.4 0-6.2-2.6-6.2-6.4 0-3 1.8-5.1 3.2-7.6.8-1.4 1.3-2.9 1.4-4.5.3.2 4.3 3 4.3 7.4 0 1.3-.4 2.4-1 3.3 1.1-.3 2-1.1 2.6-2.1.9 1.6 1.3 3.1 1.3 4.5 0 3.8-2.8 6.4-5.6 6.4z"/></svg>`,
-    gift: `<svg ${common}><rect x="3.5" y="9.7" width="17" height="10.3" rx="1.2"/><line x1="3.5" y1="9.7" x2="20.5" y2="9.7"/><line x1="12" y1="9.7" x2="12" y2="20"/><path d="M12 9.7c-1.2-3.6-6-4.4-6-1.6 0 1.5 2 2 4.3 1.6"/><path d="M12 9.7c1.2-3.6 6-4.4 6-1.6 0 1.5-2 2-4.3 1.6"/></svg>`
+    target: `<svg ${common}><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,.22)"/><circle cx="12" cy="12" r="10" fill="none" stroke="#fff" stroke-width="1.4" opacity=".6"/><circle cx="12" cy="12" r="6.4" fill="none" stroke="#fff" stroke-width="2.4"/><circle cx="12" cy="12" r="2.3" fill="#fff"/></svg>`,
+    trending: `<svg ${common}><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,.2)"/><polyline points="4.5 16.5 10 10.5 13.5 14 19.5 7.2" fill="none" stroke="#fff" stroke-width="2.4"/><polyline points="14.2 7.2 19.5 7.2 19.5 12.2" fill="none" stroke="#fff" stroke-width="2.4"/></svg>`,
+    clipboard: `<svg ${common}><rect x="4" y="2.5" width="16" height="19.5" rx="2.5" fill="rgba(255,255,255,.22)" stroke="#fff" stroke-width="1.2" opacity=".9"/><rect x="8.3" y="1" width="7.4" height="3" rx="1" fill="#fff"/><line x1="7.3" y1="10.2" x2="16.7" y2="10.2" stroke="#fff" stroke-width="2" stroke-linecap="round"/><line x1="7.3" y1="14.4" x2="16.7" y2="14.4" stroke="#fff" stroke-width="2" stroke-linecap="round"/><line x1="7.3" y1="18.6" x2="13" y2="18.6" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>`,
+    chat: `<svg ${common}><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,.2)"/><path d="M20 11.4a7.6 7.6 0 0 1-7.6 7.6 7.5 7.5 0 0 1-3.6-.85L4.6 19l1.65-5.1a7.5 7.5 0 0 1-.85-3.5A7.6 7.6 0 0 1 12.9 3.8a7.6 7.6 0 0 1 7.1 7.6z" fill="rgba(255,255,255,.3)" stroke="#fff" stroke-width="1.8"/></svg>`,
+    star: `<svg ${common}><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,.18)"/><polygon points="12 2.8 15 9.1 21.7 9.9 16.8 14.6 18 21.4 12 18.1 6 21.4 7.2 14.6 2.3 9.9 9 9.1" fill="#fff"/></svg>`,
+    bars: `<svg ${common}><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,.2)"/><rect x="4.8" y="12.5" width="3.6" height="7.5" rx="1" fill="#fff"/><rect x="10.2" y="6.5" width="3.6" height="13.5" rx="1" fill="#fff"/><rect x="15.6" y="9.5" width="3.6" height="10.5" rx="1" fill="#fff"/></svg>`,
+    users: `<svg ${common}><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,.2)"/><circle cx="9.3" cy="8.6" r="3.4" fill="rgba(255,255,255,.3)" stroke="#fff" stroke-width="1.8"/><path d="M16 19.5v-1.7a3.5 3.5 0 0 0-3.5-3.5H6.3a3.5 3.5 0 0 0-3.5 3.5v1.7" fill="none" stroke="#fff" stroke-width="1.8"/><path d="M19.8 19.5v-1.7a3.4 3.4 0 0 0-2.5-3.3" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M14.5 5.3a3.4 3.4 0 0 1 0 6.5" fill="none" stroke="#fff" stroke-width="1.6"/></svg>`,
+    trophy: `<svg ${common}><path d="M7 21h10" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><path d="M12 16.5v4.2" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><path d="M6.2 3h11.6v5.3c0 3.4-2.6 6.1-5.8 6.1s-5.8-2.7-5.8-6.1V3z" fill="rgba(255,255,255,.28)" stroke="#fff" stroke-width="1.3"/><path d="M6.2 4.3H3.4a1.7 1.7 0 0 0 0 3.4c.5 1.4 1.4 2.5 2.4 3.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><path d="M17.8 4.3h2.8a1.7 1.7 0 0 1 0 3.4c-.5 1.4-1.4 2.5-2.4 3.3" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+    arrowUpCircle: `<svg ${common}><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,.22)"/><circle cx="12" cy="12" r="10" fill="none" stroke="#fff" stroke-width="1.4" opacity=".6"/><polyline points="7.6 13 12 8.2 16.4 13" fill="none" stroke="#fff" stroke-width="2.4"/><line x1="12" y1="8.2" x2="12" y2="17.5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>`,
+    flame: `<svg ${common}><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,.18)"/><path d="M12 21.2c-3.5 0-6.4-2.7-6.4-6.6 0-3.1 1.9-5.3 3.3-7.8.8-1.5 1.3-3 1.4-4.6.3.2 4.4 3.1 4.4 7.6 0 1.3-.4 2.5-1 3.4 1.1-.3 2-1.1 2.7-2.2.9 1.7 1.3 3.2 1.3 4.6 0 3.9-2.9 6.6-5.7 6.6z" fill="#fff"/></svg>`,
+    gift: `<svg ${common}><circle cx="12" cy="12" r="10" fill="rgba(255,255,255,.2)"/><rect x="3.8" y="10.2" width="16.4" height="9.8" rx="1.2" fill="rgba(255,255,255,.3)" stroke="#fff" stroke-width="1.6"/><line x1="3.8" y1="10.2" x2="20.2" y2="10.2" stroke="#fff" stroke-width="1.6"/><line x1="12" y1="10.2" x2="12" y2="20" stroke="#fff" stroke-width="1.6"/><path d="M12 10.2c-1.2-3.4-5.6-4.1-5.6-1.6 0 1.4 1.9 1.9 4 1.6" fill="none" stroke="#fff" stroke-width="1.6"/><path d="M12 10.2c1.2-3.4 5.6-4.1 5.6-1.6 0 1.4-1.9 1.9-4 1.6" fill="none" stroke="#fff" stroke-width="1.6"/></svg>`
   };
   return icons[name] || icons.star;
 }
@@ -2563,10 +2566,9 @@ function renderHomeManagerBadges(){
       : `${cat.label}(${cat.desc}) · 이번 달은 아직 1위가 없습니다`;
     const g = cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
     const sh = cat.shadow || '242,163,0';
-    const shieldStyle = won
-      ? `background:linear-gradient(160deg, ${g[0]} 0%, ${g[1]} 45%, ${g[2]} 100%);box-shadow:0 5px 12px rgba(${sh},.5), inset 0 0 0 2px rgba(255,255,255,.6);`
-      : 'background:#e7e8ec;box-shadow:inset 0 0 0 2px #d7d8dd;';
-    const dim = won ? '' : 'filter:grayscale(1);opacity:.5;';
+    const shieldVars = `--g1:${g[0]};--g2:${g[1]};--g3:${g[2]};--sh:${sh};`;
+    const shieldClass = won ? 'bbadge-hex bbadge-front won' : 'bbadge-hex bbadge-front locked';
+    const dim = won ? '' : 'filter:grayscale(1);opacity:.55;';
     // 공동 수상일 때는 사람마다 누적 횟수가 다를 수 있어 하나의 숫자로 뭉뚱그리지 않고 생략한다
     // (자세한 누적 횟수는 마우스오버 툴팁에서 확인 가능).
     const totalCount = (won && !isTie) ? managerBadgeTotalCount(cat.id, winners[0].empId, true) : 0;
@@ -2574,17 +2576,17 @@ function renderHomeManagerBadges(){
     const subLabel = `${cat.label}${totalTag}`;
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
-        <div class="bbadge-shieldwrap">
+        <div class="bbadge-shieldwrap" style="${shieldVars}">
           ${starsHtml}
-          <div class="bbadge-crown" style="${dim}">👑</div>
-          <div class="bbadge-shield" style="${shieldStyle}">
-            <span class="bbadge-leaf bbadge-leaf-l" style="${dim}">🌿</span>
-            <span class="bbadge-leaf bbadge-leaf-r" style="${dim}">🌿</span>
-            <span class="bbadge-icon" style="${dim}">${bbadgeIconSvg(cat.svg)}</span>
-            <div class="bbadge-ribbon-text">${cat.label}</div>
+          <div class="bbadge-hexglow" style="${dim}"></div>
+          <div class="bbadge-hex bbadge-depth" style="${dim}"></div>
+          <div class="bbadge-hex bbadge-rim" style="${dim}"></div>
+          <div class="${shieldClass}" style="${dim}">
+            <span class="bbadge-icon">${bbadgeIconSvg(cat.svg)}</span>
           </div>
+          <div class="bbadge-shadow" style="${dim}"></div>
         </div>
-        <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};${isTie?'white-space:normal;line-height:1.25;':''}">${mgrName}</div>
+        <div class="bbadge-branch" style="color:${won?g[2]:'#8a8f9c'};${isTie?'white-space:normal;line-height:1.25;':''}">${mgrName}</div>
         <div class="bbadge-title-label">${subLabel}</div>
       </div>`;
   }).join('');
@@ -2689,40 +2691,39 @@ function renderHomeBranchBadges(){
       : `${r.cat.label}(${r.cat.desc}) · 이번 달은 아직 1위가 없습니다`;
     const g = r.cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
     const sh = r.cat.shadow || '242,163,0';
-    const shieldStyle = won
-      ? `background:linear-gradient(160deg, ${g[0]} 0%, ${g[1]} 45%, ${g[2]} 100%);box-shadow:0 5px 12px rgba(${sh},.5), inset 0 0 0 2px rgba(255,255,255,.6);`
-      : 'background:#e7e8ec;box-shadow:inset 0 0 0 2px #d7d8dd;';
-    const dim = won ? '' : 'filter:grayscale(1);opacity:.5;';
+    const shieldVars = `--g1:${g[0]};--g2:${g[1]};--g3:${g[2]};--sh:${sh};`;
+    const shieldClass = won ? 'bbadge-hex bbadge-front won' : 'bbadge-hex bbadge-front locked';
+    const dim = won ? '' : 'filter:grayscale(1);opacity:.55;';
     // 공동 수상이면 지점마다 누적 횟수가 달라질 수 있어 숫자 하나로 뭉뚱그리지 않고 생략한다.
     const totalCount = (won && !isTie) ? branchBadgeTotalCount(r.cat.id, winners[0].branchId, true) : 0;
     const totalTag = totalCount>0 ? ` <span class="bbadge-total">🏅×${totalCount}</span>` : '';
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
-        <div class="bbadge-shieldwrap">
+        <div class="bbadge-shieldwrap" style="${shieldVars}">
           ${starsHtml}
-          <div class="bbadge-crown" style="${dim}">👑</div>
-          <div class="bbadge-shield" style="${shieldStyle}">
-            <span class="bbadge-leaf bbadge-leaf-l" style="${dim}">🌿</span>
-            <span class="bbadge-leaf bbadge-leaf-r" style="${dim}">🌿</span>
-            <span class="bbadge-icon" style="${dim}">${bbadgeIconSvg(r.cat.svg)}</span>
-            <div class="bbadge-ribbon-text">${r.cat.label}</div>
+          <div class="bbadge-hexglow" style="${dim}"></div>
+          <div class="bbadge-hex bbadge-depth" style="${dim}"></div>
+          <div class="bbadge-hex bbadge-rim" style="${dim}"></div>
+          <div class="${shieldClass}" style="${dim}">
+            <span class="bbadge-icon">${bbadgeIconSvg(r.cat.svg)}</span>
           </div>
+          <div class="bbadge-shadow" style="${dim}"></div>
         </div>
-        <div class="bbadge-branch" style="color:${won?g[2]:'#b7b8bf'};${isTie?'white-space:normal;line-height:1.25;':''}">${branchNm}</div>
+        <div class="bbadge-branch" style="color:${won?g[2]:'#8a8f9c'};${isTie?'white-space:normal;line-height:1.25;':''}">${branchNm}</div>
         <div class="bbadge-title-label">${r.cat.label}${totalTag}</div>
       </div>`;
   }).join('');
   const grandSlamHtml = grandSlamBranch ? `
       <div class="bbadge-item bbadge-won bbadge-grandslam" title="${escapeHtml(branchName(grandSlamBranch))} · 이번 달 ${grandSlamBranchCount}개 종목 동시 1위 그랜드슬램!">
-        <div class="bbadge-shieldwrap">
+        <div class="bbadge-shieldwrap" style="--g1:#fff2c4;--g2:#f0b429;--g3:#8a5b06;--sh:138,91,6;">
           <div class="bbadge-stars">✨✨✨</div>
-          <div class="bbadge-crown">👑</div>
-          <div class="bbadge-shield" style="background:linear-gradient(160deg, #fff2c4 0%, #f0b429 45%, #8a5b06 100%);box-shadow:0 6px 14px rgba(138,91,6,.55), inset 0 0 0 2px rgba(255,246,221,.8);">
-            <span class="bbadge-leaf bbadge-leaf-l">🌿</span>
-            <span class="bbadge-leaf bbadge-leaf-r">🌿</span>
+          <div class="bbadge-hexglow"></div>
+          <div class="bbadge-hex bbadge-depth"></div>
+          <div class="bbadge-hex bbadge-rim"></div>
+          <div class="bbadge-hex bbadge-front won">
             <span class="bbadge-icon">${bbadgeIconSvg('trophy')}</span>
-            <div class="bbadge-ribbon-text">그랜드슬램</div>
           </div>
+          <div class="bbadge-shadow"></div>
         </div>
         <div class="bbadge-branch" style="color:#8a5b06;">${escapeHtml(branchName(grandSlamBranch))}</div>
         <div class="bbadge-title-label">그랜드슬램</div>
@@ -2757,27 +2758,58 @@ function renderHomeBranchBadges(){
   return `
     <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:14px 16px;">
       <style>
-        .bbadge-item{ text-align:center; width:66px; flex:0 0 auto; }
-        .bbadge-shieldwrap{ position:relative; width:52px; height:52px; margin:11px auto 0; transition:transform .18s ease; }
-        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-2px) scale(1.06); }
-        .bbadge-shield{
-          position:relative; width:52px; height:59px; margin:0 auto;
-          clip-path:polygon(6% 0%, 94% 0%, 100% 15%, 100% 55%, 50% 100%, 0% 55%, 0% 15%);
-          display:flex; align-items:flex-start; justify-content:center; overflow:hidden;
+        .bbadge-item{ text-align:center; width:84px; flex:0 0 auto; }
+        .bbadge-shieldwrap{ position:relative; width:70px; height:75px; margin:14px auto 0; transition:transform .35s cubic-bezier(.34,1.56,.64,1); }
+        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-8px) scale(1.1); }
+        .bbadge-shadow{
+          position:absolute; left:50%; bottom:1px; width:36px; height:9px; margin-left:-18px; border-radius:50%;
+          background:radial-gradient(ellipse, rgba(0,0,0,.42) 0%, rgba(0,0,0,0) 72%); transition:all .35s ease;
         }
-        .bbadge-crown{ position:absolute; top:-10px; left:50%; transform:translateX(-50%); font-size:13px; z-index:3; filter:drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
-        .bbadge-leaf{ position:absolute; top:19px; font-size:10px; z-index:1; opacity:.95; }
-        .bbadge-leaf-l{ left:-8px; transform:scaleX(-1) rotate(8deg); }
-        .bbadge-leaf-r{ right:-8px; transform:rotate(8deg); }
-        .bbadge-icon{ position:relative; z-index:2; margin-top:9px; display:flex; filter:drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
-        .bbadge-icon svg{ width:20px; height:20px; }
-        .bbadge-ribbon-text{
-          position:absolute; left:50%; bottom:8px; transform:translateX(-50%); width:96%;
-          background:rgba(0,0,0,.36); color:#fff; font-size:6.5px; font-weight:800; letter-spacing:-.3px;
-          text-align:center; padding:1.5px 1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:2;
+        .bbadge-item:hover .bbadge-shadow{ width:46px; height:11px; margin-left:-23px; opacity:.65; }
+        .bbadge-hexglow{
+          position:absolute; top:50%; left:50%; width:84px; height:84px; margin:-42px 0 0 -42px;
+          border-radius:50%; z-index:0; pointer-events:none;
+          background:radial-gradient(circle, rgba(var(--sh,242,163,0),.5) 0%, transparent 68%);
+          opacity:.5; transition:opacity .3s ease;
         }
-        .bbadge-stars{ position:absolute; top:-21px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:8px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.25); z-index:4; }
-        .bbadge-branch{ font-size:10.5px; font-weight:700; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bbadge-item:hover .bbadge-hexglow{ opacity:1; }
+        .bbadge-grandslam .bbadge-hexglow{
+          background:conic-gradient(from 0deg, #fff2c4, #f0b429, #8a5b06, #f0b429, #fff2c4);
+          filter:blur(8px); opacity:.75; animation:bbadgeSpin 3.4s linear infinite;
+        }
+        .bbadge-item:hover .bbadge-grandslam .bbadge-hexglow{ opacity:1; }
+        @keyframes bbadgeSpin{ to{ transform:rotate(360deg); } }
+        .bbadge-hex{ position:absolute; clip-path:polygon(50% 2%, 96% 26%, 96% 74%, 50% 98%, 4% 74%, 4% 26%); }
+        .bbadge-depth{ top:50%; left:50%; width:56px; height:56px; margin:-23px 0 0 -28px; background:var(--g3,#555); filter:brightness(.45); z-index:1; }
+        .bbadge-rim{ top:50%; left:50%; width:64px; height:64px; margin:-32px 0 0 -32px; background:linear-gradient(160deg,#3a4150,#0d0f14); z-index:2; }
+        .bbadge-grandslam .bbadge-rim{ background:linear-gradient(160deg,#caa24a,#3d2c05); }
+        .bbadge-front{
+          top:50%; left:50%; width:56px; height:56px; margin:-28px 0 0 -28px; z-index:3;
+          display:flex; align-items:center; justify-content:center; overflow:hidden;
+          transition:box-shadow .25s ease, filter .2s ease;
+        }
+        .bbadge-front.won{
+          background:linear-gradient(155deg, var(--g1) 0%, var(--g2) 48%, var(--g3) 100%);
+          box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);
+          animation:bbadgePulse 2.6s ease-in-out infinite;
+        }
+        .bbadge-front.locked{ background:#20242e; box-shadow:inset 0 0 0 1px #333a48; }
+        .bbadge-item:hover .bbadge-front.won{ filter:brightness(1.12) saturate(1.15); animation-play-state:paused; }
+        @keyframes bbadgePulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.08); } }
+        .bbadge-front.won::before{
+          content:''; position:absolute; inset:0; pointer-events:none;
+          background:linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 42%, rgba(0,0,0,.2) 100%);
+        }
+        .bbadge-front.won::after{
+          content:''; position:absolute; inset:0;
+          background:linear-gradient(115deg, transparent 42%, rgba(255,255,255,.7) 50%, transparent 58%);
+          transform:translateX(-130%); transition:transform .55s ease;
+        }
+        .bbadge-item:hover .bbadge-front.won::after{ transform:translateX(130%); }
+        .bbadge-icon{ position:relative; z-index:4; display:flex; filter:drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
+        .bbadge-icon svg{ width:36px; height:36px; }
+        .bbadge-stars{ position:absolute; top:0; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:9px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.3); z-index:5; }
+        .bbadge-branch{ font-size:10.5px; font-weight:700; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .bbadge-title-label{ font-size:9px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:12px; }
         .bbadge-total{ font-size:9px; font-weight:700; color:#c9820a; white-space:nowrap; }
         .bbadge-outer{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
