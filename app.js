@@ -2758,16 +2758,16 @@ function renderHomeBranchBadges(){
   return `
     <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:14px 16px;">
       <style>
-        .bbadge-item{ text-align:center; width:84px; flex:0 0 auto; }
-        .bbadge-shieldwrap{ position:relative; width:70px; height:75px; margin:14px auto 0; transition:transform .35s cubic-bezier(.34,1.56,.64,1); }
-        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-8px) scale(1.1); }
+        .bbadge-item{ text-align:center; width:72px; flex:0 0 auto; }
+        .bbadge-shieldwrap{ position:relative; width:60px; height:64px; margin:10px auto 0; transition:transform .35s cubic-bezier(.34,1.56,.64,1); }
+        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-6px) scale(1.1); }
         .bbadge-shadow{
-          position:absolute; left:50%; bottom:1px; width:36px; height:9px; margin-left:-18px; border-radius:50%;
+          position:absolute; left:50%; bottom:1px; width:31px; height:8px; margin-left:-16px; border-radius:50%;
           background:radial-gradient(ellipse, rgba(0,0,0,.42) 0%, rgba(0,0,0,0) 72%); transition:all .35s ease;
         }
-        .bbadge-item:hover .bbadge-shadow{ width:46px; height:11px; margin-left:-23px; opacity:.65; }
+        .bbadge-item:hover .bbadge-shadow{ width:39px; height:9px; margin-left:-20px; opacity:.65; }
         .bbadge-hexglow{
-          position:absolute; top:50%; left:50%; width:84px; height:84px; margin:-42px 0 0 -42px;
+          position:absolute; top:50%; left:50%; width:71px; height:71px; margin:-36px 0 0 -36px;
           border-radius:50%; z-index:0; pointer-events:none;
           background:radial-gradient(circle, rgba(var(--sh,242,163,0),.5) 0%, transparent 68%);
           opacity:.5; transition:opacity .3s ease;
@@ -2780,11 +2780,11 @@ function renderHomeBranchBadges(){
         .bbadge-item:hover .bbadge-grandslam .bbadge-hexglow{ opacity:1; }
         @keyframes bbadgeSpin{ to{ transform:rotate(360deg); } }
         .bbadge-hex{ position:absolute; clip-path:polygon(50% 2%, 96% 26%, 96% 74%, 50% 98%, 4% 74%, 4% 26%); }
-        .bbadge-depth{ top:50%; left:50%; width:56px; height:56px; margin:-23px 0 0 -28px; background:var(--g3,#555); filter:brightness(.45); z-index:1; }
-        .bbadge-rim{ top:50%; left:50%; width:64px; height:64px; margin:-32px 0 0 -32px; background:linear-gradient(160deg,#3a4150,#0d0f14); z-index:2; }
+        .bbadge-depth{ top:50%; left:50%; width:48px; height:48px; margin:-20px 0 0 -24px; background:var(--g3,#555); filter:brightness(.45); z-index:1; }
+        .bbadge-rim{ top:50%; left:50%; width:54px; height:54px; margin:-27px 0 0 -27px; background:linear-gradient(160deg,#3a4150,#0d0f14); z-index:2; }
         .bbadge-grandslam .bbadge-rim{ background:linear-gradient(160deg,#caa24a,#3d2c05); }
         .bbadge-front{
-          top:50%; left:50%; width:56px; height:56px; margin:-28px 0 0 -28px; z-index:3;
+          top:50%; left:50%; width:48px; height:48px; margin:-24px 0 0 -24px; z-index:3;
           display:flex; align-items:center; justify-content:center; overflow:hidden;
           transition:box-shadow .25s ease, filter .2s ease;
         }
@@ -2807,39 +2807,45 @@ function renderHomeBranchBadges(){
         }
         .bbadge-item:hover .bbadge-front.won::after{ transform:translateX(130%); }
         .bbadge-icon{ position:relative; z-index:4; display:flex; filter:drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
-        .bbadge-icon svg{ width:36px; height:36px; }
-        .bbadge-stars{ position:absolute; top:0; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:9px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.3); z-index:5; }
-        .bbadge-branch{ font-size:10.5px; font-weight:700; margin-top:6px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .bbadge-title-label{ font-size:9px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:12px; }
-        .bbadge-total{ font-size:9px; font-weight:700; color:#c9820a; white-space:nowrap; }
-        .bbadge-outer{ display:block; }
+        .bbadge-icon svg{ width:30px; height:30px; }
+        .bbadge-stars{ position:absolute; top:0; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:8px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.3); z-index:5; }
+        .bbadge-branch{ font-size:9.5px; font-weight:700; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:11px; }
+        .bbadge-total{ font-size:8.5px; font-weight:700; color:#c9820a; white-space:nowrap; }
+        .bbadge-outer{ display:flex; align-items:flex-start; gap:14px; flex-wrap:wrap; }
+        .bbadge-leftcol{ flex:1 1 460px; min-width:0; }
         .bbadge-medals{
-          display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:8px 14px;
-          overflow-x:auto; overflow-y:visible; padding:8px 4px 12px; scrollbar-width:thin;
+          display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:6px 10px;
+          overflow-x:auto; overflow-y:visible; padding:6px 4px 10px; scrollbar-width:thin;
         }
         .bbadge-medals::-webkit-scrollbar{ height:6px; }
         .bbadge-medals::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
-        .bbadge-rankpanel{ margin-top:12px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:9px 11px; }
-        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px; }
+        .bbadge-rankpanel{ flex:1 1 280px; max-width:360px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:8px 10px; }
+        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
-        .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9.5px; cursor:pointer; color:var(--text-sub); }
+        .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9px; cursor:pointer; color:var(--text-sub); }
         .bbadge-rank-tab.active{ background:var(--primary); color:#fff; border-color:var(--primary); font-weight:700; }
-        .bbadge-rank-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:8px 10px; }
-        .bbadge-rank-row{ padding:6px 8px; background:#fff; border:1px solid var(--border); border-radius:8px; }
-        .bbadge-rank-cat{ font-size:9.5px; font-weight:700; color:var(--text-sub); margin-bottom:2px; display:flex; gap:4px; align-items:center; }
-        .bbadge-rank-list{ font-size:10px; line-height:1.5; }
+        .bbadge-rank-grid{ display:grid; grid-template-columns:1fr; gap:5px; }
+        .bbadge-rank-row{ padding:5px 7px; background:#fff; border:1px solid var(--border); border-radius:8px; }
+        .bbadge-rank-cat{ font-size:9px; font-weight:700; color:var(--text-sub); margin-bottom:2px; display:flex; gap:4px; align-items:center; }
+        .bbadge-rank-list{ font-size:9.5px; line-height:1.5; }
         .bbadge-rank-entry{ white-space:nowrap; font-weight:600; }
         .bbadge-rank-medal{ margin-right:1px; }
         .bbadge-rank-val{ font-weight:700; }
         .bbadge-rank-sep{ margin:0 5px; color:var(--border); }
-        .bbadge-rank-empty{ color:#b7b8bf; font-size:10px; }
-        .bbadge-rule-info{ font-size:10px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:5px 9px; line-height:1.4; margin-bottom:9px; }
+        .bbadge-rank-empty{ color:#b7b8bf; font-size:9.5px; }
+        .bbadge-rule-info{ font-size:9.5px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:5px 9px; line-height:1.4; margin-bottom:8px; }
+        @media (max-width:900px){
+          .bbadge-rankpanel{ max-width:none; }
+        }
       </style>
-      <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:5px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
       <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${BRANCH_BADGE_CATEGORIES.length}개 중 ${BRANCH_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
       <div class="bbadge-outer">
-        <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
-        ${renderHomeManagerBadges()}
+        <div class="bbadge-leftcol">
+          <div class="bbadge-medals">${cardsHtml}${grandSlamHtml}</div>
+          ${renderHomeManagerBadges()}
+        </div>
         ${rankPanelHtml}
       </div>
     </div>`;
@@ -3545,11 +3551,11 @@ function renderHome(){
   };
 
   return `
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:6px;">
-      <div class="page-title" style="margin:0;">홈 대시보드</div>
+    <div class="page-title">홈 대시보드</div>
+    <div class="page-desc" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <span style="white-space:nowrap;">${branch?branch.name:''} · ${todayStr()} 기준</span>
       ${renderHomeNoticeTicker()}
     </div>
-    <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
     ${state.noticeFormOpen ? renderNoticeForm() : ''}
     <div style="margin-bottom:16px;">${renderHomeBranchBadges()}</div>
     ${renderHomeGoalsManagerBanner()}
