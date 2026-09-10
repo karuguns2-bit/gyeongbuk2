@@ -5090,10 +5090,7 @@ function renderNoticesBoard(){
     return `
       <div class="card" style="margin-bottom:12px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="toggleNoticeExpand('${n.id}')">
-          <div>
-            <div class="nb-title">${escapeHtml(n.title)}</div>
-            <div class="muted" style="font-size:11.5px;margin-top:2px;">${escapeHtml(n.author)} · ${dtStr}</div>
-          </div>
+          <div class="nb-title">${escapeHtml(n.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${readBadgeHtml}
             ${myUnreadBadgeHtml}
@@ -5119,10 +5116,8 @@ function renderNoticesBoard(){
     <div class="page-desc">전체 팀에 공지할 내용을 게시판 형태로 관리합니다. 등록한 공지는 홈 화면 공지사항 배너에도 함께 표시됩니다.</div>
     ${createFormHtml}
     ${allNotices.length>0 ? noticeBarHtml : ''}
-    <div class="board-feed">
-      ${listHtml || `<div class="card muted">${allNotices.length===0 ? '등록된 공지사항이 없습니다.' : '검색 결과가 없습니다.'}</div>`}
-      ${noticePagerHtml}
-    </div>
+    ${listHtml || `<div class="card muted">${allNotices.length===0 ? '등록된 공지사항이 없습니다.' : '검색 결과가 없습니다.'}</div>`}
+    ${noticePagerHtml}
   `;
 }
 function startEditNoticeBoard(id){
@@ -5314,10 +5309,7 @@ function renderMaterialsBoard(){
     return `
       <div class="card" style="margin-bottom:12px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="toggleMaterialExpand('${n.id}')">
-          <div>
-            <div class="nb-title">${escapeHtml(n.title)}</div>
-            <div class="muted" style="font-size:11.5px;margin-top:2px;">${escapeHtml(n.author)} · ${dtStr}</div>
-          </div>
+          <div class="nb-title">${escapeHtml(n.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${readBadgeHtml}
             ${myUnreadBadgeHtml}
@@ -5343,10 +5335,8 @@ function renderMaterialsBoard(){
     <div class="page-desc">서식·안내문·참고자료 등을 게시판 형태로 관리합니다.</div>
     ${createFormHtml}
     ${allMaterials.length>0 ? materialBarHtml : ''}
-    <div class="board-feed">
-      ${listHtml || `<div class="card muted">${allMaterials.length===0 ? '등록된 자료가 없습니다.' : '검색 결과가 없습니다.'}</div>`}
-      ${materialPagerHtml}
-    </div>
+    ${listHtml || `<div class="card muted">${allMaterials.length===0 ? '등록된 자료가 없습니다.' : '검색 결과가 없습니다.'}</div>`}
+    ${materialPagerHtml}
   `;
 }
 function startEditMaterial(id){
@@ -5502,10 +5492,7 @@ function renderInfoReports(){
     return `
       <div class="card" style="margin-bottom:12px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${r.id}','infoReports')">
-          <div>
-            <div class="nb-title">${escapeHtml(r.title)}</div>
-            <div class="muted" style="font-size:11.5px;margin-top:2px;">${escapeHtml(r.authorName)} · ${escapeHtml(branchName(r.branchId))} · ${dtStr}</div>
-          </div>
+          <div class="nb-title">${escapeHtml(r.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
             <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
@@ -5535,10 +5522,8 @@ function renderInfoReports(){
 
     ${createFormHtml}
     ${allReports.length>0 ? irBarHtml : ''}
-    <div class="board-feed">
-      ${listHtml || `<div class="card muted">${allReports.length===0 ? '등록된 정보보고가 없습니다.' : '검색 결과가 없습니다.'}</div>`}
-      ${irPagerHtml}
-    </div>
+    ${listHtml || `<div class="card muted">${allReports.length===0 ? '등록된 정보보고가 없습니다.' : '검색 결과가 없습니다.'}</div>`}
+    ${irPagerHtml}
   `;
 }
 function startEditInfoReport(id){
@@ -12331,9 +12316,9 @@ function renderMistakeNote(){
       <div class="card ai-box" style="margin-bottom:16px;">
         <div class="ai-title">📊 누적 오답노트 분석 리포트 (관리자 전용)</div>
         <div class="grid grid-3 stat-grid-3" style="margin-bottom:10px;">
-          <div class="card stat-tile stat-tile-blue"><div class="stat-tile-label">누적 등록 건수</div><div class="stat-tile-num">${stats.total}</div></div>
-          <div class="card stat-tile stat-tile-purple"><div class="stat-tile-label">이번 달 등록 건수</div><div class="stat-tile-num">${stats.thisMonthCount}</div></div>
-          <div class="card stat-tile stat-tile-pink"><div class="stat-tile-label">최다 실수 유형</div><div class="stat-tile-num">${stats.topCategory ? stats.topCategory[0] : '-'}</div></div>
+          <div>누적 등록 건수: <b>${stats.total}</b></div>
+          <div>이번 달 등록 건수: <b>${stats.thisMonthCount}</b></div>
+          <div>최다 실수 유형: <b>${stats.topCategory ? stats.topCategory[0] : '-'}</b></div>
         </div>
         ${stats.insightLines.map(l=>`<div style="margin-bottom:6px;">${l}</div>`).join('')}
       </div>
@@ -12612,10 +12597,8 @@ function renderBestPractice(){
     </div>
 
     ${allSorted.length>0 ? bpBarHtml : ''}
-    <div class="board-feed">
-      ${posts}
-      ${bpPagerHtml}
-    </div>
+    ${posts}
+    ${bpPagerHtml}
   `;
 }
 function submitBestPractice(){
@@ -13101,8 +13084,8 @@ function renderIssueCase(){
           <div>
             ${p.title ? `
               <div class="nb-title">${escapeHtml(p.title)}</div>
-              <div class="muted" style="font-size:11.5px;margin-top:2px;">${bpBranchDisplayName(p.branchId)} · ${p.managerName || '-'} · ${p.activityDate}${p.productName?` · 📦 ${escapeHtml(p.productName)}`:''}</div>
-            ` : `<div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}${p.productName?` · 📦 ${escapeHtml(p.productName)}`:''}</div>`}
+              <div class="muted" style="font-size:11.5px;margin-top:2px;">${bpBranchDisplayName(p.branchId)} · ${p.managerName || '-'} · ${p.activityDate}</div>
+            ` : `<div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>`}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${hasAttachmentIc ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
@@ -13195,10 +13178,8 @@ function renderIssueCase(){
     ${newEntryFormHtml}
 
     ${allSorted.length>0 ? icBarHtml : ''}
-    <div class="board-feed">
-      ${posts}
-      ${icPagerHtml}
-    </div>
+    ${posts}
+    ${icPagerHtml}
   `;
 }
 function updateIcManagerOptions(){
@@ -13533,9 +13514,9 @@ function renderPolicyQuiz(){
     <div class="card" style="margin-bottom:16px;">
       <h3>숙지도 점검 현황 (${policyQuizWeekLabel(stats.week)}) ${isLatestRegistered ? '<span class="badge good">최근 등록 현황</span>' : ''}</h3>
       <div class="grid grid-3 stat-grid-3">
-        <div class="card stat-tile stat-tile-blue"><div class="stat-tile-label">평균 점수</div><div class="stat-tile-num">${stats.avgScore.toFixed(1)}점</div></div>
-        <div class="card stat-tile stat-tile-purple"><div class="stat-tile-label">응시율</div><div class="stat-tile-num">${stats.rate.toFixed(1)}%</div><div class="stat-tile-sub">응시자 ${stats.attemptedCount}명 / 미응시자 ${stats.notAttemptedCount}명</div></div>
-        <div class="card stat-tile stat-tile-pink"><div class="stat-tile-label">전체 대상 인원</div><div class="stat-tile-num">${stats.total}명</div></div>
+        <div>평균 점수: <b>${stats.avgScore.toFixed(1)}점</b></div>
+        <div>응시율: <b>${stats.rate.toFixed(1)}%</b> (응시자 ${stats.attemptedCount}명 / 미응시자 ${stats.notAttemptedCount}명)</div>
+        <div>전체 대상 인원: <b>${stats.total}명</b></div>
       </div>
     </div>`;
 
