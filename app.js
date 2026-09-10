@@ -15498,7 +15498,6 @@ function renderProspectFilterTh(f){
   const allValues = prospectFieldAllValues(f, pool);
   const selected = activeSel || allValues;
   const countFor = (v) => pool.filter(p => (p[f.key] || PROSPECT_BLANK_FILTER_VALUE) === v).length;
-  const allChecked = allValues.length>0 && allValues.every(v=>selected.includes(v));
   const itemsHtml = allValues.map(v=>{
     const checked = selected.includes(v);
     const vLabel = v===PROSPECT_BLANK_FILTER_VALUE ? '(비어있음)' : escapeHtml(v);
@@ -15507,7 +15506,10 @@ function renderProspectFilterTh(f){
   }).join('');
   const dropdownHtml = isOpen ? `
     <div class="pf-dropdown" onclick="event.stopPropagation()">
-      <label class="pf-item pf-item-all"><input type="checkbox" ${allChecked?'checked':''} onchange="setAllProspectFilterValues('${f.key}', this.checked)"><span>(전체 선택)</span></label>
+      <div class="pf-dropdown-bulkrow">
+        <button type="button" class="pf-bulk-btn" onclick="setAllProspectFilterValues('${f.key}', true)">전체 선택</button>
+        <button type="button" class="pf-bulk-btn" onclick="setAllProspectFilterValues('${f.key}', false)">전체 해제</button>
+      </div>
       <div class="pf-dropdown-list">${itemsHtml || '<div class="muted" style="font-size:11px;padding:6px 10px;">표시할 값이 없습니다</div>'}</div>
       <div class="pf-dropdown-actions"><button type="button" class="btn btn-sm" onclick="closeProspectFilterDropdown()">닫기</button></div>
     </div>` : '';
