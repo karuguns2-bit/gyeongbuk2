@@ -3549,10 +3549,8 @@ function renderHome(){
   return `
     <div class="page-title">홈 대시보드</div>
     <div class="page-desc">${branch?branch.name:''} · ${todayStr()} 기준</div>
-    <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;margin-bottom:16px;">
-      <div style="flex:1 1 420px;min-width:320px;">${renderHomeBranchBadges()}</div>
-      <div style="flex:1 1 420px;min-width:320px;">${renderNoticeBanner()}</div>
-    </div>
+    <div style="margin-bottom:16px;">${renderHomeBranchBadges()}</div>
+    <div style="margin-bottom:16px;">${renderNoticeBanner()}</div>
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
@@ -4381,8 +4379,10 @@ function renderNoticeBanner(){
 
   return `
     <div class="card notice-banner" style="box-sizing:border-box;${notices.length>1?'padding-left:40px;padding-right:40px;':''}">
-      <div class="nb-label">📢 공지사항</div>
-      ${adminControls}
+      <div class="nb-header">
+        <div class="nb-label">📢 공지사항</div>
+        ${adminControls}
+      </div>
       <div id="noticeBannerBody">${bodyHtml}</div>
       ${dotsHtml}
       ${navHtml}
