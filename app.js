@@ -2813,7 +2813,12 @@ function renderHomeBranchBadges(){
         .bbadge-title-label{ font-size:9px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:12px; }
         .bbadge-total{ font-size:9px; font-weight:700; color:#c9820a; white-space:nowrap; }
         .bbadge-outer{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start; }
-        .bbadge-medals{ display:flex; flex-wrap:wrap; justify-content:flex-start; gap:8px 14px; }
+        .bbadge-medals{
+          display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:8px 14px;
+          overflow-x:auto; overflow-y:visible; padding:8px 4px 12px; scrollbar-width:thin;
+        }
+        .bbadge-medals::-webkit-scrollbar{ height:6px; }
+        .bbadge-medals::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
         .bbadge-rankpanel{ flex:1 1 280px; min-width:240px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:9px 11px; }
         .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
