@@ -10380,7 +10380,7 @@ function renderCollectGiftcard(){
       <td><input id="gceSaleDate_${r.id}" type="date" value="${r.saleDate||''}" style="width:135px"></td>
       <td><input id="gceDeliveryDate_${r.id}" type="date" value="${r.deliveryDate||''}" style="width:135px"></td>
       <td><input id="gceCustomerName_${r.id}" value="${escapeHtml(r.customerName||'')}" style="width:100px"></td>
-      <td><input id="gcePhone_${r.id}" value="${escapeHtml(r.phone||'')}" style="width:120px"></td>
+      <td><input id="gcePhone_${r.id}" value="${escapeHtml(r.phone||'')}" style="width:120px" oninput="handlePhoneInput(event)"></td>
       <td>
         <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:4px;">
         ${(r.receipts||[]).map((p,idx)=> noticeAttachmentHtml(p, 36, `removeGiftcardReceiptImage('${r.id}',${idx})`)).join('')}
@@ -10403,7 +10403,7 @@ function renderCollectGiftcard(){
       <td class="muted">${r.orderNo||'-'}</td>
       <td>${r.model}</td>
       <td>${escapeHtml(r.saleType||'-')}</td>
-      <td>${r.amountWon!=null ? fmtWon(r.amountWon) : '-'}</td>
+      <td>${r.amountWon!=null ? fmtNum(r.amountWon) : '-'}</td>
       <td>${r.saleDate||'-'}</td>
       <td>${r.deliveryDate||'-'}</td>
       <td>${r.customerName}</td>
@@ -10474,7 +10474,7 @@ function renderCollectGiftcard(){
         </div>
         <div class="field">
           <label>연락처</label>
-          <input id="gcPhone" placeholder="예: 010-1234-5678" style="width:150px">
+          <input id="gcPhone" placeholder="예: 010-1234-5678" style="width:150px" oninput="handlePhoneInput(event)">
         </div>
         <div class="field" style="position:relative;">
           <label>모델명</label>
