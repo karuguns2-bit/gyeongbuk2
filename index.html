@@ -187,14 +187,15 @@
   .login-link:hover{color:var(--primary-dark);}
   .login-banner{margin-top:18px;text-align:center;}
   .login-banner img{width:100%;max-width:320px;height:auto;border-radius:14px;box-shadow:0 6px 18px rgba(0,0,0,.15);}
-  /* 앱 잠금(PIN/패턴) 화면 - 점을 순서대로 눌러 패턴을 입력하는 3x3 그리드 */
-  .applock-pattern-grid{display:grid;grid-template-columns:repeat(3,56px);grid-template-rows:repeat(3,56px);gap:14px;justify-content:center;margin:14px auto 0;}
+  /* 앱 잠금(PIN/패턴) 화면 - 점을 이어서 그리는 3x3 패턴 입력 */
+  .applock-pattern-wrap{position:relative;width:196px;height:196px;margin:14px auto 0;touch-action:none;user-select:none;-webkit-user-select:none;}
+  .applock-pattern-lines{position:absolute;top:0;left:0;width:196px;height:196px;pointer-events:none;}
+  .applock-pattern-grid{display:grid;grid-template-columns:repeat(3,56px);grid-template-rows:repeat(3,56px);gap:14px;justify-content:center;position:relative;}
   .applock-dot{
     width:56px;height:56px;border-radius:50%;border:2px solid var(--border);background:#fff;
-    color:var(--text-sub);font-size:15px;font-weight:700;cursor:pointer;transition:all .15s ease;
+    transition:all .1s ease;pointer-events:none; /* 히트 테스트는 wrap의 포인터 이벤트가 좌표로 직접 계산 */
   }
-  .applock-dot:hover{border-color:var(--primary);}
-  .applock-dot.active{background:var(--primary);border-color:var(--primary);color:#fff;}
+  .applock-dot.active{background:var(--primary);border-color:var(--primary);box-shadow:0 0 0 4px rgba(165,0,52,.15);}
   .dev-credit{
     margin-top:26px;padding-top:14px;border-top:1px solid var(--border);
     text-align:center;font-size:11px;letter-spacing:.04em;color:#b9b9bd;

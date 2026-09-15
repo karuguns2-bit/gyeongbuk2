@@ -1541,9 +1541,9 @@ function appLockScreenHtml(user, lockCfg){
   return `
     <p class="sub">${escapeHtml(user.name)}님, 화면 잠금을 해제해 주세요</p>
     ${isPattern ? `
-      <div class="applock-pattern-grid" id="applockPatternGrid">${appLockPatternDotsHtml()}</div>
+      <div class="muted" style="font-size:12px;margin-top:4px;">점을 이어서 패턴을 그려주세요</div>
+      ${appLockPatternWrapHtml()}
       <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="appLockPatternClear()">다시 그리기</button>
-      <button class="submit" style="margin-top:8px;" onclick="appLockPatternSubmit()">잠금 해제</button>
     ` : `
       <label>PIN</label>
       <input id="appLockPinInput" type="password" inputmode="numeric" maxlength="6" placeholder="PIN 입력" autocomplete="off">
@@ -1571,29 +1571,95 @@ async function appLockPinSubmit(){
   if(lockBox) lockBox.style.display = 'none';
   enterApp(user, true);
 }
-function appLockPatternDotsHtml(){
-  const seq = state.appLockPatternSeq || [];
-  return [1,2,3,4,5,6,7,8,9].map(n=>{
-    const idx = seq.indexOf(n);
-    return `<button type="button" class="applock-dot ${idx>-1?'active':''}" onclick="appLockPatternTap(${n})">${idx>-1?(idx+1):''}</button>`;
-  }).join('');
+// 점을 하나씩 누르는 방식이 아니라, 손가락/마우스를 뗄 때까지 끌면서 지나가는 점들을
+// 순서대로 잇는 "그리기" 방식이다. 좌표는 CSS의 .applock-pattern-grid 크기(56px 점,
+// 14px 간격, 총 196x196)와 반드시 맞아야 하므로 CSS를 바꾸면 이 좌표도 함께 바꿔야 한다.
+const APPLOCK_DOT_COORDS = [[28,28],[98,28],[168,28],[28,98],[98,98],[168,98],[28,168],[98,168],[168,168]];
+function appLockDotCenter(n){ return APPLOCK_DOT_COORDS[n-1]; }
+function appLockPatternGridHtml(){
+  return [1,2,3,4,5,6,7,8,9].map(n=>`<div class="applock-dot" data-n="${n}"></div>`).join('');
 }
-function appLockPatternTap(n){
-  if(!state.appLockPatternSeq) state.appLockPatternSeq = [];
-  if(state.appLockPatternSeq.includes(n)) return;
-  state.appLockPatternSeq.push(n);
+function appLockPatternWrapHtml(){
+  return `
+    <div class="applock-pattern-wrap" id="applockPatternWrap"
+         onpointerdown="appLockPatternPointerDown(event)"
+         onpointermove="appLockPatternPointerMove(event)"
+         onpointerup="appLockPatternPointerUp(event)"
+         onpointercancel="appLockPatternPointerUp(event)">
+      <svg class="applock-pattern-lines" id="applockPatternSvg" viewBox="0 0 196 196"></svg>
+      <div class="applock-pattern-grid" id="applockPatternGrid">${appLockPatternGridHtml()}</div>
+    </div>`;
+}
+// 현재 seq(눌러 지나간 점 순서)에 맞춰 점 색칠 + 점을 잇는 선을 그린다.
+// 매번 innerHTML을 통째로 새로 그리면 드래그 중 포인터 캡처가 깨지므로, 점 색상은
+// classList만, 선은 svg 내용만 갱신한다.
+function renderAppLockPatternVisual(){
+  const seq = state.appLockPatternSeq || [];
   const grid = document.getElementById('applockPatternGrid');
-  if(grid) grid.innerHTML = appLockPatternDotsHtml();
+  if(grid){
+    grid.querySelectorAll('.applock-dot').forEach(el=>{
+      const n = Number(el.getAttribute('data-n'));
+      el.classList.toggle('active', seq.indexOf(n) > -1);
+    });
+  }
+  const svg = document.getElementById('applockPatternSvg');
+  if(svg){
+    let linesHtml = '';
+    for(let i=0;i<seq.length-1;i++){
+      const a = appLockDotCenter(seq[i]);
+      const b = appLockDotCenter(seq[i+1]);
+      linesHtml += `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#A50034" stroke-width="4" stroke-linecap="round"/>`;
+    }
+    svg.innerHTML = linesHtml;
+  }
+}
+function appLockPatternHandleMove(evt){
+  const grid = document.getElementById('applockPatternGrid');
+  if(!grid) return;
+  const rect = grid.getBoundingClientRect();
+  const x = evt.clientX - rect.left, y = evt.clientY - rect.top;
+  let hitN = null, bestDist = 26; // 점 중심에서 26px 반경 안이면 그 점을 지나간 것으로 인정
+  for(let n=1;n<=9;n++){
+    const c = appLockDotCenter(n);
+    const d = Math.hypot(x-c[0], y-c[1]);
+    if(d < bestDist){ bestDist = d; hitN = n; }
+  }
+  if(hitN && (state.appLockPatternSeq||[]).indexOf(hitN) === -1){
+    if(!state.appLockPatternSeq) state.appLockPatternSeq = [];
+    state.appLockPatternSeq.push(hitN);
+    renderAppLockPatternVisual();
+  }
+}
+function appLockPatternPointerDown(evt){
+  evt.preventDefault();
+  try{ evt.currentTarget.setPointerCapture(evt.pointerId); }catch(e){ /* 무시 */ }
+  state.appLockPatternSeq = [];
+  state.appLockDrawing = true;
+  renderAppLockPatternVisual();
+  appLockPatternHandleMove(evt);
+}
+function appLockPatternPointerMove(evt){
+  if(!state.appLockDrawing) return;
+  evt.preventDefault();
+  appLockPatternHandleMove(evt);
+}
+function appLockPatternPointerUp(evt){
+  if(!state.appLockDrawing) return;
+  state.appLockDrawing = false;
+  // 손을 떼는 순간 바로 처리한다 - 잠금 해제 화면이면 검증, 화면 설정의 패턴 설정
+  // 단계라면 "다음/저장"을 누른 것과 같게 자동으로 다음 단계로 넘어간다.
+  // (버튼도 그대로 남겨둬서, 자동 인식이 안 될 때 수동으로도 누를 수 있게 한다.)
+  if(state.appLockPendingUser) appLockPatternSubmit();
+  else if(state.appLockSetup && state.appLockSetup.mode === 'pattern') appLockSetupSubmit();
 }
 function appLockPatternClear(){
   state.appLockPatternSeq = [];
-  const grid = document.getElementById('applockPatternGrid');
-  if(grid) grid.innerHTML = appLockPatternDotsHtml();
+  renderAppLockPatternVisual();
 }
 async function appLockPatternSubmit(){
   const err = document.getElementById('appLockError');
   const seq = state.appLockPatternSeq || [];
-  if(seq.length < 4){ if(err) err.textContent = '점 4개 이상을 순서대로 눌러주세요.'; return; }
+  if(seq.length < 4){ if(err) err.textContent = '점 4개 이상을 이어서 그려주세요.'; return; }
   const user = state.appLockPendingUser;
   const cfg = user ? getAppLockConfig(user.empId) : null;
   if(!user || !cfg){ appLockFallbackToLogin(); return; }
@@ -1628,12 +1694,12 @@ function appLockSetupSectionHtml(){
   let inner;
   if(setup){
     const label = setup.step==='enter'
-      ? (setup.mode==='pattern' ? '새 패턴을 순서대로 눌러주세요 (4개 이상)' : '새 PIN을 입력하세요 (숫자 4~6자리)')
-      : (setup.mode==='pattern' ? '확인을 위해 같은 패턴을 한 번 더 눌러주세요' : '확인을 위해 같은 PIN을 한 번 더 입력하세요');
+      ? (setup.mode==='pattern' ? '새 패턴을 그려주세요 (점 4개 이상, 손을 떼면 완성)' : '새 PIN을 입력하세요 (숫자 4~6자리)')
+      : (setup.mode==='pattern' ? '확인을 위해 같은 패턴을 한 번 더 그려주세요' : '확인을 위해 같은 PIN을 한 번 더 입력하세요');
     inner = `
       <div style="font-size:13px;font-weight:600;margin:4px 0 6px;">${label}</div>
       ${setup.mode==='pattern' ? `
-        <div class="applock-pattern-grid" id="applockPatternGrid">${appLockPatternDotsHtml()}</div>
+        ${appLockPatternWrapHtml()}
         <button type="button" class="btn btn-sm" style="margin-top:6px;" onclick="appLockPatternClear()">다시 그리기</button>
       ` : `
         <input id="appLockSetupPinInput" type="password" inputmode="numeric" maxlength="6" placeholder="숫자 4~6자리" style="width:130px;">
@@ -1690,7 +1756,7 @@ async function appLockSetupSubmit(){
   let value;
   if(setup.mode==='pattern'){
     const seq = state.appLockPatternSeq || [];
-    if(seq.length < 4){ if(errEl) errEl.textContent = '점 4개 이상을 순서대로 눌러주세요.'; return; }
+    if(seq.length < 4){ if(errEl) errEl.textContent = '점 4개 이상을 이어서 그려주세요.'; return; }
     value = 'pattern:' + seq.join('-');
   } else {
     const pinEl = document.getElementById('appLockSetupPinInput');
