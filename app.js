@@ -1485,6 +1485,245 @@ function resetUiPrefsOnLogout(){
   document.body.classList.remove('dark-mode', 'font-small', 'font-large', 'density-compact');
 }
 
+/* =========================================================================
+   2c. 앱 잠금 (PIN/패턴) - 2026-09-15 도입
+   -------------------------------------------------------------------------
+   사번/비밀번호 로그인과는 별개로, "이 기기에서 브라우저를 다시 열 때"
+   추가로 PIN(또는 모바일에서는 패턴)을 입력하게 하는 화면 잠금 기능이다.
+   은행 앱의 "간편 잠금"과 같은 개념 - 진짜 지문 인식(WebAuthn)은 아니고,
+   이 기기의 로컬 저장소에만 PIN/패턴의 해시값을 저장해두고 대조하는
+   방식이라 서버(DB)에는 전혀 올라가지 않고, 다른 사람과 공유되지도 않는다.
+   PIN/패턴을 잊으면 "아이디/비밀번호로 로그인"으로 언제든 우회할 수 있다 -
+   원래 로그인(사번/비밀번호)이 최종 보안 경계이고, 이 기능은 그 위에 얹는
+   "기기 분실/동료가 잠깐 훔쳐보는 것" 방지용 추가 장치다.
+   ========================================================================= */
+function isMobileShell(){
+  try{ return /(^|\/)m\.html$/.test(location.pathname); }catch(e){ return false; }
+}
+function appLockStorageKey(empId){ return 'lg_kpi_applock_' + empId; }
+function getAppLockConfig(empId){
+  try{ return JSON.parse(localStorage.getItem(appLockStorageKey(empId)) || 'null'); }catch(e){ return null; }
+}
+function saveAppLockConfig(empId, cfg){
+  try{ localStorage.setItem(appLockStorageKey(empId), JSON.stringify(cfg)); }catch(e){ /* 저장 공간 문제 등은 무시 */ }
+}
+function clearAppLockConfig(empId){
+  try{ localStorage.removeItem(appLockStorageKey(empId)); }catch(e){ /* 무시 */ }
+}
+// PIN/패턴은 평문으로 저장하지 않고 해시로만 저장한다. SubtleCrypto(SHA-256)를 우선
+// 쓰고, 아주 오래된 환경 등으로 못 쓰는 경우에만 코드 상단의 간단 해시로 대체한다.
+async function sha256Hex(str){
+  try{
+    if(window.crypto && window.crypto.subtle){
+      const enc = new TextEncoder().encode(str);
+      const buf = await window.crypto.subtle.digest('SHA-256', enc);
+      return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+    }
+  }catch(e){ /* 아래 대체 해시로 넘어감 */ }
+  return 'h' + Math.abs(hashStr(str)).toString(16);
+}
+// ---- 잠금 화면(로그인 화면 자리에 대신 표시) ----
+function showAppLockScreen(user, lockCfg){
+  state.appLockPendingUser = user;
+  state.appLockPatternSeq = [];
+  const formBox = document.getElementById('loginFormBox');
+  const pwBox = document.getElementById('pwChangeBox');
+  const lockBox = document.getElementById('appLockBox');
+  if(formBox) formBox.style.display = 'none';
+  if(pwBox) pwBox.style.display = 'none';
+  if(lockBox){
+    lockBox.style.display = 'block';
+    lockBox.innerHTML = appLockScreenHtml(user, lockCfg);
+  }
+}
+function appLockScreenHtml(user, lockCfg){
+  const isPattern = lockCfg.mode === 'pattern';
+  return `
+    <p class="sub">${escapeHtml(user.name)}님, 화면 잠금을 해제해 주세요</p>
+    ${isPattern ? `
+      <div class="applock-pattern-grid" id="applockPatternGrid">${appLockPatternDotsHtml()}</div>
+      <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="appLockPatternClear()">다시 그리기</button>
+      <button class="submit" style="margin-top:8px;" onclick="appLockPatternSubmit()">잠금 해제</button>
+    ` : `
+      <label>PIN</label>
+      <input id="appLockPinInput" type="password" inputmode="numeric" maxlength="6" placeholder="PIN 입력" autocomplete="off">
+      <button class="submit" onclick="appLockPinSubmit()">잠금 해제</button>
+    `}
+    <div class="login-error" id="appLockError"></div>
+    <div class="login-link" onclick="appLockFallbackToLogin()">PIN/패턴을 잊으셨나요? 아이디·비밀번호로 로그인</div>
+  `;
+}
+async function appLockPinSubmit(){
+  const err = document.getElementById('appLockError');
+  const inputEl = document.getElementById('appLockPinInput');
+  const pin = inputEl ? inputEl.value.trim() : '';
+  if(!pin){ if(err) err.textContent = 'PIN을 입력해 주세요.'; return; }
+  const user = state.appLockPendingUser;
+  const cfg = user ? getAppLockConfig(user.empId) : null;
+  if(!user || !cfg){ appLockFallbackToLogin(); return; }
+  const hash = await sha256Hex('pin:' + pin);
+  if(hash !== cfg.hash){
+    if(err) err.textContent = 'PIN이 올바르지 않습니다.';
+    if(inputEl) inputEl.value = '';
+    return;
+  }
+  const lockBox = document.getElementById('appLockBox');
+  if(lockBox) lockBox.style.display = 'none';
+  enterApp(user, true);
+}
+function appLockPatternDotsHtml(){
+  const seq = state.appLockPatternSeq || [];
+  return [1,2,3,4,5,6,7,8,9].map(n=>{
+    const idx = seq.indexOf(n);
+    return `<button type="button" class="applock-dot ${idx>-1?'active':''}" onclick="appLockPatternTap(${n})">${idx>-1?(idx+1):''}</button>`;
+  }).join('');
+}
+function appLockPatternTap(n){
+  if(!state.appLockPatternSeq) state.appLockPatternSeq = [];
+  if(state.appLockPatternSeq.includes(n)) return;
+  state.appLockPatternSeq.push(n);
+  const grid = document.getElementById('applockPatternGrid');
+  if(grid) grid.innerHTML = appLockPatternDotsHtml();
+}
+function appLockPatternClear(){
+  state.appLockPatternSeq = [];
+  const grid = document.getElementById('applockPatternGrid');
+  if(grid) grid.innerHTML = appLockPatternDotsHtml();
+}
+async function appLockPatternSubmit(){
+  const err = document.getElementById('appLockError');
+  const seq = state.appLockPatternSeq || [];
+  if(seq.length < 4){ if(err) err.textContent = '점 4개 이상을 순서대로 눌러주세요.'; return; }
+  const user = state.appLockPendingUser;
+  const cfg = user ? getAppLockConfig(user.empId) : null;
+  if(!user || !cfg){ appLockFallbackToLogin(); return; }
+  const hash = await sha256Hex('pattern:' + seq.join('-'));
+  if(hash !== cfg.hash){
+    if(err) err.textContent = '패턴이 올바르지 않습니다. 다시 그려주세요.';
+    appLockPatternClear();
+    return;
+  }
+  const lockBox = document.getElementById('appLockBox');
+  if(lockBox) lockBox.style.display = 'none';
+  enterApp(user, true);
+}
+// PIN/패턴을 잊었을 때 - 이 기기의 잠금 자체는 그대로 두고(자동 해제하지 않음), 정식
+// 아이디/비밀번호 로그인 화면으로 돌아간다. 로그인에 성공하면 그때 화면 설정에서
+// PIN/패턴을 다시 설정(변경)하면 된다.
+function appLockFallbackToLogin(){
+  try{ localStorage.removeItem(SESSION_STORAGE_KEY); }catch(e){ /* 무시 */ }
+  state.appLockPendingUser = null;
+  const lockBox = document.getElementById('appLockBox');
+  const formBox = document.getElementById('loginFormBox');
+  if(lockBox) lockBox.style.display = 'none';
+  if(formBox) formBox.style.display = 'block';
+  applyRememberedLoginId();
+}
+// ---- ⚙ 화면 설정 패널 안의 "앱 잠금 설정/변경/해제" UI ----
+function appLockSetupSectionHtml(){
+  if(!SESSION) return '';
+  const cfg = getAppLockConfig(SESSION.empId);
+  const setup = state.appLockSetup;
+  const mobile = isMobileShell();
+  let inner;
+  if(setup){
+    const label = setup.step==='enter'
+      ? (setup.mode==='pattern' ? '새 패턴을 순서대로 눌러주세요 (4개 이상)' : '새 PIN을 입력하세요 (숫자 4~6자리)')
+      : (setup.mode==='pattern' ? '확인을 위해 같은 패턴을 한 번 더 눌러주세요' : '확인을 위해 같은 PIN을 한 번 더 입력하세요');
+    inner = `
+      <div style="font-size:13px;font-weight:600;margin:4px 0 6px;">${label}</div>
+      ${setup.mode==='pattern' ? `
+        <div class="applock-pattern-grid" id="applockPatternGrid">${appLockPatternDotsHtml()}</div>
+        <button type="button" class="btn btn-sm" style="margin-top:6px;" onclick="appLockPatternClear()">다시 그리기</button>
+      ` : `
+        <input id="appLockSetupPinInput" type="password" inputmode="numeric" maxlength="6" placeholder="숫자 4~6자리" style="width:130px;">
+      `}
+      <div style="margin-top:8px;">
+        <button class="btn btn-sm btn-primary" onclick="appLockSetupSubmit()">${setup.step==='enter'?'다음':'저장'}</button>
+        <button class="btn btn-sm" onclick="cancelAppLockSetup()">취소</button>
+      </div>
+      <div class="login-error" id="appLockSetupError" style="margin-top:6px;"></div>
+    `;
+  } else if(cfg){
+    inner = `
+      <div style="font-size:13px;">현재 <b>${cfg.mode==='pattern'?'패턴':'PIN'}</b> 잠금이 사용 중입니다.</div>
+      <div style="margin-top:6px;">
+        <button class="btn btn-sm" onclick="openAppLockSetup('pin')">PIN으로 재설정</button>
+        ${mobile ? `<button class="btn btn-sm" onclick="openAppLockSetup('pattern')">패턴으로 재설정</button>` : ''}
+        <button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="disableAppLock()">잠금 해제(사용 안 함)</button>
+      </div>
+    `;
+  } else {
+    inner = `
+      <div style="margin-top:2px;">
+        <button class="btn btn-sm btn-primary" onclick="openAppLockSetup('pin')">PIN 설정</button>
+        ${mobile ? `<button class="btn btn-sm" onclick="openAppLockSetup('pattern')">패턴 설정</button>` : ''}
+      </div>
+    `;
+  }
+  return `
+    <div class="us-row" style="flex-direction:column;align-items:flex-start;gap:8px;">
+      <span>🔒 앱 잠금 (이 기기)</span>
+      <div class="muted" style="font-size:11.5px;">브라우저/앱을 다시 열 때 ${mobile?'PIN이나 패턴':'PIN'}을 입력해야 화면이 열리게 합니다. 이 기기에만 저장되고 서버로는 올라가지 않습니다.</div>
+      ${inner}
+    </div>
+  `;
+}
+function refreshUiSettingsModal(){
+  const modal = document.getElementById('uiSettingsModal');
+  if(modal && modal.style.display!=='none') modal.innerHTML = uiSettingsModalHtml();
+}
+function openAppLockSetup(mode){
+  state.appLockSetup = { step:'enter', mode, first:null };
+  state.appLockPatternSeq = [];
+  refreshUiSettingsModal();
+}
+function cancelAppLockSetup(){
+  state.appLockSetup = null;
+  state.appLockPatternSeq = [];
+  refreshUiSettingsModal();
+}
+async function appLockSetupSubmit(){
+  const setup = state.appLockSetup;
+  if(!setup) return;
+  const errEl = document.getElementById('appLockSetupError');
+  let value;
+  if(setup.mode==='pattern'){
+    const seq = state.appLockPatternSeq || [];
+    if(seq.length < 4){ if(errEl) errEl.textContent = '점 4개 이상을 순서대로 눌러주세요.'; return; }
+    value = 'pattern:' + seq.join('-');
+  } else {
+    const pinEl = document.getElementById('appLockSetupPinInput');
+    const pin = pinEl ? pinEl.value.trim() : '';
+    if(!/^\d{4,6}$/.test(pin)){ if(errEl) errEl.textContent = '숫자 4~6자리로 입력해 주세요.'; return; }
+    value = 'pin:' + pin;
+  }
+  if(setup.step === 'enter'){
+    state.appLockSetup = { step:'confirm', mode:setup.mode, first:value };
+    state.appLockPatternSeq = [];
+    refreshUiSettingsModal();
+    return;
+  }
+  if(value !== setup.first){
+    if(errEl) errEl.textContent = (setup.mode==='pattern' ? '패턴이' : 'PIN이') + ' 일치하지 않습니다. 처음부터 다시 시도해 주세요.';
+    state.appLockSetup = { step:'enter', mode:setup.mode, first:null };
+    state.appLockPatternSeq = [];
+    refreshUiSettingsModal();
+    return;
+  }
+  const hash = await sha256Hex(value);
+  saveAppLockConfig(SESSION.empId, { mode:setup.mode, hash });
+  state.appLockSetup = null;
+  state.appLockPatternSeq = [];
+  refreshUiSettingsModal();
+  showSaveBanner('🔒 앱 잠금이 설정되었습니다.');
+}
+function disableAppLock(){
+  if(!confirm('이 기기의 앱 잠금을 해제하시겠습니까?')) return;
+  clearAppLockConfig(SESSION.empId);
+  refreshUiSettingsModal();
+}
+
 // 아이디 저장 체크박스: 로그인 화면이 뜰 때(최초 로드/로그아웃 후) 저장된 아이디가 있으면
 // 입력창에 미리 채워주고 체크박스도 켜둔다.
 function applyRememberedLoginId(){
@@ -1550,6 +1789,13 @@ function restoreSessionIfAny(){
   if(!saved || !saved.empId) return false;
   const user = DB.users.find(u=>u.empId===saved.empId);
   if(!user){ try{ localStorage.removeItem(SESSION_STORAGE_KEY); }catch(e){ /* 무시 */ } return false; }
+  // 이 기기에 앱 잠금(PIN/패턴)이 설정돼 있으면 곧바로 앱으로 들어가지 않고, 잠금 화면을
+  // 먼저 보여준다 - 잠금을 통과해야만(appLockPinSubmit/appLockPatternSubmit) enterApp이 호출된다.
+  const lockCfg = getAppLockConfig(user.empId);
+  if(lockCfg){
+    showAppLockScreen(user, lockCfg);
+    return true;
+  }
   enterApp(user, true);
   return true;
 }
@@ -3348,6 +3594,7 @@ function uiSettingsModalHtml(){
             </label>`).join('')}
           <div class="muted" style="font-size:11.5px;">홈 화면에서 위젯 왼쪽의 ⠿⠿ 표시를 드래그하면 순서도 바꿀 수 있어요.</div>
         </div>
+        ${appLockSetupSectionHtml()}
       </div>
     </div>`;
 }
