@@ -2869,7 +2869,10 @@ function renderHomeManagerBadges(){
       const u = (DB.users||[]).find(x=>x.empId===w.empId);
       return { empId:w.empId, name: u ? u.name : w.empId, branchNm: u ? branchName(u.branchId) : '', value:w.value, streak:r.streakByEmp[w.empId] };
     });
-    const mgrName = won ? winnerInfo.map(w=>escapeHtml(w.name)).join(' · ') : '미정';
+    // 공동 1위 인원이 많아지면(예: 공지레이더) 이름을 전부 이어붙일 경우 좁은 칸 안에서
+    // 줄바꿈되어 그 배지 줄 전체 높이가 늘어나므로, 2명 넘게 겹치면 "OO 외 N명"으로 요약한다
+    // (전체 명단은 title 툴팁에서 그대로 확인 가능).
+    const mgrName = won ? (winnerInfo.length>2 ? `${escapeHtml(winnerInfo[0].name)} 외 ${winnerInfo.length-1}명` : winnerInfo.map(w=>escapeHtml(w.name)).join(' · ')) : '미정';
     const maxStreak = won ? Math.max(...winnerInfo.map(w=>w.streak)) : 0;
     const stars = won ? Math.floor(maxStreak/3) : 0;
     const starsHtml = stars>0 ? `<div class="bbadge-stars">${'⭐'.repeat(Math.min(stars,5))}</div>` : '';
@@ -2898,7 +2901,7 @@ function renderHomeManagerBadges(){
           </div>
           <div class="bbadge-shadow" style="${dim}"></div>
         </div>
-        <div class="bbadge-branch" style="color:${won?g[2]:'#8a8f9c'};${isTie?'white-space:normal;line-height:1.25;':''}">${mgrName}</div>
+        <div class="bbadge-branch" style="color:${won?g[2]:'#8a8f9c'};">${mgrName}</div>
         <div class="bbadge-title-label">${subLabel}</div>
       </div>`;
   }).join('');
@@ -2907,10 +2910,10 @@ function renderHomeManagerBadges(){
   // (그랜드슬램은 매니저 개인 단위로는 두지 않는다 — 지우님 확인: 그랜드슬램은 지점 배지에만
   // 적용하고, 대신 지점 그랜드슬램 기준을 "전 종목"에서 "5개 이상 종목 동시 1위"로 완화했다.)
   return `
-    <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
-      <div style="font-size:11.5px;font-weight:700;color:var(--text-sub);margin-bottom:6px;">🧑‍💼 ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);">
+      <div style="font-size:10.5px;font-weight:700;color:var(--text-sub);margin-bottom:4px;">🧑‍💼 ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
       <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요. <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가! (배지에 마우스를 올리면 획득 조건을 볼 수 있어요)</div>
-      <div class="bbadge-medals" style="justify-content:flex-start;gap:10px 18px;">${cardsHtml}</div>
+      <div class="bbadge-medals" style="justify-content:flex-start;gap:6px 12px;">${cardsHtml}</div>
     </div>`;
 }
 // 매달 넘어갈 때 "지난달까지 완전히 끝난 달"의 종목별 1위를 확정해 연속 우승 스트릭을 갱신한다.
@@ -2994,7 +2997,9 @@ function renderHomeBranchBadges(){
     const won = winners.length>0;
     const isTie = winners.length>1;
     const winnerInfo = winners.map(w=>({ branchId:w.branchId, name:branchName(w.branchId), value:w.value, streak:r.streakByBranch[w.branchId] }));
-    const branchNm = won ? winnerInfo.map(w=>escapeHtml(w.name)).join(' · ') : '미정';
+    // 지점 배지도 동일하게 공동 1위가 많으면 "OO 외 N명"으로 요약(줄바꿈으로 인한 카드 높이
+    // 증가 방지) — 전체 명단은 title 툴팁에서 확인 가능.
+    const branchNm = won ? (winnerInfo.length>2 ? `${escapeHtml(winnerInfo[0].name)} 외 ${winnerInfo.length-1}개점` : winnerInfo.map(w=>escapeHtml(w.name)).join(' · ')) : '미정';
     const maxStreak = won ? Math.max(...winnerInfo.map(w=>w.streak)) : 0;
     const stars = won ? Math.floor(maxStreak/3) : 0;
     const starsHtml = stars>0 ? `<div class="bbadge-stars">${'⭐'.repeat(Math.min(stars,5))}</div>` : '';
@@ -3021,7 +3026,7 @@ function renderHomeBranchBadges(){
           </div>
           <div class="bbadge-shadow" style="${dim}"></div>
         </div>
-        <div class="bbadge-branch" style="color:${won?g[2]:'#8a8f9c'};${isTie?'white-space:normal;line-height:1.25;':''}">${branchNm}</div>
+        <div class="bbadge-branch" style="color:${won?g[2]:'#8a8f9c'};">${branchNm}</div>
         <div class="bbadge-title-label">${r.cat.label}${totalTag}</div>
       </div>`;
   }).join('');
@@ -3068,9 +3073,17 @@ function renderHomeBranchBadges(){
   // 기존 규칙 설명(bbadge-rule-info)과 헷갈리지 않도록 별도로 눈에 띄게(금색 테두리) 표시한다.
   const eventBannerHtml = `
     <div class="bbadge-event-banner">
-      🎉 9월~11월 특별 이벤트<br>
-      · 그랜드슬램 최다 달성 지점 1위 → 판촉비 30만원 지급<br>
-      · 3개월 연속 1위(⭐) 최다 달성 지점 → 판촉비 20만원 지급
+      <div class="bbadge-event-title">🎯 배지모아 판촉비 타자! <span class="bbadge-event-period">(산정기간: 9월~11월)</span></div>
+      <div class="bbadge-event-items">
+        <div class="bbadge-event-item">
+          <div class="bbadge-event-label">그랜드슬램 1위</div>
+          <div class="bbadge-event-amt">30만원</div>
+        </div>
+        <div class="bbadge-event-item">
+          <div class="bbadge-event-label">3개월연속 1위최다</div>
+          <div class="bbadge-event-amt">20만원</div>
+        </div>
+      </div>
     </div>`;
   const rankPanelHtml = `
     <div class="bbadge-rankpanel">
@@ -3085,18 +3098,18 @@ function renderHomeBranchBadges(){
       <div class="bbadge-rank-grid" style="grid-template-columns:repeat(${rankCols},1fr);grid-template-rows:repeat(${rankRows},1fr);">${rankRowsHtml}</div>
     </div>`;
   return `
-    <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:14px 16px;">
+    <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:10px 12px;">
       <style>
-        .bbadge-item{ text-align:center; width:72px; flex:0 0 auto; }
-        .bbadge-shieldwrap{ position:relative; width:60px; height:64px; margin:10px auto 0; transition:transform .35s cubic-bezier(.34,1.56,.64,1); }
-        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-6px) scale(1.1); }
+        .bbadge-item{ text-align:center; width:58px; flex:0 0 auto; }
+        .bbadge-shieldwrap{ position:relative; width:48px; height:52px; margin:6px auto 0; transition:transform .35s cubic-bezier(.34,1.56,.64,1); }
+        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-5px) scale(1.1); }
         .bbadge-shadow{
-          position:absolute; left:50%; bottom:1px; width:31px; height:8px; margin-left:-16px; border-radius:50%;
+          position:absolute; left:50%; bottom:1px; width:24px; height:6px; margin-left:-12px; border-radius:50%;
           background:radial-gradient(ellipse, rgba(0,0,0,.42) 0%, rgba(0,0,0,0) 72%); transition:all .35s ease;
         }
-        .bbadge-item:hover .bbadge-shadow{ width:39px; height:9px; margin-left:-20px; opacity:.65; }
+        .bbadge-item:hover .bbadge-shadow{ width:30px; height:7px; margin-left:-15px; opacity:.65; }
         .bbadge-hexglow{
-          position:absolute; top:50%; left:50%; width:71px; height:71px; margin:-36px 0 0 -36px;
+          position:absolute; top:50%; left:50%; width:55px; height:55px; margin:-27px 0 0 -27px;
           border-radius:50%; z-index:0; pointer-events:none;
           background:radial-gradient(circle, rgba(var(--sh,242,163,0),.5) 0%, transparent 68%);
           opacity:.5; transition:opacity .3s ease;
@@ -3109,11 +3122,11 @@ function renderHomeBranchBadges(){
         .bbadge-item:hover .bbadge-grandslam .bbadge-hexglow{ opacity:1; }
         @keyframes bbadgeSpin{ to{ transform:rotate(360deg); } }
         .bbadge-hex{ position:absolute; clip-path:polygon(50% 2%, 96% 26%, 96% 74%, 50% 98%, 4% 74%, 4% 26%); }
-        .bbadge-depth{ top:50%; left:50%; width:48px; height:48px; margin:-20px 0 0 -24px; background:var(--g3,#555); filter:brightness(.45); z-index:1; }
-        .bbadge-rim{ top:50%; left:50%; width:54px; height:54px; margin:-27px 0 0 -27px; background:linear-gradient(160deg,#3a4150,#0d0f14); z-index:2; }
+        .bbadge-depth{ top:50%; left:50%; width:38px; height:38px; margin:-16px 0 0 -19px; background:var(--g3,#555); filter:brightness(.45); z-index:1; }
+        .bbadge-rim{ top:50%; left:50%; width:43px; height:43px; margin:-22px 0 0 -22px; background:linear-gradient(160deg,#3a4150,#0d0f14); z-index:2; }
         .bbadge-grandslam .bbadge-rim{ background:linear-gradient(160deg,#caa24a,#3d2c05); }
         .bbadge-front{
-          top:50%; left:50%; width:48px; height:48px; margin:-24px 0 0 -24px; z-index:3;
+          top:50%; left:50%; width:38px; height:38px; margin:-19px 0 0 -19px; z-index:3;
           display:flex; align-items:center; justify-content:center; overflow:hidden;
           transition:box-shadow .25s ease, filter .2s ease;
         }
@@ -3136,38 +3149,44 @@ function renderHomeBranchBadges(){
         }
         .bbadge-item:hover .bbadge-front.won::after{ transform:translateX(130%); }
         .bbadge-icon{ position:relative; z-index:4; display:flex; filter:drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
-        .bbadge-icon svg{ width:30px; height:30px; }
-        .bbadge-stars{ position:absolute; top:0; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:8px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.3); z-index:5; }
-        .bbadge-branch{ font-size:9.5px; font-weight:700; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.25; color:var(--text-sub); margin-top:1px; min-height:11px; }
-        .bbadge-total{ font-size:8.5px; font-weight:700; color:#c9820a; white-space:nowrap; }
-        .bbadge-outer{ display:flex; align-items:stretch; gap:14px; flex-wrap:wrap; }
-        .bbadge-leftcol{ flex:0 1 auto; min-width:300px; }
+        .bbadge-icon svg{ width:23px; height:23px; }
+        .bbadge-stars{ position:absolute; top:0; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:7px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.3); z-index:5; }
+        .bbadge-branch{ font-size:9px; font-weight:700; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bbadge-title-label{ font-size:8px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:9px; }
+        .bbadge-total{ font-size:8px; font-weight:700; color:#c9820a; white-space:nowrap; }
+        .bbadge-outer{ display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; }
+        .bbadge-leftcol{ flex:0 1 auto; min-width:280px; }
         .bbadge-medals{
-          display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:6px 10px;
-          overflow-x:auto; overflow-y:visible; padding:6px 4px 10px; scrollbar-width:thin;
+          display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:4px 8px;
+          overflow-x:auto; overflow-y:visible; padding:4px 2px 6px; scrollbar-width:thin;
         }
         .bbadge-medals::-webkit-scrollbar{ height:6px; }
         .bbadge-medals::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
-        .bbadge-rankpanel{ flex:1 1 220px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; }
-        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:6px; flex-shrink:0; }
+        .bbadge-rankpanel{ flex:1 1 220px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; }
+        .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; flex-shrink:0; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
         .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9px; cursor:pointer; color:var(--text-sub); }
         .bbadge-rank-tab.active{ background:var(--primary); color:#fff; border-color:var(--primary); font-weight:700; }
-        .bbadge-rank-grid{ display:grid; gap:10px 12px; flex:1 1 auto; }
+        .bbadge-rank-grid{ display:grid; gap:7px 9px; flex:1 1 auto; }
         @media (max-width:820px){
           .bbadge-rank-grid{ grid-template-columns:repeat(auto-fit,minmax(160px,1fr)) !important; grid-template-rows:none !important; }
         }
-        .bbadge-rank-row{ padding:10px 12px; background:#fff; border:1px solid var(--border); border-radius:8px; display:flex; flex-direction:column; justify-content:center; }
-        .bbadge-rank-cat{ font-size:12px; font-weight:700; color:var(--text-sub); margin-bottom:5px; display:flex; gap:5px; align-items:center; }
-        .bbadge-rank-list{ font-size:12.5px; line-height:1.9; }
+        .bbadge-rank-row{ padding:7px 9px; background:#fff; border:1px solid var(--border); border-radius:8px; display:flex; flex-direction:column; justify-content:center; }
+        .bbadge-rank-cat{ font-size:11px; font-weight:700; color:var(--text-sub); margin-bottom:3px; display:flex; gap:5px; align-items:center; }
+        .bbadge-rank-list{ font-size:11.5px; line-height:1.6; }
         .bbadge-rank-entry{ white-space:nowrap; font-weight:600; }
         .bbadge-rank-medal{ margin-right:1px; }
         .bbadge-rank-val{ font-weight:700; }
         .bbadge-rank-sep{ margin:0 5px; color:var(--border); }
         .bbadge-rank-empty{ color:#b7b8bf; font-size:9.5px; }
-        .bbadge-rule-info{ font-size:9.5px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:5px 9px; line-height:1.4; margin-bottom:8px; }
-        .bbadge-event-banner{ font-size:10.5px; font-weight:600; color:#633806; background:#fff8e6; border:1.5px solid #f0b429; border-radius:8px; padding:7px 9px; line-height:1.55; margin-bottom:8px; }
+        .bbadge-rule-info{ font-size:9px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:4px 8px; line-height:1.35; margin-bottom:6px; }
+        .bbadge-event-banner{ background:#fff8e6; border:1.5px solid #f0b429; border-radius:8px; padding:6px 8px; margin-bottom:6px; }
+        .bbadge-event-title{ font-size:12px; font-weight:700; color:#4a1b0c; margin-bottom:4px; }
+        .bbadge-event-period{ font-size:10px; font-weight:500; color:#633806; }
+        .bbadge-event-items{ display:flex; gap:8px; }
+        .bbadge-event-item{ flex:1; min-width:0; background:#fffaf0; border:1px solid #f0b429; border-radius:6px; padding:5px 4px; text-align:center; }
+        .bbadge-event-label{ font-size:10.5px; font-weight:600; color:#633806; white-space:nowrap; }
+        .bbadge-event-amt{ font-size:14px; font-weight:700; color:#a32d2d; }
       </style>
       <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:5px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
       <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${BRANCH_BADGE_CATEGORIES.length}개 중 ${BRANCH_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
