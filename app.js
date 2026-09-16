@@ -3064,8 +3064,17 @@ function renderHomeBranchBadges(){
   // 세로로도 남는 칸(왼쪽 배지 영역보다 짧아서 생기는 아래쪽 공백) 없이 카드 높이를 꽉 채우도록,
   // 행도 1fr로 균등 배분해서 박스/글씨가 남는 세로 공간까지 함께 커지게 한다.
   const rankRows = Math.ceil(rankCatCount / rankCols);
+  // 9~11월 한정 특별 이벤트 안내 배너 — 랭킹 패널 맨 위, "이번달/누적" 탭보다 먼저 보이는 위치.
+  // 기존 규칙 설명(bbadge-rule-info)과 헷갈리지 않도록 별도로 눈에 띄게(금색 테두리) 표시한다.
+  const eventBannerHtml = `
+    <div class="bbadge-event-banner">
+      🎉 9월~11월 특별 이벤트<br>
+      · 그랜드슬램 최다 달성 지점 1위 → 판촉비 30만원 지급<br>
+      · 3개월 연속 1위(⭐) 최다 달성 지점 → 판촉비 20만원 지급
+    </div>`;
   const rankPanelHtml = `
     <div class="bbadge-rankpanel">
+      ${eventBannerHtml}
       <div class="bbadge-rank-header">
         <span style="font-weight:700;font-size:12px;color:var(--text-sub);">🏆 종목별 TOP3</span>
         <div class="bbadge-rank-toggle">
@@ -3158,6 +3167,7 @@ function renderHomeBranchBadges(){
         .bbadge-rank-sep{ margin:0 5px; color:var(--border); }
         .bbadge-rank-empty{ color:#b7b8bf; font-size:9.5px; }
         .bbadge-rule-info{ font-size:9.5px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:5px 9px; line-height:1.4; margin-bottom:8px; }
+        .bbadge-event-banner{ font-size:10.5px; font-weight:600; color:#633806; background:#fff8e6; border:1.5px solid #f0b429; border-radius:8px; padding:7px 9px; line-height:1.55; margin-bottom:8px; }
       </style>
       <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:5px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
       <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${BRANCH_BADGE_CATEGORIES.length}개 중 ${BRANCH_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
@@ -4349,21 +4359,23 @@ function renderSystemAdmin(){
 
 <div class="card sysadmin-span2">
       <h3>🏆 구독 Grade 수당 파일 업로드(담당자 : 박귀복C) <small>(같은 파일의 "1. 매니저 구독 Grade" 시트)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">매니저(직원) 개인별 구독 판매 Grade 시상금 명단을 올리면 [지점별 인센티브(참고용)] 페이지에서 지점별로 매니저 개별 Grade 수당을 조회할 수 있습니다.
+      <div class="muted" style="margin-bottom:10px;">매니저(직원) 개인별 구독 판매 Grade 시상금 명단을 올리면 [지점별 인센티브(참고용)] 페이지에서 지점별로 매니저 개별 Grade 수당을 조회할 수 있습니다. 월별로 완전히 분리 저장되어 다음 달이 되면 자동으로 "미정" 처리됩니다(별도 조치 불필요).
       ${moUploadStatusHtml(DB.subGradeIncentive.byPeriod, d=>Object.keys(d.byBranchKey||{}).length+'개 지점')}</div>
       <input type="file" id="subGradeFileInput" accept=".xlsx,.xls" onchange="handleSubGradeFile(event)">
       <div id="subGradeUploadMsg" class="small-note"></div>
+      <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="resetSubGradeIncentiveForPeriod()">이번 달 자료 초기화</button>
     </div>
 
 <div class="card sysadmin-span2">
       <h3>근무일정 파일 업로드(담당자 : 배지우C) <small>(Shiftee 내보내기 .xlsx · 오늘 출근 현황에 반영)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">Shiftee에서 내보낸 월별 근무일정 파일을 올리면 사번을 기준으로 자동 매칭되어, 홈 대시보드와 [전체 지점 현황]의 "오늘 출근 현황/근태"에 출퇴근시간·휴무·대체휴무가 실제 일정 그대로 표시됩니다. 지점별로 파일이 따로 있으면 순서에 상관없이 하나씩 올리면 됩니다 — 사번 단위로 합쳐지므로 먼저 올린 다른 지점 데이터는 지워지지 않습니다.</div>
+      <div class="muted" style="margin-bottom:10px;">Shiftee에서 내보낸 월별 근무일정 파일을 올리면 사번을 기준으로 자동 매칭되어, 홈 대시보드와 [전체 지점 현황]의 "오늘 출근 현황/근태"에 출퇴근시간·휴무·대체휴무가 실제 일정 그대로 표시됩니다. 지점별로 파일이 따로 있으면 순서에 상관없이 하나씩 올리면 됩니다 — 사번 단위로 합쳐지므로 먼저 올린 다른 지점 데이터는 지워지지 않습니다. 업로드할 때마다 2개월보다 오래된 옛 일정은 자동으로 정리됩니다.</div>
       <input type="file" id="workScheduleFileInput" accept=".xlsx,.xls" onchange="handleWorkScheduleFile(event)">
       <div id="workScheduleUploadMsg" class="small-note"></div>
       ${(DB.workSchedule.uploads&&DB.workSchedule.uploads.length>0) ? (
         uploadDateHighlightBox(fmtUploadDateTime(DB.workSchedule.uploads[DB.workSchedule.uploads.length-1].uploadedAt)) +
         `<div class="muted" style="font-size:11.5px;margin-top:6px;">최근 업로드: ${DB.workSchedule.uploads.slice(-3).reverse().map(u=>`${fmtUploadDateTime(u.uploadedAt)} · ${escapeHtml(u.fileName)}(${u.matchedEmp}명)`).join(' / ')}</div>`
       ) : ''}
+      <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="manualCleanupWorkSchedule()">지난 데이터 정리</button>
     </div>
 
 <div class="card sysadmin-span2" style="background:#fff7f9;border-color:#f0c7d4;">
@@ -4381,18 +4393,24 @@ function renderSystemAdmin(){
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduVideoRichFile(event)">
           <div id="eduVideoUploadMsg" class="small-note"></div>
           <div class="muted" style="font-size:11px;">${uploadLogStatusHtml('eduVideo').replace(/^<br>/,'')}</div>
+          ${DB.eduVideoRich ? eduStalenessBannerHtml(String(DB.eduVideoRich.refDate||'').slice(0,7), DB.eduVideoRich.refDate) : ''}
+          <button type="button" class="btn btn-sm" style="margin-top:6px;" onclick="resetEduVideo()">초기화</button>
         </div>
         <div class="field">
           <label>월간test 이수율</label>
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduCompletionFile(event, 'test')">
           <div id="eduTestUploadMsg" class="small-note"></div>
           <div class="muted" style="font-size:11px;">${uploadLogStatusHtml('eduTest').replace(/^<br>/,'')}</div>
+          ${(DB.uploadLog && DB.uploadLog.eduTest) ? eduStalenessBannerHtml(String(DB.uploadLog.eduTest.uploadedAt||'').slice(0,7), fmtUploadDateTime(DB.uploadLog.eduTest.uploadedAt)) : ''}
+          <button type="button" class="btn btn-sm" style="margin-top:6px;" onclick="resetEduCompletion('test')">초기화</button>
         </div>
         <div class="field">
           <label>AI R/P 실행 여부</label>
           <input type="file" accept=".xlsx,.xls,.csv" onchange="handleEduCompletionFile(event, 'aiRp')">
           <div id="eduAiRpUploadMsg" class="small-note"></div>
           <div class="muted" style="font-size:11px;">${uploadLogStatusHtml('eduAiRp').replace(/^<br>/,'')}</div>
+          ${(DB.uploadLog && DB.uploadLog.eduAiRp) ? eduStalenessBannerHtml(String(DB.uploadLog.eduAiRp.uploadedAt||'').slice(0,7), fmtUploadDateTime(DB.uploadLog.eduAiRp.uploadedAt)) : ''}
+          <button type="button" class="btn btn-sm" style="margin-top:6px;" onclick="resetEduCompletion('aiRp')">초기화</button>
         </div>
       </div>
       <div class="small-note">월간test는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>AI R/P는 "대상자요약" 파일(사번/이름/지점/상태/제출횟수/총점 컬럼) 그대로 올리면 됩니다 — <b>상태</b> 컬럼이 "완료"면 실행완료, 그 외("미완료" 등)면 미실행으로 매칭되고, 제출횟수·총점도 함께 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).${DB.eduVideoRich ? ` <b>현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}</b>` : ''}</div>
@@ -7707,6 +7725,10 @@ function handleWorkScheduleFile(evt){
         Object.assign(DB.workSchedule.byEmpDate[empId], dates);
       });
       DB.workSchedule.uploads.push({ fileName:file.name, sheetName, year, month, matchedEmp:parsed.matchedEmp, uploadedAt:new Date().toISOString(), uploadedBy:SESSION.name });
+      // 날짜 단위로 계속 쌓이기만 하고 지워지는 일이 없어 용량이 계속 늘어나므로, 새 파일을
+      // 올릴 때마다 2개월보다 오래된 날짜는 자동으로 정리한다("오늘 출근 현황"은 항상 오늘
+      // 날짜만 조회하므로 오래된 데이터가 지워져도 화면에는 영향이 없다).
+      const autoRemoved = cleanupOldWorkSchedule();
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [근무일정] 파일을 업로드했습니다: ${file.name}`);
       renderTab('systemAdmin');
@@ -7723,12 +7745,40 @@ function handleWorkScheduleFile(evt){
           rangeWarning = `<br><span style="color:var(--bad);font-weight:700;">⚠ 이 파일의 기간은 ${rangeStart} ~ ${rangeEnd} 입니다. 오늘(${today})이 이 기간에 포함되지 않아 "오늘 출근 현황"에는 아직 반영되지 않습니다 — 이번 달 파일을 올려주세요.</span>`;
         }
       }
-      showUploadResult('workScheduleUploadMsg', true, `"${sheetName}" 기준 ${parsed.matchedEmp}명 근무일정 반영 완료${createdMsg}${unmatchedMsg}${rangeWarning}`);
+      const cleanupMsg = autoRemoved>0 ? ` / 2개월 지난 옛 일정 ${autoRemoved}건 자동 정리` : '';
+      showUploadResult('workScheduleUploadMsg', true, `"${sheetName}" 기준 ${parsed.matchedEmp}명 근무일정 반영 완료${createdMsg}${unmatchedMsg}${cleanupMsg}${rangeWarning}`);
     }catch(err){
       showUploadResult('workScheduleUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
   };
   reader.readAsArrayBuffer(file);
+}
+// 근무일정은 사번+날짜 단위로 계속 쌓이기만 해서(오늘 출근 현황은 항상 "오늘" 날짜만 조회하므로
+// 화면 표시가 꼬이진 않지만) 방치하면 저장 용량만 계속 늘어난다. "이번 달 + 지난 달"만 남기고
+// 그보다 오래된 날짜는 자동으로 지운다 — 업로드 시점마다 자동 실행되고, 반환값은 정리된 건수.
+function cleanupOldWorkSchedule(){
+  if(!DB.workSchedule || !DB.workSchedule.byEmpDate) return 0;
+  const cutoff = new Date();
+  cutoff.setDate(1);
+  cutoff.setMonth(cutoff.getMonth()-1); // 지난 달 1일보다 이전 날짜는 삭제 대상
+  const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth()+1).padStart(2,'0')}-01`;
+  let removed = 0;
+  Object.keys(DB.workSchedule.byEmpDate).forEach(empId=>{
+    const dates = DB.workSchedule.byEmpDate[empId];
+    Object.keys(dates).forEach(d=>{
+      if(d < cutoffStr){ delete dates[d]; removed++; }
+    });
+    if(Object.keys(dates).length===0) delete DB.workSchedule.byEmpDate[empId];
+  });
+  return removed;
+}
+// 자동 정리와 별도로, 관리자가 원할 때 바로 실행할 수 있는 보조 버튼용 함수.
+function manualCleanupWorkSchedule(){
+  if(!confirm('2개월보다 오래된 근무일정 데이터를 지금 정리하시겠습니까? ("오늘 출근 현황"에는 영향 없습니다)')) return;
+  const removed = cleanupOldWorkSchedule();
+  saveDB();
+  renderTab('systemAdmin');
+  showUploadResult('workScheduleUploadMsg', true, removed>0 ? `오래된 근무일정 ${removed}건을 정리했습니다.` : '정리할 오래된 데이터가 없습니다.');
 }
 
 /* =========================================================================
@@ -8084,6 +8134,22 @@ function handleSubGradeFile(evt){
   };
   reader.readAsArrayBuffer(file);
 }
+// 구독 Grade 수당은 이미 월(byPeriod)별로 완전히 분리 저장되어 다음 달이 되면 자동으로
+// "미정" 처리되지만(별도 조치 불필요), 이번 달 파일을 잘못 올렸을 때 관리자가 즉시 지우고
+// 다시 올릴 수 있도록 보조 초기화 버튼을 둔다 — 이번 달(조회 중인 달) 자료만 지운다.
+function resetSubGradeIncentiveForPeriod(){
+  const period = moEffectivePeriod();
+  if(!DB.subGradeIncentive || !DB.subGradeIncentive.byPeriod || !DB.subGradeIncentive.byPeriod[period]){
+    showUploadResult('subGradeUploadMsg', false, `${goalsPeriodLabel(period)} 자료가 이미 없습니다.`);
+    return;
+  }
+  if(!confirm(`${goalsPeriodLabel(period)} 구독 Grade 수당 자료를 초기화하시겠습니까? (다른 달 자료는 그대로 유지됩니다)`)) return;
+  delete DB.subGradeIncentive.byPeriod[period];
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [구독 Grade 수당] ${goalsPeriodLabel(period)} 자료를 초기화했습니다.`);
+  renderTab('systemAdmin');
+  showUploadResult('subGradeUploadMsg', true, `${goalsPeriodLabel(period)} 자료를 초기화했습니다.`);
+}
 /* =========================================================================
    지표 한 눈에 보기 (METRICS OVERVIEW) — 관리자별/지점별 GROSS·구독·고수익 대시보드
    ========================================================================= */
@@ -8232,6 +8298,16 @@ function uploadLogStatusHtml(key){
   const m = DB.uploadLog && DB.uploadLog[key];
   if(!m) return '<br>아직 업로드된 자료가 없습니다.';
   return `<br>${escapeHtml(m.fileName||'')} (${m.uploadedBy||''})` + uploadDateHighlightBox(fmtUploadDateTime(m.uploadedAt));
+}
+// 교육 이수율(화상교육/월간test/AI R/P)은 새 파일을 올리면 이전 데이터가 통째로 교체되긴
+// 하지만, 다음 달로 넘어갔는데 관리자가 아직 그 달 파일을 안 올렸으면 지난 달 자료가 마치
+// "이번 달 것"처럼 조용히 계속 보이는 문제가 있다. refPeriod(자료의 기준 연월, YYYY-MM)가
+// 이번 달과 다르면 자동으로 경고 배너를 띄운다 — 버튼 없이 항상 자동으로 표시된다.
+function eduStalenessBannerHtml(refPeriod, refLabel){
+  if(!refPeriod) return '';
+  const thisPeriod = periodStr();
+  if(refPeriod === thisPeriod) return '';
+  return `<div style="margin-top:6px;padding:6px 10px;background:#faece7;border:1px solid #f0997b;border-radius:7px;color:#712b13;font-size:11.5px;font-weight:600;">⚠ ${goalsPeriodLabel(thisPeriod)} 자료 없음 · 마지막 업데이트: ${escapeHtml(refLabel||goalsPeriodLabel(refPeriod))}</div>`;
 }
 // [지표 한 눈에 보기]/[구독 실적]/[지점별 인센티브] 페이지 상단에 공통으로 쓰는 월 선택 pill.
 // 보관 중인 달이 1개뿐이면(아직 여러 달이 쌓이기 전) 굳이 선택할 필요가 없으므로 표시하지 않는다.
@@ -14742,9 +14818,19 @@ function renderEduCompletionAll(){
       <div class="small-note">📋 화상교육/월간test/AI R/P 이수 현황 파일 업로드는 <b>[시스템 관리]</b> 메뉴로 이동했습니다.</div>
     </div>` : '';
 
+  // 화상교육/월간test/AI R/P 중 이번 달 자료가 아직 하나라도 안 올라온 게 있으면 자동으로
+  // 경고 배너를 띄운다 — 관리자뿐 아니라 이 화면을 보는 모든 직원이 "지금 보이는 게 지난달
+  // 자료일 수 있다"는 걸 바로 알 수 있게 하기 위함 (버튼 없이 항상 자동 표시).
+  const eduStaleBanners = [
+    DB.eduVideoRich ? eduStalenessBannerHtml(String(DB.eduVideoRich.refDate||'').slice(0,7), `화상교육 ${DB.eduVideoRich.refDate}`) : '',
+    (DB.uploadLog && DB.uploadLog.eduTest) ? eduStalenessBannerHtml(String(DB.uploadLog.eduTest.uploadedAt||'').slice(0,7), `월간test ${fmtUploadDateTime(DB.uploadLog.eduTest.uploadedAt)}`) : '',
+    (DB.uploadLog && DB.uploadLog.eduAiRp) ? eduStalenessBannerHtml(String(DB.uploadLog.eduAiRp.uploadedAt||'').slice(0,7), `AI R/P ${fmtUploadDateTime(DB.uploadLog.eduAiRp.uploadedAt)}`) : ''
+  ].filter(Boolean).join('');
+
   return `
     <div class="page-title">교육 이수율 확인</div>
     <div class="page-desc">혼매경북팀(경북2담당) 소속 인원 기준으로 화상교육·월간test·AI R/P 이수 현황을 한 화면에서 한눈에 확인할 수 있습니다.${richVideo ? ` (화상교육 기준날짜: <b>${richVideo.refDate}</b>)` : ''}</div>
+    ${eduStaleBanners}
     ${renderCollectionNotice('eduAiRp', 'eduVideo')}
     ${branchPills}
     <div class="card ai-box" style="margin-bottom:16px;">
@@ -14933,6 +15019,19 @@ function handleEduCompletionFile(evt, cat){
   };
   reader.readAsArrayBuffer(file);
 }
+// 월간test/AI R·P는 새 파일을 올리면 이전 데이터가 통째로 교체되긴 하지만, 다음 달로 넘어갔는데
+// 아직 그 달 파일을 안 올렸으면 지난달 자료가 계속 "현재 자료"처럼 보인다(화면에는 별도로
+// eduStalenessBannerHtml 경고가 자동으로 뜨지만), 관리자가 즉시 비우고 싶을 때를 위한 보조 버튼.
+function resetEduCompletion(cat){
+  const label = cat==='test' ? '월간test' : 'AI R/P';
+  if(!confirm(`${label} 이수율 자료를 초기화하시겠습니까?`)) return;
+  DB.eduCompletion[cat] = [];
+  if(DB.uploadLog) delete DB.uploadLog[cat==='test' ? 'eduTest' : 'eduAiRp'];
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [${label} 이수율] 자료를 초기화했습니다.`);
+  renderTab('systemAdmin');
+  showUploadResult(cat==='test' ? 'eduTestUploadMsg' : 'eduAiRpUploadMsg', true, `${label} 자료를 초기화했습니다.`);
+}
 
 // ---- 화상교육 이수율 (신규 서식): 기준날짜 + 회차별(1~4차) 교육명/이수여부가 포함된 파일 ----
 // 파일 구조(고정 템플릿, 담당자가 앞으로 매번 이 서식으로 업로드):
@@ -15054,6 +15153,18 @@ function handleEduVideoRichFile(evt){
     }
   };
   reader.readAsArrayBuffer(file);
+}
+// 화상교육도 마찬가지로 다음 달 파일을 아직 안 올렸으면 지난달 기준날짜 자료가 그대로
+// 보인다(화면에는 eduStalenessBannerHtml 경고가 자동으로 뜬다) — 즉시 비우고 싶을 때의 보조 버튼.
+function resetEduVideo(){
+  if(!confirm('화상교육 이수율 자료를 초기화하시겠습니까?')) return;
+  DB.eduVideoRich = null;
+  DB.eduCompletion.video = [];
+  if(DB.uploadLog) delete DB.uploadLog.eduVideo;
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [화상교육 이수율] 자료를 초기화했습니다.`);
+  renderTab('systemAdmin');
+  showUploadResult('eduVideoUploadMsg', true, '화상교육 자료를 초기화했습니다.');
 }
 // ---- 로그인 알림: 2일 전 교육 일정 안내 + 미이수 알림 ----
 function computeEduReminders(){
