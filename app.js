@@ -3076,11 +3076,11 @@ function renderHomeBranchBadges(){
       <div class="bbadge-event-title">🎯 배지모아 판촉비 타자! <span class="bbadge-event-period">(산정기간: 9월~11월)</span></div>
       <div class="bbadge-event-items">
         <div class="bbadge-event-item">
-          <div class="bbadge-event-label">그랜드슬램 1위</div>
+          <div class="bbadge-event-label">그랜드 슬램 최다보유 1위 지점</div>
           <div class="bbadge-event-amt">30만원</div>
         </div>
         <div class="bbadge-event-item">
-          <div class="bbadge-event-label">3개월연속 1위최다</div>
+          <div class="bbadge-event-label">3개월 연속 1위 최다보유 1위지점(별 최다획득)</div>
           <div class="bbadge-event-amt">20만원</div>
         </div>
       </div>
@@ -3185,7 +3185,7 @@ function renderHomeBranchBadges(){
         .bbadge-event-period{ font-size:10px; font-weight:500; color:#633806; }
         .bbadge-event-items{ display:flex; gap:8px; }
         .bbadge-event-item{ flex:1; min-width:0; background:#fffaf0; border:1px solid #f0b429; border-radius:6px; padding:5px 4px; text-align:center; }
-        .bbadge-event-label{ font-size:10.5px; font-weight:600; color:#633806; white-space:nowrap; }
+        .bbadge-event-label{ font-size:9.5px; font-weight:600; color:#633806; line-height:1.25; }
         .bbadge-event-amt{ font-size:14px; font-weight:700; color:#a32d2d; }
       </style>
       <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:5px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
