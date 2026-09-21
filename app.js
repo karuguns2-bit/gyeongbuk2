@@ -4313,6 +4313,8 @@ function renderSystemAdmin(){
       <div id="dbCapacityGauge">${dbCapacityGaugeHtml()}</div>
       <div class="muted" style="margin:8px 0;font-size:12.5px;">그동안 등록된 사진 첨부가 많아지면 전체 저장/불러오기 속도가 느려지거나 오류가 발생할 수 있습니다. 아래 버튼을 누르면 기존에 저장된 사진들을 화질 손상 없이 용량만 압축합니다. (새로 올리는 사진은 자동으로 압축되어 저장됩니다)</div>
       <button class="btn btn-primary" onclick="optimizeDbImages()">기존 사진 압축 실행</button>
+      <div class="muted" style="margin:10px 0 8px;font-size:12.5px;">2026-08부터 새로 올리는 사진은 별도 서버 저장소(Storage)에 저장되어 DB 용량에 거의 영향을 주지 않지만, 그 전에 올라온 사진/첨부파일은 여전히 DB 안에 그대로 들어있어 서버 트래픽(용량 초과 시 저장 오류의 원인)을 많이 차지합니다. 아래 버튼으로 예전 사진들을 서버 저장소로 옮기면 트래픽이 크게 줄어듭니다.</div>
+      <button class="btn btn-primary" onclick="migrateDbImagesToStorage()">기존 사진 Storage로 이전(트래픽 절감)</button>
       <div id="dbOptStatus" class="small-note" style="margin-top:6px;"></div>
     </div>
 
@@ -4592,6 +4594,11 @@ function collectDbImageTargets(){
   (DB.suggestions||[]).forEach(s=>{ if(s.attachmentDataUrl) targets.push({get:()=>s.attachmentDataUrl, set:v=>{s.attachmentDataUrl=v;}}); });
   (DB.contestGifts||[]).forEach(r=>(r.evidenceFiles||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
   (DB.subTierContestGifts||[]).forEach(r=>(r.evidenceFiles||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
+  // 아래 3곳은 단일 항목(배열이 아니라 객체 하나)이라 위쪽 목록과 형태가 달라 따로 추가한다 -
+  // 실행력 점검 사진 가이드, 카카오 플친 컨테스트 결과 이미지, 각 취합 페이지 공지 배너 사진.
+  if(DB.execPhotoGuide) (DB.execPhotoGuide.images||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); });
+  if(DB.kakaoContestResultImage) (DB.kakaoContestResultImage.images||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); });
+  Object.values(DB.collectionNotices||{}).forEach(n=>(n.images||[]).forEach(f=>{ if(f && f.dataUrl) targets.push({get:()=>f.dataUrl, set:v=>{f.dataUrl=v;}}); }));
   return targets;
 }
 async function optimizeDbImages(){
@@ -4625,6 +4632,51 @@ async function optimizeDbImages(){
     if(gaugeEl) gaugeEl.innerHTML = dbCapacityGaugeHtml();
   }catch(e){
     setStatus('사진 압축은 완료했지만 저장 중 오류가 발생했습니다. 다시 시도해 주세요.');
+  }
+}
+// 2026-08부터 새로 올리는 사진은 Storage(주소만 DB에 저장)로 바로 올라가지만, 그 전에 이미
+// 저장돼 있던 사진/첨부파일은 여전히 base64로 DB 안에 통째로 박혀 있다. 이 base64 데이터가
+// 매번 DB를 불러오거나 저장할 때, 그리고 20초마다 도는 실시간 동기화 확인(다른 사람이 뭔가
+// 저장하면 전체를 다시 받아옴) 때마다 함께 오가면서 Supabase 트래픽(egress)을 크게 차지하고
+// 있었다 — 무료 요금제 한도(월 5GB)를 넘겨 서비스가 막히는 사고(2026-09)의 핵심 원인.
+// 이 함수는 남아있는 base64 첨부파일을 전부 Storage로 옮기고 DB에는 주소만 남겨서, DB 자체의
+// 크기(=매번 오가는 트래픽량)를 근본적으로 줄인다.
+async function migrateDbImagesToStorage(){
+  if(!isSystemAdmin()) return;
+  if(!sbClient){ alert('서버 연결이 안 되어 있어 지금은 이전할 수 없습니다.'); return; }
+  const statusEl = document.getElementById('dbOptStatus');
+  function setStatus(msg){ if(statusEl) statusEl.textContent = msg; }
+  const targets = collectDbImageTargets().filter(t=>{
+    const v = t.get();
+    return v && /^data:/i.test(v);
+  });
+  if(targets.length===0){ setStatus('Storage로 옮길 첨부파일이 없습니다 — 이미 전부 서버 저장소에 있습니다.'); return; }
+  if(!confirm(`저장된 첨부파일 ${targets.length}개를 서버 저장소(Storage)로 옮겨서 DB 용량과 트래픽을 줄입니다. 사진 개수에 따라 몇 분 정도 걸릴 수 있습니다. 진행하시겠습니까?`)) return;
+  let done=0, moved=0, failed=0;
+  for(const t of targets){
+    const orig = t.get();
+    try{
+      const match = /^data:([^;]+);base64,/i.exec(orig);
+      const contentType = match ? match[1] : 'application/octet-stream';
+      // uploadBlobToStorage는 filename의 확장자로 저장 확장자를 정하므로(contentType이
+      // image/jpeg가 아닌 한), 여기서 파일명 대신 넘길 이름에도 mime 서브타입 기반 확장자를 붙여준다.
+      const subtype = (contentType.split('/')[1]||'bin').split('+')[0].replace(/[^a-zA-Z0-9]/g,'').slice(0,10) || 'bin';
+      const blob = await (await fetch(orig)).blob();
+      const url = await uploadBlobToStorage(blob, `legacy.${subtype}`, contentType);
+      if(url){ t.set(url); moved++; }
+      else { failed++; }
+    }catch(e){ failed++; }
+    done++;
+    if(done % 5 === 0 || done===targets.length) setStatus(`Storage로 이전 중... (${done}/${targets.length})`);
+  }
+  setStatus('저장 중...');
+  try{
+    await pushDBToServer();
+    setStatus(`완료: 첨부파일 ${moved}개를 Storage로 이전했습니다.${failed>0?` (실패 ${failed}개는 기존 상태로 유지됨)`:''}`);
+    const gaugeEl = document.getElementById('dbCapacityGauge');
+    if(gaugeEl) gaugeEl.innerHTML = dbCapacityGaugeHtml();
+  }catch(e){
+    setStatus('Storage 이전은 완료했지만 저장 중 오류가 발생했습니다. 다시 시도해 주세요.');
   }
 }
 function syncNewUserBranchByRole(){
