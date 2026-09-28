@@ -4439,10 +4439,10 @@ function renderSystemAdmin(){
 
 <div class="card sysadmin-span2">
       <h3>재고 조회 파일 업로드(담당자 : 이광환B) <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 소진집중 기준선이 저장돼 있으면 그 품목은 기준선 대비 소진 여부로, 그 외 모든 품목은 수량이 0이 되면 구분(상태)이 자동으로 "소진완료"로 표시됩니다(매니저가 직접 다른 상태로 바꿔둔 품목은 건드리지 않으며, 이후 다시 수정하기 전까지 자동 반영된 값이 유지됩니다).${uploadLogStatusHtml('inventory')}</div>
+      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 구분(상태)를 매니저가 직접 고른 적이 없는 품목은 수량에 맞춰 자동으로 표시됩니다 — 수량이 0이 되면 "소진완료", 이후 재입고돼 수량이 다시 생기면 "보유중"으로 자동 복원됩니다. 매니저가 드롭다운에서 직접 상태를 고른 품목은 수량이 어떻든 그 값 그대로 유지되고 자동 조정 대상에서 제외됩니다.${uploadLogStatusHtml('inventory')}</div>
       <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
       <div id="inventoryUploadMsg" class="small-note"></div>
-      <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="manualApplyZeroQtyAutoStatus()">지금 수량 0건 일괄 소진완료 처리</button>
+      <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="manualApplyZeroQtyAutoStatus()">지금 수량-상태 일괄 자동 조정</button>
     </div>
 
 <div class="card sysadmin-span2">
@@ -7408,12 +7408,13 @@ function applyInventorySnapshot(parsedInventory){
         cat1: (prev.cat1!=null && prev.cat1!=='') ? prev.cat1 : r.cat1,
         note: prev.note || '',
         status: prev.status || '보유중',
+        statusAuto: prev.statusAuto || false,
         saleStatus: prev.saleStatus || '판매가능',
         displayDate: prev.displayDate || '',
         displaySoldOutDate: prev.displaySoldOutDate || ''
       };
     }
-    return { ...r, id: 'inv_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6), note:'', status:'보유중', saleStatus:'판매가능', displayDate:'', displaySoldOutDate:'' };
+    return { ...r, id: 'inv_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6), note:'', status:'보유중', statusAuto:false, saleStatus:'판매가능', displayDate:'', displaySoldOutDate:'' };
   });
   DB.inventory = next;
   return next.length;
@@ -7477,36 +7478,49 @@ function applyClearanceDepletion(){
     if(Object.prototype.hasOwnProperty.call(baseline.rows, key)){
       if((Number(r.qty)||0) <= 0 && r.status!=='소진완료'){
         r.status = '소진완료';
+        r.statusAuto = true;
         count++;
       }
     }
   });
   return count;
 }
-// 소진집중 리스트/기준선 여부와 무관하게, 수량이 0 이하인데 구분(상태)이 아직 기본값("보유중")인
-// 채로 남아있는 모든 재고 품목을 자동으로 "소진완료"로 표시한다. 매니저가 이미 "타점 이관 예정"
-// 등 다른 값으로 직접 바꿔둔 품목이나 이미 "소진완료"인 품목은 건드리지 않는다(수동 지정 존중,
-// 중복 카운트 방지). 반환값은 이번에 새로 "소진완료" 처리된 건수.
+// 소진집중 리스트/기준선 여부와 무관하게, 수량과 구분(상태)이 어긋난 모든 재고 품목을 양방향으로
+// 자동 동기화한다:
+//  - 수량이 0 이하인데 상태가 아직 기본값("보유중")이거나 예전에 이 함수가 자동으로 "소진완료"
+//    처리해 둔 품목(statusAuto===true) → "소진완료"로 표시
+//  - 반대로, 이 함수가 자동으로 "소진완료" 처리해 뒀던 품목(statusAuto===true)의 수량이 다시
+//    0보다 커지면(재입고) → 자동으로 "보유중"으로 되돌림
+// 매니저가 화면에서 직접 상태를 고른 품목(statusAuto===false, 예: 직접 "소진완료"나 "타점 이관
+// 예정"으로 지정)은 수량이 어떻든 절대 건드리지 않는다 - setInvMeta에서 수동 변경 시 statusAuto를
+// false로 내려서 이후 자동 조정 대상에서 제외시킨다. 반환값은 이번에 자동으로 조정된 건수.
 function applyZeroQtyAutoStatus(){
   let count = 0;
   (DB.inventory||[]).forEach(r=>{
-    if((Number(r.qty)||0) <= 0 && r.status==='보유중'){
-      r.status = '소진완료';
+    const qty = Number(r.qty)||0;
+    if(qty <= 0){
+      if(r.status==='보유중' || r.statusAuto){
+        if(r.status!=='소진완료'){ r.status = '소진완료'; count++; }
+        r.statusAuto = true;
+      }
+    }else if(r.status==='소진완료' && r.statusAuto){
+      r.status = '보유중';
+      r.statusAuto = false;
       count++;
     }
   });
   return count;
 }
-// 재고 파일을 다시 올리지 않아도, 지금 반영돼 있는 재고 중 수량 0/상태 "보유중"인 품목을
-// 관리자가 즉시 일괄 정리할 수 있게 하는 수동 버튼용 함수.
+// 재고 파일을 다시 올리지 않아도, 지금 반영돼 있는 재고의 수량-상태 불일치를 관리자가 즉시
+// 일괄 정리할 수 있게 하는 수동 버튼용 함수.
 function manualApplyZeroQtyAutoStatus(){
   if(SESSION.role!=='admin'){ alert('이 작업은 관리자만 가능합니다.'); return; }
-  if(!confirm('현재 재고 중 수량이 0인데 구분(상태)이 "보유중"으로 남아있는 품목을 전부 "소진완료"로 일괄 변경하시겠습니까? (직접 다른 상태로 바꿔둔 품목은 그대로 유지됩니다)')) return;
+  if(!confirm('현재 재고 중 수량이 0인데 아직 자동으로 정리되지 않은 품목은 "소진완료"로, 재입고(수량 발생)됐는데 예전에 자동으로 "소진완료" 처리됐던 품목은 "보유중"으로 일괄 조정하시겠습니까? (매니저가 직접 지정한 상태는 그대로 유지됩니다)')) return;
   const count = applyZeroQtyAutoStatus();
   saveDB();
-  logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 수량 0건 ${count}건을 소진완료로 일괄 처리했습니다`);
+  logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 수량-상태 불일치 ${count}건을 자동 조정했습니다`);
   renderTab('systemAdmin');
-  showUploadResult('inventoryUploadMsg', true, count>0 ? `수량 0건인 ${count}건을 소진완료로 일괄 처리했습니다.` : '처리할 대상이 없습니다(수량 0이면서 "보유중"인 품목 없음).');
+  showUploadResult('inventoryUploadMsg', true, count>0 ? `수량-상태 불일치 ${count}건을 자동 조정했습니다.` : '조정할 대상이 없습니다.');
 }
 // 기준선 대비 현재까지 몇 건이 소진됐는지/소진율을 계산한다. 기준선에 있던 품목이 이번 파일에서
 // 아예 사라진 경우(단종/철수 등)도 소진된 것으로 집계한다.
@@ -7616,9 +7630,10 @@ function handleInventoryFile(evt){
       // DB.inventoryClearanceCodes가 모두 최신 상태로 반영된 뒤에 실행해야 정확히 판정된다).
       const depletedCount = applyClearanceDepletion();
       const depletionMsg = depletedCount>0 ? ` / 소진집중 ${depletedCount}건 소진완료 자동 반영` : '';
-      // 소진집중 여부와 무관하게, 수량 0인데 "보유중"으로 남아있는 나머지 품목도 자동 정리한다.
+      // 소진집중 여부와 무관하게, 수량-상태가 어긋난 나머지 품목도 양방향으로 자동 정리한다
+      // (수량 0 → 소진완료 / 자동 소진완료였던 품목이 재입고되면 → 보유중).
       const zeroQtyCount = applyZeroQtyAutoStatus();
-      const zeroQtyMsg = zeroQtyCount>0 ? ` / 수량 0건 ${zeroQtyCount}건 소진완료 자동 반영` : '';
+      const zeroQtyMsg = zeroQtyCount>0 ? ` / 수량-상태 ${zeroQtyCount}건 자동 조정` : '';
 
       recordUploadLog('inventory', file);
       saveDB();
@@ -10034,7 +10049,7 @@ function setInvMeta(id, field, val){
   const r = invById(id);
   if(!r) return;
   if(field==='note') r.note = val;
-  if(field==='status') r.status = val;
+  if(field==='status'){ r.status = val; r.statusAuto = false; } // 매니저가 직접 고른 값이므로 이후 자동 조정 대상에서 제외
   if(field==='saleStatus') r.saleStatus = val;
   if(field==='cat1') r.cat1 = val;
   if(field==='displayDate') r.displayDate = val;
