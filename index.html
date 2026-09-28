@@ -66,12 +66,25 @@
   }
 
   /* ---------- 개인화: 다크 모드 / 글자 크기 / 카드 밀도 ---------- */
-  /* 사이드바는 원래부터 어두운 색이라 그대로 두고, 본문 영역(배경/카드/글자/테두리)만
-     다크 팔레트로 바꾼다. 각 색상 있는 통계 카드(stat-tile-*)는 자체 배경색을 쓰고 있어
-     다크 모드에서도 그대로 유지된다(가독성엔 문제 없음). */
+  /* 2026.09: 사이드바를 LG OnAir 톤에 맞춰 흰색으로 바꾸면서, 다크 모드에서는 사이드바만
+     따로 어두운 색으로 되돌려야 한다(그대로 두면 다크 모드에서 사이드바만 하얗게 튐).
+     본문 영역(배경/카드/글자/테두리)은 기존처럼 다크 팔레트로 바꾼다. 각 색상 있는 통계
+     카드(stat-tile-*)는 자체 배경색을 쓰고 있어 다크 모드에서도 그대로 유지된다. */
   body.dark-mode{
     --bg:#16171b; --card:#1f2126; --text:#e7e8ec; --text-sub:#9aa0aa; --border:#34363d;
   }
+  body.dark-mode .sidebar{ background:#1c1c1f; border-color:#2c2c30; color:#c7c7cc; }
+  body.dark-mode .sidebar::-webkit-scrollbar-thumb{ background:#3a3a40; }
+  body.dark-mode .sidebar .brand{ border-color:#333; color:#eee; }
+  body.dark-mode .nav-item{ color:#c7c7cc; }
+  body.dark-mode .nav-item:hover{ background:#2a2a2f; color:#fff; }
+  body.dark-mode .nav-group-label{ color:#7c7c82; border-color:#2c2c30; }
+  body.dark-mode .nav-subgroup-label,body.dark-mode .nav-sub-date{ color:#888; }
+  body.dark-mode .nav-pin-star{ color:#5a5a60; }
+  body.dark-mode .sidebar .user-box{ border-color:#333; color:#aaa; }
+  body.dark-mode .sidebar .user-box b{ color:#fff; }
+  body.dark-mode .sidebar .logout-btn{ background:#333; color:#eee; border-color:#333; }
+  body.dark-mode .sidebar .logout-btn:hover{ background:#444; color:#eee; }
   body.dark-mode input[type=text],body.dark-mode input[type=number],body.dark-mode input[type=date],
   body.dark-mode input[type=password],body.dark-mode input[type=email],body.dark-mode input[type=tel],
   body.dark-mode input[type=search],body.dark-mode input:not([type]),body.dark-mode textarea,body.dark-mode select{
@@ -350,55 +363,55 @@
   #app{display:none;min-height:100vh;}
   #app.active{display:flex;}
   .sidebar{
-    width:236px;background:#1c1c1f;color:#eee;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
-    height:100vh;overflow-y:auto;
+    width:236px;background:#ffffff;color:#3a3a40;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
+    height:100vh;overflow-y:auto;border-right:1px solid #eee;
   }
   /* 메뉴가 30개 가까이 되면서 사이드바 높이가 화면보다 길어져 본문과 함께 통째로
      끌려 내려가던 문제 - 사이드바를 독립 스크롤 영역으로 분리해 항상 메뉴에
-     바로 접근할 수 있게 한다. 스크롤바도 어두운 테마에 맞춰 얇게 다듬는다. (2026.08) */
+     바로 접근할 수 있게 한다. (2026.08 / 2026.09: LG OnAir 톤 - 흰색 사이드바로 리스킨) */
   .sidebar::-webkit-scrollbar{width:6px;}
   .sidebar::-webkit-scrollbar-track{background:transparent;}
-  .sidebar::-webkit-scrollbar-thumb{background:#3a3a40;border-radius:10px;}
-  .sidebar .brand{padding:0 20px 18px;font-weight:700;font-size:14px;line-height:1.4;border-bottom:1px solid #333;margin-bottom:10px;text-align:center;}
+  .sidebar::-webkit-scrollbar-thumb{background:#e5e5ea;border-radius:10px;}
+  .sidebar .brand{padding:0 20px 18px;font-weight:700;font-size:14px;line-height:1.4;border-bottom:1px solid #eee;margin-bottom:10px;text-align:center;color:#1a1a1a;}
   .sidebar .brand span{color:var(--primary);}
   .nav-item{
     position:relative;
-    margin:2px 10px;padding:10px 34px 10px 12px;border-radius:8px;font-size:13.5px;color:#c7c7cc;cursor:pointer;
+    margin:2px 10px;padding:10px 34px 10px 12px;border-radius:8px;font-size:13.5px;color:#5a5a60;cursor:pointer;
     transition:background .15s ease,color .15s ease;
   }
-  .nav-item:hover{background:#2a2a2f;color:#fff;}
-  .nav-item.active{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(165,0,52,.35);}
+  .nav-item:hover{background:#fdf0f3;color:var(--primary);}
+  .nav-item.active{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(165,0,52,.25);}
   /* 게시형 메뉴에 새 글이 올라오면 표시되는 작은 New 뱃지 (2026.08) */
   .nav-badge{
     position:absolute;top:5px;right:7px;background:var(--primary);color:#fff;
     font-size:9px;font-weight:700;padding:1.5px 5px;border-radius:8px;letter-spacing:.02em;
-    line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,.35);pointer-events:none;
+    line-height:1.4;box-shadow:0 1px 3px rgba(0,0,0,.2);pointer-events:none;
   }
   .nav-item.active .nav-badge{background:#fff;color:var(--primary);}
   /* 즐겨찾기(핀 고정) 별 아이콘 - New 뱃지와 겹치지 않도록 살짝 왼쪽에 둔다 (2026.08) */
   .nav-pin-star{
-    position:absolute;top:6px;right:24px;font-size:12.5px;color:#5a5a60;cursor:pointer;
+    position:absolute;top:6px;right:24px;font-size:12.5px;color:#c7c7cc;cursor:pointer;
     line-height:1;padding:2px;z-index:2;user-select:none;
   }
-  .nav-pin-star:hover{color:#ffd23f;}
-  .nav-pin-star.pinned{color:#ffd23f;}
+  .nav-pin-star:hover{color:#ffb300;}
+  .nav-pin-star.pinned{color:#ffb300;}
   .nav-item.active .nav-pin-star{color:rgba(255,255,255,.8);}
   .nav-item.active .nav-pin-star.pinned{color:#ffe066;}
   .nav-pin-item{font-weight:500;}
-  .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#7c7c82;text-transform:uppercase;border-top:1px solid #2c2c30;margin-top:8px;}
+  .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#a3a3aa;text-transform:uppercase;border-top:1px solid #f0f0f3;margin-top:8px;}
   .nav-item.sub{padding:8px 34px 8px 20px;font-size:13px;}
   .nav-item.sub.sub2{padding:7px 34px 7px 28px;font-size:12px;}
-  .nav-subgroup-label{padding:8px 20px 2px 30px;font-size:10.5px;letter-spacing:.02em;color:#888;}
-  .nav-sub-date{font-size:10px;color:#888;margin-top:2px;font-weight:400;}
+  .nav-subgroup-label{padding:8px 20px 2px 30px;font-size:10.5px;letter-spacing:.02em;color:#999;}
+  .nav-sub-date{font-size:10px;color:#999;margin-top:2px;font-weight:400;}
   .inv-filter-row .field label{font-size:13.5px;font-weight:700;color:var(--text);margin-bottom:5px;}
   .inv-filter-row select,.inv-filter-row input{font-size:15.5px;padding:11px 14px;border-radius:8px;border:1.5px solid var(--border);min-height:22px;}
   .inv-filter-row select:focus,.inv-filter-row input:focus{border-color:var(--primary);outline:none;}
-  .sidebar .user-box{margin-top:auto;padding:16px 20px;border-top:1px solid #333;font-size:12.5px;color:#aaa;}
-  .sidebar .user-box b{color:#fff;display:block;font-size:13.5px;margin-bottom:2px;}
+  .sidebar .user-box{margin-top:auto;padding:16px 20px;border-top:1px solid #eee;font-size:12.5px;color:#999;}
+  .sidebar .user-box b{color:#1a1a1a;display:block;font-size:13.5px;margin-bottom:2px;}
   .sidebar .logout-btn{
-    margin-top:10px;width:100%;padding:8px;background:#333;color:#eee;border:none;border-radius:6px;font-size:12.5px;
+    margin-top:10px;width:100%;padding:8px;background:#f5f5f7;color:#5a5a60;border:1px solid #eee;border-radius:6px;font-size:12.5px;
   }
-  .sidebar .logout-btn:hover{background:#444;}
+  .sidebar .logout-btn:hover{background:#fdf0f3;color:var(--primary);}
 
   .main{flex:1;padding:24px 32px;overflow-y:auto;height:100vh;}
   .main::-webkit-scrollbar,.table-scroll::-webkit-scrollbar{width:8px;height:8px;}
@@ -418,8 +431,8 @@
   .export-btn.photos{color:#2b6cb0;}
   .export-btn.danger{color:#b3261e;}
   .export-btn:disabled{opacity:.6;cursor:not-allowed;}
-  .page-title{font-size:23px;font-weight:800;margin:0 0 6px;letter-spacing:-.02em;}
-  .page-desc{color:var(--text-sub);font-size:13.5px;margin:0 0 22px;line-height:1.6;}
+  .page-title{font-size:23px;font-weight:800;margin:0 0 6px;letter-spacing:-.02em;padding-left:11px;border-left:4px solid var(--primary);}
+  .page-desc{color:var(--text-sub);font-size:13.5px;margin:0 0 22px 11px;line-height:1.6;}
 
   .grid{display:grid;gap:16px;}
   .grid-3{grid-template-columns:repeat(3,1fr);}
