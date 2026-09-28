@@ -4439,9 +4439,10 @@ function renderSystemAdmin(){
 
 <div class="card sysadmin-span2">
       <h3>재고 조회 파일 업로드(담당자 : 이광환B) <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 단, 아래 "소진집중 소진율 카운팅 기준선"이 저장되어 있으면, 기준선 대비 수량이 0이 되었거나 이번 파일에서 아예 사라진 소진집중 품목은 구분(상태)이 자동으로 "소진완료"로 표시됩니다(이 경우에 한해 매니저가 다시 수정하기 전까지 자동 반영).${uploadLogStatusHtml('inventory')}</div>
+      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 소진집중 기준선이 저장돼 있으면 그 품목은 기준선 대비 소진 여부로, 그 외 모든 품목은 수량이 0이 되면 구분(상태)이 자동으로 "소진완료"로 표시됩니다(매니저가 직접 다른 상태로 바꿔둔 품목은 건드리지 않으며, 이후 다시 수정하기 전까지 자동 반영된 값이 유지됩니다).${uploadLogStatusHtml('inventory')}</div>
       <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
       <div id="inventoryUploadMsg" class="small-note"></div>
+      <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="manualApplyZeroQtyAutoStatus()">지금 수량 0건 일괄 소진완료 처리</button>
     </div>
 
 <div class="card sysadmin-span2">
@@ -7482,6 +7483,31 @@ function applyClearanceDepletion(){
   });
   return count;
 }
+// 소진집중 리스트/기준선 여부와 무관하게, 수량이 0 이하인데 구분(상태)이 아직 기본값("보유중")인
+// 채로 남아있는 모든 재고 품목을 자동으로 "소진완료"로 표시한다. 매니저가 이미 "타점 이관 예정"
+// 등 다른 값으로 직접 바꿔둔 품목이나 이미 "소진완료"인 품목은 건드리지 않는다(수동 지정 존중,
+// 중복 카운트 방지). 반환값은 이번에 새로 "소진완료" 처리된 건수.
+function applyZeroQtyAutoStatus(){
+  let count = 0;
+  (DB.inventory||[]).forEach(r=>{
+    if((Number(r.qty)||0) <= 0 && r.status==='보유중'){
+      r.status = '소진완료';
+      count++;
+    }
+  });
+  return count;
+}
+// 재고 파일을 다시 올리지 않아도, 지금 반영돼 있는 재고 중 수량 0/상태 "보유중"인 품목을
+// 관리자가 즉시 일괄 정리할 수 있게 하는 수동 버튼용 함수.
+function manualApplyZeroQtyAutoStatus(){
+  if(SESSION.role!=='admin'){ alert('이 작업은 관리자만 가능합니다.'); return; }
+  if(!confirm('현재 재고 중 수량이 0인데 구분(상태)이 "보유중"으로 남아있는 품목을 전부 "소진완료"로 일괄 변경하시겠습니까? (직접 다른 상태로 바꿔둔 품목은 그대로 유지됩니다)')) return;
+  const count = applyZeroQtyAutoStatus();
+  saveDB();
+  logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 수량 0건 ${count}건을 소진완료로 일괄 처리했습니다`);
+  renderTab('systemAdmin');
+  showUploadResult('inventoryUploadMsg', true, count>0 ? `수량 0건인 ${count}건을 소진완료로 일괄 처리했습니다.` : '처리할 대상이 없습니다(수량 0이면서 "보유중"인 품목 없음).');
+}
 // 기준선 대비 현재까지 몇 건이 소진됐는지/소진율을 계산한다. 기준선에 있던 품목이 이번 파일에서
 // 아예 사라진 경우(단종/철수 등)도 소진된 것으로 집계한다.
 function clearanceDepletionStats(){
@@ -7590,13 +7616,16 @@ function handleInventoryFile(evt){
       // DB.inventoryClearanceCodes가 모두 최신 상태로 반영된 뒤에 실행해야 정확히 판정된다).
       const depletedCount = applyClearanceDepletion();
       const depletionMsg = depletedCount>0 ? ` / 소진집중 ${depletedCount}건 소진완료 자동 반영` : '';
+      // 소진집중 여부와 무관하게, 수량 0인데 "보유중"으로 남아있는 나머지 품목도 자동 정리한다.
+      const zeroQtyCount = applyZeroQtyAutoStatus();
+      const zeroQtyMsg = zeroQtyCount>0 ? ` / 수량 0건 ${zeroQtyCount}건 소진완료 자동 반영` : '';
 
       recordUploadLog('inventory', file);
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
-      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${otherTeamMsg}${clearanceMsg}${baselineMsg}${depletionMsg}`);
+      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${otherTeamMsg}${clearanceMsg}${baselineMsg}${depletionMsg}${zeroQtyMsg}`);
     }catch(err){
       showUploadResult('inventoryUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
