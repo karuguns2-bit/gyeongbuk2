@@ -6743,19 +6743,41 @@ function renderGoals(){
   // 관리자는 좌측에 월/지점 선택 사이드바 + 우측에 본문(2단 구성)으로 배치하지만, 지점 매니저는
   // 지점 선택이 없어 사이드바에 월 선택 카드 하나만 덩그러니 남으므로 — 사이드바 없이 월 선택 카드를
   // 페이지 맨 위에 기존 방식대로(전체 폭) 배치하고 그 아래로 같은 본문을 이어붙인다.
+  const goalsRegisterCollapsed = !!state.goalsRegisterCollapsed;
+  const goalsRegisterButtonsHtml = canManageAllocations ? `
+    <div style="display:flex;gap:6px;flex-shrink:0;">
+      <button class="btn btn-primary btn-sm" onclick="goalsRegisterAll('${branchId}')"><i class="ti ti-check" aria-hidden="true"></i> 등록하기</button>
+      <button class="btn btn-sm" onclick="setGoalsRegisterCollapsed(false)"><i class="ti ti-edit" aria-hidden="true"></i> 수정하기</button>
+    </div>` : '';
+  const goalsRegisterSummaryHtml = goalsRegisterCollapsed ? `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+      <div class="stat-tile stat-tile-blue" style="flex:1;min-width:150px;padding:10px 14px;">
+        <div class="stat-tile-label" style="margin-bottom:2px;">GROSS 목표 / 배분</div>
+        <div class="stat-tile-num" style="font-size:16px;">${fmtKK(g.target)} / ${fmtKK(allocSum)}</div>
+      </div>
+      <div class="stat-tile stat-tile-pink" style="flex:1;min-width:150px;padding:10px 14px;">
+        <div class="stat-tile-label" style="margin-bottom:2px;">MSIS 예상목표치 달성율</div>
+        <div class="stat-tile-num" style="font-size:16px;">${branchAchievedPct.toFixed(1)}% ${pctBadge(branchAchievedPct)}</div>
+      </div>
+      <div class="stat-tile stat-tile-blue" style="flex:1;min-width:150px;padding:10px 14px;">
+        <div class="stat-tile-label" style="margin-bottom:2px;">구독 건수/금액 목표</div>
+        <div class="stat-tile-num" style="font-size:16px;">${g.subQtyTarget||0}건 / ${roundKK1(g.subAmtTarget||0)}KK</div>
+      </div>
+      <div class="stat-tile stat-tile-pink" style="flex:1;min-width:150px;padding:10px 14px;">
+        <div class="stat-tile-label" style="margin-bottom:2px;">구독 배분 건수/금액</div>
+        <div class="stat-tile-num" style="font-size:16px;">${subAllocSumQty}건 / ${subAllocSumAmt}KK</div>
+      </div>
+    </div>` : '';
   const goalsMainContentHtml = `
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
-          <div style="flex:1;min-width:340px;">
-            <div class="card">
-              <h3 style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;"><span>판매 목표 배분 <small>${isAdmin?'(본사 관리자 설정 · 목표 파일 업로드로 자동 반영)':'(관리자 설정 · 소속 지점 매니저 조회 전용)'}</small></span><button class="btn btn-sm" id="allocSectionBtn" onclick="toggleGoalsSection('allocSectionBody','allocSectionBtn')"><i class="ti ti-chevron-up" aria-hidden="true"></i> 축소</button></h3>
-              <div id="allocSectionBody">
+        <div class="card">
+          <h3 style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;"><span>판매/구독 목표 등록하기 <small>${canManageAllocations?'(관리자 또는 소속 지점 담당자가 목표를 등록·수정)':'(조회 전용)'}</small></span>${goalsRegisterButtonsHtml}</h3>
+          <div id="goalsRegisterBody" style="display:${goalsRegisterCollapsed?'none':'block'};">
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
+            <div style="flex:1;min-width:340px;">
               <div class="form-row" style="align-items:flex-start;flex-wrap:wrap;gap:24px;">
                 <div class="field">
                   <label>GROSS 목표 금액 (KK)</label>
-                  <div style="display:flex;gap:8px;align-items:center;">
-                    <input id="branchTargetInput" type="number" step="0.1" style="width:160px" value="${wonToKKRaw(g.target)}" ${canSetBranchTarget?'':'disabled'}>
-                    ${canSetBranchTarget ? `<button class="btn btn-primary" onclick="updateBranchTarget('${branchId}')">저장</button>` : ''}
-                  </div>
+                  <input id="branchTargetInput" type="number" step="0.1" style="width:160px" value="${wonToKKRaw(g.target)}" ${canSetBranchTarget?'':'disabled'}>
                 </div>
                 <div class="field" style="min-width:230px;max-width:280px;">
                   <label>MSIS실판매 등록 기준 예상 목표치</label>
@@ -6792,14 +6814,9 @@ function renderGoals(){
                 <tbody>${allocRows}</tbody>
               </table>
               </div>
-              </div>
             </div>
-          </div>
 
-          <div style="flex:1;min-width:340px;">
-            <div class="card">
-              <h3 style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;"><span>구독 목표 배분 <small>${canSetSubTarget?'(관리자/소속 지점 매니저 설정 · 구독 금액 목표는 목표 파일 업로드로 자동 반영)':'(조회 전용)'}</small></span><button class="btn btn-sm" id="subSectionBtn" onclick="toggleGoalsSection('subSectionBody','subSectionBtn')"><i class="ti ti-chevron-up" aria-hidden="true"></i> 축소</button></h3>
-              <div id="subSectionBody">
+            <div style="flex:1;min-width:340px;">
               <div class="form-row">
                 <div class="field">
                   <label>구독 판매 건수 목표</label>
@@ -6813,7 +6830,6 @@ function renderGoals(){
                   <input id="subAmtTargetInput" type="number" step="0.1" style="width:150px" value="${roundKK1(g.subAmtTarget||0)}" ${canSetSubTarget?'':'disabled'}>
                 </div>
               </div>
-              ${canSetSubTarget ? `<button class="btn btn-primary" onclick="updateSubTargets('${branchId}')">저장</button>` : ''}
 
               <div class="divider"></div>
 
@@ -6844,9 +6860,10 @@ function renderGoals(){
               </div>
               <div class="muted" style="margin-top:8px;">배분 합계: 건수 <b>${subAllocSumQty}건</b> / 금액 <b>${subAllocSumAmt}KK</b> — 지점 목표 대비 잔여: 건수 <b style="color:${(g.subQtyTarget-subAllocSumQty)<0?'var(--bad)':'var(--text)'}">${g.subQtyTarget-subAllocSumQty}건</b> / 금액 <b style="color:${(g.subAmtTarget-subAllocSumAmt)<0?'var(--bad)':'var(--text)'}">${roundKK1((g.subAmtTarget||0)-subAllocSumAmt)}KK</b></div>
               <div class="small-note">※ 팀원별로 각자 이름에 맞는 구독 건수/금액 목표를 직접 입력할 수 있습니다. 실적은 &quot;구독 실적&quot; 메뉴의 최근 데이터를 이름 기준으로 매칭한 값입니다.</div>
-              </div>
             </div>
           </div>
+          </div>
+          ${goalsRegisterSummaryHtml}
         </div>
 
         <div class="card" style="margin-top:10px;">
@@ -6884,15 +6901,28 @@ function renderGoals(){
     </div>
   `;
 }
-function toggleGoalsSection(bodyId, btnId){
-  const body = document.getElementById(bodyId);
-  const btn = document.getElementById(btnId);
-  if(!body) return;
-  const collapsed = body.style.display === 'none';
-  body.style.display = collapsed ? 'block' : 'none';
-  if(btn) btn.innerHTML = collapsed
-    ? '<i class="ti ti-chevron-up" aria-hidden="true"></i> 축소'
-    : '<i class="ti ti-chevron-down" aria-hidden="true"></i> 펼치기';
+// "판매/구독 목표 등록하기" 카드는 등록하기(저장 + 자동 축소)/수정하기(펼침) 두 버튼으로 조작한다.
+// 저장 버튼을 눌러도 renderTab('goals')로 전체가 다시 그려지므로, 펼침/축소 상태를 DOM이 아니라
+// state.goalsRegisterCollapsed에 저장해 재렌더링 후에도 축소된 상태가 그대로 유지되게 한다.
+function setGoalsRegisterCollapsed(collapsed){
+  state.goalsRegisterCollapsed = collapsed;
+  renderTab('goals');
+}
+function goalsRegisterAll(branchId){
+  if(!canManageBranchGoals(branchId)) return;
+  const period = state.goalsPeriod || currentGoalsPeriod();
+  const g = getGoals(branchId, period);
+  const branchInput = document.getElementById('branchTargetInput');
+  if(branchInput && SESSION.role==='admin'){
+    g.target = Math.round((Number(branchInput.value)||0) * 1000000);
+  }
+  const qtyInput = document.getElementById('subQtyTargetInput');
+  const amtInput = document.getElementById('subAmtTargetInput');
+  if(qtyInput) g.subQtyTarget = Number(qtyInput.value)||0;
+  if(amtInput) g.subAmtTarget = Math.round((Number(amtInput.value)||0)*10)/10;
+  saveDB();
+  state.goalsRegisterCollapsed = true;
+  renderTab('goals');
 }
 // 구독 실적은 "목표/실적 파일 업로드"에 포함된 "구독 수기 실적 관리" 시트를 기준으로 반영된다
 // (DB.goalsSubActuals, 기간·지점·사번별로 최신 값 하나만 저장 — applyGoalsFileUpload 참고).
