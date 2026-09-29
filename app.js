@@ -9715,6 +9715,17 @@ function incProductGridHtml(items){
     </div>`).join('') +
     `</div>`;
 }
+// 지점별 인센티브(참고용) — 카드/요약통계에 쓰는 "인센티브 합계"(목표달성인센티브 예상금액 +
+// Grade 수당 계 + 제품수당 일시불 계 + 제품수당 구독 계) 계산 헬퍼. incBranchDetailRowsHtml의
+// flatItems 목록과 동일한 필드를 더한다.
+function incFlatSum(m){
+  return ['inc_flatTv','inc_flatFridge','inc_flatWasher','inc_flatAircon','inc_flatAircare','inc_flatClothingCare',
+    'inc_flatCleaner','inc_flatCineBeam','inc_flatShoeCare','inc_flatWaterCare','inc_flatCooking','inc_flatAudio',
+    'inc_flatDt','inc_flatMnt','inc_flatNt'].reduce((a,k)=>a+(m[k]||0),0);
+}
+function incBranchTotal(m){
+  return (m.inc_expectedAmt||0) + (m.inc_gradeSum||0) + incFlatSum(m) + (m.inc_subAllowanceTotal||0);
+}
 function incBranchDetailRowsHtml(m){
   const flatItems = [
     ['TV', m.inc_flatTv], ['냉장고', m.inc_flatFridge], ['세탁기', m.inc_flatWasher], ['에어컨', m.inc_flatAircon],
@@ -9819,17 +9830,20 @@ function renderIncentiveOverview(){
   const moEntry = moDataFor();
   if(!moEntry.rows || moEntry.rows.length===0){
     return `
+    <div class="inc-plain">
     <div class="page-title">지점별 인센티브(참고용)</div>
     <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트 기준 지점별 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다.</div>
     ${moPeriodSelectorHtml()}
     ${noticeHtml}
-    <div class="card"><div class="muted">아직 업로드된 자료가 없습니다.${SESSION.role==='admin'?` [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다. <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>`;
+    <div class="card"><div class="muted">아직 업로드된 자료가 없습니다.${SESSION.role==='admin'?` [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다. <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>
+    </div>`;
   }
   const allRows = moEntry.rows;
   const teamAgg = moAggregate(allRows);
   const canBrowseAll = canSwitchBranch(); // 관리자·임원: 전 지점 상세 조회 가능
 
   const pageHeader = `
+    <div class="inc-plain">
     <div class="page-title">지점별 인센티브(참고용)</div>
     <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트("◆ 지점별 인센티브" 표) 기준 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다. 기준일자 <b>${moEntry.asOfDate}</b>(D-1, 전일)</div>
     ${moPeriodSelectorHtml()}
@@ -9842,7 +9856,7 @@ function renderIncentiveOverview(){
     const rankExpected = myRow ? moRankOf(allRows.map(r=>({key:r.branchId, val:r.m.inc_expectedAmt})), x=>x.val, SESSION.branchId) : null;
     const rankTpRate = myRow ? moRankOf(allRows.map(r=>({key:r.branchId, val:r.m.inc_tpRate})), x=>x.val, SESSION.branchId) : null;
     if(!myRow){
-      return `${pageHeader}<div class="card"><div class="muted">소속 지점(${branchName(SESSION.branchId)})의 인센티브 자료를 찾지 못했습니다. 최신 파일이 반영됐는지 확인해 주세요.</div></div>`;
+      return `${pageHeader}<div class="card"><div class="muted">소속 지점(${branchName(SESSION.branchId)})의 인센티브 자료를 찾지 못했습니다. 최신 파일이 반영됐는지 확인해 주세요.</div></div></div>`;
     }
     return `
       ${pageHeader}
@@ -9854,64 +9868,75 @@ function renderIncentiveOverview(){
         </div>
       </div>
       <div class="card" style="margin-bottom:10px;">
-        <h3>🏆 우리 지점 매니저별 구독 Grade 수당</h3>
+        <h3><i class="ti ti-trophy" aria-hidden="true"></i> 우리 지점 매니저별 구독 Grade 수당</h3>
         ${incGradeTableHtml(incGradeRecordsForBranch(myRow.branchName), myRow.branchName)}
       </div>
       <div class="card ai-box">
-        <div class="ai-title">📊 타 지점 합계 대비 비교</div>
+        <div class="ai-title"><i class="ti ti-chart-bar" aria-hidden="true"></i> 타 지점 합계 대비 비교</div>
         <div>경북팀 전체(${rankTotalOf}개 지점) 목표달성인센티브(예상) 합계 <b>${moFmtWonRaw(teamAgg.inc_expectedAmt)}</b> 중 우리 지점 <b>${moFmtWonRaw(myRow.m.inc_expectedAmt)}</b> (${rankExpected?`${rankExpected}위/${rankTotalOf}`:'-'})</div>
         <div style="margin-top:6px;">경북팀 전체 총판 달성률 평균 <b>${moPct(teamAgg.g_tp_rate)}</b> 대비 우리 지점 총판 달성률 <b>${moPct(myRow.m.inc_tpRate)}</b> (${rankTpRate?`${rankTpRate}위/${rankTotalOf}`:'-'})</div>
         <div class="small-note" style="margin-top:8px;">※ 개인정보 보호를 위해 다른 지점의 개별 상세 수치는 표시되지 않고, 전체 합계·평균만 비교용으로 제공됩니다.</div>
+      </div>
       </div>
     `;
   }
 
   // ---- 관리자/임원(admin/exec) 화면: 전 지점 조회 가능(canSwitchBranch()===true인 admin·exec만
   // 이 분기에 들어온다). 매니저(staff)는 위쪽 !canBrowseAll 분기에서 본인 지점만 보게 되어 있다.
-  // 14개 지점을 한 페이지에 다 펼치면 스크롤이 너무 길어서, 원래처럼 관리자/지점을 선택해서
-  // 한 지점씩 상세를 보는 방식으로 되돌린다(요약표는 항상 전체가 보인다).
+  // 2026-09-29 개선: 지점을 클릭해서 상세로 이동하던 방식 대신, 14개 지점을 7X2 그리드로
+  // 한 번에 모두 보여준다(참고 파일의 stats5 + sr-grid 구조 반영). 개별 지점의 더 깊은 상세
+  // (제품수당 그리드, Grade 수당표)는 이 카드형 요약에서는 생략하고, 아래 정렬 가능한 표에서
+  // 전체 수치를 계속 확인할 수 있게 유지한다.
   const managers = moManagerList();
   const selManager = state.incOverviewManager && managers.includes(state.incOverviewManager) ? state.incOverviewManager : null;
   const branchesInScope = moBranchesOf(selManager);
-  const selBranch = state.incOverviewBranch && branchesInScope.some(r=>r.branchId===state.incOverviewBranch) ? state.incOverviewBranch : null;
   const agg = moAggregate(branchesInScope);
-  const selBranchRow = selBranch ? branchesInScope.find(r=>r.branchId===selBranch) : null;
-  const scopeLabel = selBranchRow ? selBranchRow.branchName : (selManager ? `${selManager} 관리자` : '경북팀 전체');
+  const scopeLabel = selManager ? `${selManager} 관리자` : '경북팀 전체';
 
   const managerPills = `<span class="branch-pill ${!selManager?'active':''}" onclick="setIncOverviewManager(null)">전체</span>` +
     managers.map(m=>`<span class="branch-pill ${m===selManager?'active':''}" onclick="setIncOverviewManager('${escapeHtml(m)}')">${escapeHtml(m)}</span>`).join('');
-  const branchSelectHtml = `<select style="width:150px;font-size:12px;" onchange="setIncOverviewBranch(this.value)">` +
-    `<option value="">전체 지점</option>` +
-    branchesInScope.map(r=>`<option value="${r.branchId}" ${r.branchId===selBranch?'selected':''}>${escapeHtml(r.branchName)}</option>`).join('') +
-    `</select>`;
 
-  if(selBranchRow){
-    return `
-      ${pageHeader}
-      <div class="card" style="margin-bottom:10px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-          <div>${managerPills}</div>
-          ${branchSelectHtml}
+  // 상단 요약 통계(stats5): 인센티브 합계 / 목표달성인센티브 / Grade 수당 / 제품수당 일시불 / 제품수당 구독
+  let totalSum=0, totalExpected=0, totalGrade=0, totalLump=0, totalSub=0;
+  branchesInScope.forEach(r=>{
+    const m = r.m;
+    totalExpected += m.inc_expectedAmt||0;
+    totalGrade += m.inc_gradeSum||0;
+    totalLump += incFlatSum(m);
+    totalSub += m.inc_subAllowanceTotal||0;
+  });
+  totalSum = totalExpected + totalGrade + totalLump + totalSub;
+  const statsHtml = `
+    <div class="stats stats5" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px;">
+      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">인센티브 합계</div><div style="font-size:18px;font-weight:800;color:var(--primary);margin-top:2px;">${moFmtWonRaw(totalSum)}</div><div class="muted" style="font-size:10.5px;margin-top:2px;">${branchesInScope.length}개 지점</div></div>
+      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">목표달성 인센티브</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalExpected)}</div></div>
+      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">Grade 수당</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalGrade)}</div></div>
+      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">제품수당 일시불</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalLump)}</div></div>
+      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">제품수당 구독</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalSub)}</div></div>
+    </div>`;
+
+  // 지점별 카드 그리드: 인센티브 합계 큰 순으로 정렬, 상위 3개는 붉은 테두리로 강조
+  const sortedBranches = branchesInScope.slice().sort((a,b)=>incBranchTotal(b.m)-incBranchTotal(a.m));
+  const branchCardsHtml = `<div class="mo-branch-grid">` +
+    sortedBranches.map((r,i)=>{
+      const m = r.m;
+      const total = incBranchTotal(m);
+      return `<div class="card mo-branch-card" style="${i<3?'border-color:var(--primary);background:#fff8f9;':''}">
+        <div style="font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.branchName)}</div>
+        <div class="muted" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.manager||'-')}</div>
+        <div style="font-size:15px;font-weight:800;color:var(--primary);margin-top:3px;">${moFmtWonRaw(total)}</div>
+        <div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap;">
+          <span class="badge" style="background:#f2f2f4;color:var(--text);font-size:9.5px;">총판${moPct(m.inc_tpRate)}</span>
+          <span class="badge" style="background:#f2f2f4;color:var(--text);font-size:9.5px;">지급${moPct(m.inc_payRate)}</span>
         </div>
-      </div>
-      <div class="card" style="border-left:4px solid var(--primary);margin-bottom:10px;">
-        <div class="muted" style="font-size:12px;">${escapeHtml(selBranchRow.branchName)} · 관리자 ${escapeHtml(selBranchRow.manager||'-')} · 단위 원</div>
-        <h3 style="margin-top:4px;">지점 인센티브 상세</h3>
-        <div style="margin-top:8px;">
-        ${incBranchDetailRowsHtml(selBranchRow.m)}
-        </div>
-      </div>
-      <div class="card">
-        <h3>🏆 매니저별 구독 Grade 수당</h3>
-        ${incGradeTableHtml(incGradeRecordsForBranch(selBranchRow.branchName), selBranchRow.branchName)}
-      </div>
-    `;
-  }
+      </div>`;
+    }).join('') +
+    `</div>`;
 
   const expectedRankMap = {}; branchesInScope.slice().sort((a,b)=>(b.m.inc_expectedAmt||0)-(a.m.inc_expectedAmt||0)).forEach((x,i)=>{ expectedRankMap[x.branchId]=i+1; });
   const trs = branchesInScope.map(r=>{
     const m = r.m;
-    return `<tr style="cursor:pointer;" onclick="setIncOverviewBranch('${r.branchId}')">
+    return `<tr>
       <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
       <td>${moFmtWon(m.inc_target)}</td>
       <td>${moFmtWon(m.inc_tp)}</td><td>${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}</td>
@@ -9925,13 +9950,15 @@ function renderIncentiveOverview(){
   return `
     ${pageHeader}
     <div class="card" style="margin-bottom:10px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
-        <div>${managerPills}</div>
-        ${branchSelectHtml}
-      </div>
+      <div>${managerPills}</div>
+    </div>
+    ${statsHtml}
+    <div class="card" style="margin-bottom:10px;">
+      <h3><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 인센티브 카드 <small>${escapeHtml(scopeLabel)} · 인센티브 합계가 큰 순서</small></h3>
+      ${branchCardsHtml}
     </div>
     <div class="card">
-      <h3>🏬 지점별 인센티브 현황 <small>${escapeHtml(scopeLabel)} · 단위 원 · 행을 클릭하면 상세로 이동</small></h3>
+      <h3><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 인센티브 현황 <small>${escapeHtml(scopeLabel)} · 단위 원</small></h3>
       <div style="overflow-x:auto;">
       <table class="tbl-compact">
         <thead><tr><th>지점</th><th>관리자</th><th>목표</th><th>총판</th><th>총판 달성률</th><th>실판</th><th>지급률</th><th>전년比</th><th>구독비중</th><th>Grade수당계</th><th>목표달성인센티브(예상)</th></tr></thead>
@@ -9947,6 +9974,7 @@ function renderIncentiveOverview(){
         </tbody>
       </table>
       </div>
+    </div>
     </div>
   `;
 }
