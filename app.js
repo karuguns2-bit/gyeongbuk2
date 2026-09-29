@@ -2435,6 +2435,16 @@ function bbadgeIconSvg(name){
   };
   return icons[name] || icons.star;
 }
+// 2026.09: 배지를 3D 그라데이션 방패에서 플랫 테마(화이트 카드 + 포인트 컬러 강조)로
+// 재디자인하면서, 카테고리별 svg 키를 그대로 재사용해 Tabler 아이콘 하나로 바꿔 보여준다.
+function bbadgeTablerIcon(name){
+  const map = {
+    target:'ti-target-arrow', trending:'ti-trending-up', clipboard:'ti-clipboard-text',
+    chat:'ti-message-2', star:'ti-star', bars:'ti-chart-bar', users:'ti-users',
+    trophy:'ti-trophy', arrowUpCircle:'ti-arrow-up-circle', flame:'ti-flame', gift:'ti-gift'
+  };
+  return map[name] || 'ti-award';
+}
 const BRANCH_BADGE_CATEGORIES = [
   { id:'goalAchieve', label:'목표달성점', desc:'MSIS실판매등록 기준 목표 달성률 1위 지점', icon:'🎯', svg:'target', grad:['#7ee8fa','#3fa9f5','#2176d2'], shadow:'33,150,243',
     compute(period){
@@ -2879,29 +2889,18 @@ function renderHomeManagerBadges(){
     const tooltip = won
       ? `${cat.label}(${cat.desc}) · ${isTie?'공동 1위 · ':''}${winnerInfo.map(w=>`${escapeHtml(w.name)}${w.branchNm?`(${escapeHtml(w.branchNm)})`:''} ${escapeHtml(cat.fmt(w.value))}`).join(', ')}${!isTie && maxStreak>1?` · ${maxStreak}개월 연속`:''}`
       : `${cat.label}(${cat.desc}) · 이번 달은 아직 1위가 없습니다`;
-    const g = cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
-    const sh = cat.shadow || '242,163,0';
-    const shieldVars = `--g1:${g[0]};--g2:${g[1]};--g3:${g[2]};--sh:${sh};`;
-    const shieldClass = won ? 'bbadge-hex bbadge-front won' : 'bbadge-hex bbadge-front locked';
-    const dim = won ? '' : 'filter:grayscale(1);opacity:.55;';
     // 공동 수상일 때는 사람마다 누적 횟수가 다를 수 있어 하나의 숫자로 뭉뚱그리지 않고 생략한다
     // (자세한 누적 횟수는 마우스오버 툴팁에서 확인 가능).
     const totalCount = (won && !isTie) ? managerBadgeTotalCount(cat.id, winners[0].empId, true) : 0;
-    const totalTag = totalCount>0 ? ` <span class="bbadge-total">🏅×${totalCount}</span>` : '';
+    const totalTag = totalCount>0 ? ` <span class="bbadge-total">×${totalCount}</span>` : '';
     const subLabel = `${cat.label}${totalTag}`;
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
-        <div class="bbadge-shieldwrap" style="${shieldVars}">
+        <div class="bbadge-flatcard ${won?'won':'locked'}">
           ${starsHtml}
-          <div class="bbadge-hexglow" style="${dim}"></div>
-          <div class="bbadge-hex bbadge-depth" style="${dim}"></div>
-          <div class="bbadge-hex bbadge-rim" style="${dim}"></div>
-          <div class="${shieldClass}" style="${dim}">
-            <span class="bbadge-icon">${bbadgeIconSvg(cat.svg)}</span>
-          </div>
-          <div class="bbadge-shadow" style="${dim}"></div>
+          <span class="bbadge-flaticon"><i class="ti ${bbadgeTablerIcon(cat.svg)}" aria-hidden="true"></i></span>
         </div>
-        <div class="bbadge-branch" style="color:${won?g[2]:'#8a8f9c'};">${mgrName}</div>
+        <div class="bbadge-branch">${mgrName}</div>
         <div class="bbadge-title-label">${subLabel}</div>
       </div>`;
   }).join('');
@@ -3006,43 +3005,26 @@ function renderHomeBranchBadges(){
     const tooltip = won
       ? `${r.cat.label}(${r.cat.desc}) · ${isTie?'공동 1위 · ':''}${winnerInfo.map(w=>`${escapeHtml(w.name)} ${escapeHtml(r.cat.fmt(w.value))}`).join(', ')}${!isTie && maxStreak>1?` · ${maxStreak}개월 연속`:''}`
       : `${r.cat.label}(${r.cat.desc}) · 이번 달은 아직 1위가 없습니다`;
-    const g = r.cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
-    const sh = r.cat.shadow || '242,163,0';
-    const shieldVars = `--g1:${g[0]};--g2:${g[1]};--g3:${g[2]};--sh:${sh};`;
-    const shieldClass = won ? 'bbadge-hex bbadge-front won' : 'bbadge-hex bbadge-front locked';
-    const dim = won ? '' : 'filter:grayscale(1);opacity:.55;';
     // 공동 수상이면 지점마다 누적 횟수가 달라질 수 있어 숫자 하나로 뭉뚱그리지 않고 생략한다.
     const totalCount = (won && !isTie) ? branchBadgeTotalCount(r.cat.id, winners[0].branchId, true) : 0;
-    const totalTag = totalCount>0 ? ` <span class="bbadge-total">🏅×${totalCount}</span>` : '';
+    const totalTag = totalCount>0 ? ` <span class="bbadge-total">×${totalCount}</span>` : '';
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
-        <div class="bbadge-shieldwrap" style="${shieldVars}">
+        <div class="bbadge-flatcard ${won?'won':'locked'}">
           ${starsHtml}
-          <div class="bbadge-hexglow" style="${dim}"></div>
-          <div class="bbadge-hex bbadge-depth" style="${dim}"></div>
-          <div class="bbadge-hex bbadge-rim" style="${dim}"></div>
-          <div class="${shieldClass}" style="${dim}">
-            <span class="bbadge-icon">${bbadgeIconSvg(r.cat.svg)}</span>
-          </div>
-          <div class="bbadge-shadow" style="${dim}"></div>
+          <span class="bbadge-flaticon"><i class="ti ${bbadgeTablerIcon(r.cat.svg)}" aria-hidden="true"></i></span>
         </div>
-        <div class="bbadge-branch" style="color:${won?g[2]:'#8a8f9c'};">${branchNm}</div>
+        <div class="bbadge-branch">${branchNm}</div>
         <div class="bbadge-title-label">${r.cat.label}${totalTag}</div>
       </div>`;
   }).join('');
   const grandSlamHtml = grandSlamBranch ? `
       <div class="bbadge-item bbadge-won bbadge-grandslam" title="${escapeHtml(branchName(grandSlamBranch))} · 이번 달 ${grandSlamBranchCount}개 종목 동시 1위 그랜드슬램!">
-        <div class="bbadge-shieldwrap" style="--g1:#fff2c4;--g2:#f0b429;--g3:#8a5b06;--sh:138,91,6;">
-          <div class="bbadge-stars">✨✨✨</div>
-          <div class="bbadge-hexglow"></div>
-          <div class="bbadge-hex bbadge-depth"></div>
-          <div class="bbadge-hex bbadge-rim"></div>
-          <div class="bbadge-hex bbadge-front won">
-            <span class="bbadge-icon">${bbadgeIconSvg('trophy')}</span>
-          </div>
-          <div class="bbadge-shadow"></div>
+        <div class="bbadge-flatcard won">
+          <div class="bbadge-stars">👑</div>
+          <span class="bbadge-flaticon"><i class="ti ti-crown" aria-hidden="true"></i></span>
         </div>
-        <div class="bbadge-branch" style="color:#8a5b06;">${escapeHtml(branchName(grandSlamBranch))}</div>
+        <div class="bbadge-branch">${escapeHtml(branchName(grandSlamBranch))}</div>
         <div class="bbadge-title-label">그랜드슬램</div>
       </div>` : '';
   // 우측 랭킹 패널: 종목별 1/2/3위 지점을 보여줘서 경쟁을 독려한다. "이번달" / "연간누적" 두 모드 지원.
@@ -3101,59 +3083,22 @@ function renderHomeBranchBadges(){
     <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:10px 12px;">
       <style>
         .bbadge-item{ text-align:center; width:58px; flex:0 0 auto; }
-        .bbadge-shieldwrap{ position:relative; width:48px; height:52px; margin:6px auto 0; transition:transform .35s cubic-bezier(.34,1.56,.64,1); }
-        .bbadge-item:hover .bbadge-shieldwrap{ transform:translateY(-5px) scale(1.1); }
-        .bbadge-shadow{
-          position:absolute; left:50%; bottom:1px; width:24px; height:6px; margin-left:-12px; border-radius:50%;
-          background:radial-gradient(ellipse, rgba(0,0,0,.42) 0%, rgba(0,0,0,0) 72%); transition:all .35s ease;
+        .bbadge-flatcard{
+          position:relative; width:40px; height:40px; margin:6px auto 0; border-radius:10px;
+          background:#fff; border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center;
+          transition:transform .2s ease, border-color .2s ease;
         }
-        .bbadge-item:hover .bbadge-shadow{ width:30px; height:7px; margin-left:-15px; opacity:.65; }
-        .bbadge-hexglow{
-          position:absolute; top:50%; left:50%; width:55px; height:55px; margin:-27px 0 0 -27px;
-          border-radius:50%; z-index:0; pointer-events:none;
-          background:radial-gradient(circle, rgba(var(--sh,242,163,0),.5) 0%, transparent 68%);
-          opacity:.5; transition:opacity .3s ease;
-        }
-        .bbadge-item:hover .bbadge-hexglow{ opacity:1; }
-        .bbadge-grandslam .bbadge-hexglow{
-          background:conic-gradient(from 0deg, #fff2c4, #f0b429, #8a5b06, #f0b429, #fff2c4);
-          filter:blur(8px); opacity:.75; animation:bbadgeSpin 3.4s linear infinite;
-        }
-        .bbadge-item:hover .bbadge-grandslam .bbadge-hexglow{ opacity:1; }
-        @keyframes bbadgeSpin{ to{ transform:rotate(360deg); } }
-        .bbadge-hex{ position:absolute; clip-path:polygon(50% 2%, 96% 26%, 96% 74%, 50% 98%, 4% 74%, 4% 26%); }
-        .bbadge-depth{ top:50%; left:50%; width:38px; height:38px; margin:-16px 0 0 -19px; background:var(--g3,#555); filter:brightness(.45); z-index:1; }
-        .bbadge-rim{ top:50%; left:50%; width:43px; height:43px; margin:-22px 0 0 -22px; background:linear-gradient(160deg,#3a4150,#0d0f14); z-index:2; }
-        .bbadge-grandslam .bbadge-rim{ background:linear-gradient(160deg,#caa24a,#3d2c05); }
-        .bbadge-front{
-          top:50%; left:50%; width:38px; height:38px; margin:-19px 0 0 -19px; z-index:3;
-          display:flex; align-items:center; justify-content:center; overflow:hidden;
-          transition:box-shadow .25s ease, filter .2s ease;
-        }
-        .bbadge-front.won{
-          background:linear-gradient(155deg, var(--g1) 0%, var(--g2) 48%, var(--g3) 100%);
-          box-shadow:inset 0 0 0 1px rgba(255,255,255,.35);
-          animation:bbadgePulse 2.6s ease-in-out infinite;
-        }
-        .bbadge-front.locked{ background:#20242e; box-shadow:inset 0 0 0 1px #333a48; }
-        .bbadge-item:hover .bbadge-front.won{ filter:brightness(1.12) saturate(1.15); animation-play-state:paused; }
-        @keyframes bbadgePulse{ 0%,100%{ filter:brightness(1); } 50%{ filter:brightness(1.08); } }
-        .bbadge-front.won::before{
-          content:''; position:absolute; inset:0; pointer-events:none;
-          background:linear-gradient(180deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 42%, rgba(0,0,0,.2) 100%);
-        }
-        .bbadge-front.won::after{
-          content:''; position:absolute; inset:0;
-          background:linear-gradient(115deg, transparent 42%, rgba(255,255,255,.7) 50%, transparent 58%);
-          transform:translateX(-130%); transition:transform .55s ease;
-        }
-        .bbadge-item:hover .bbadge-front.won::after{ transform:translateX(130%); }
-        .bbadge-icon{ position:relative; z-index:4; display:flex; filter:drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
-        .bbadge-icon svg{ width:23px; height:23px; }
-        .bbadge-stars{ position:absolute; top:0; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:7px; letter-spacing:-1px; text-shadow:0 1px 1px rgba(0,0,0,.3); z-index:5; }
-        .bbadge-branch{ font-size:9px; font-weight:700; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .bbadge-item:hover .bbadge-flatcard{ transform:translateY(-3px); }
+        .bbadge-flatcard.won{ border-color:var(--primary); }
+        .bbadge-flatcard.locked{ background:#fafafa; }
+        .bbadge-flaticon{ display:flex; }
+        .bbadge-flaticon i{ font-size:19px; color:#c7c8cc; }
+        .bbadge-flatcard.won .bbadge-flaticon i{ color:var(--primary); }
+        .bbadge-stars{ position:absolute; top:-9px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:9px; letter-spacing:-1px; z-index:5; }
+        .bbadge-branch{ font-size:9px; font-weight:700; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-sub); }
+        .bbadge-item.bbadge-won .bbadge-branch{ color:var(--text); }
         .bbadge-title-label{ font-size:8px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:9px; }
-        .bbadge-total{ font-size:8px; font-weight:700; color:#c9820a; white-space:nowrap; }
+        .bbadge-total{ font-size:8px; font-weight:700; color:var(--primary); white-space:nowrap; }
         .bbadge-outer{ display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; }
         .bbadge-leftcol{ flex:0 1 auto; min-width:280px; }
         .bbadge-medals{

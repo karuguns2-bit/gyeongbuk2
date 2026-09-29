@@ -21,6 +21,7 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 <style>
   @font-face{
     font-family:"LGSmartH";
@@ -30,9 +31,9 @@
     font-display:swap;
   }
   :root{
-    --primary:#A50034;
-    --primary-dark:#7d0027;
-    --primary-light:#ffe3ec;
+    --primary:#E4002B;
+    --primary-dark:#b3001f;
+    --primary-light:#fff5f7;
     --bg:#f4f5f7;
     --card:#ffffff;
     --text:#1f2328;
@@ -307,24 +308,26 @@
   #app{display:none;min-height:100vh;}
   #app.active{display:flex;}
   .sidebar{
-    width:236px;background:#ffffff;color:#3a3a40;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
+    width:236px;background:#f5f6f8;color:#2b2c31;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
     height:100vh;overflow-y:auto;border-right:1px solid var(--border);
   }
   /* 메뉴가 30개 가까이 되면서 사이드바 높이가 화면보다 길어져 본문과 함께 통째로
      끌려 내려가던 문제 - 사이드바를 독립 스크롤 영역으로 분리해 항상 메뉴에
-     바로 접근할 수 있게 한다. (2026.08: 흰색 사이드바로 리스킨) */
+     바로 접근할 수 있게 한다. (2026.08: 흰색 사이드바로 리스킨 / 2026.09: 옅은 그레이로
+     톤 조정해 본문(화이트) 영역과 색감이 구분되도록 함) */
   .sidebar::-webkit-scrollbar{width:6px;}
   .sidebar::-webkit-scrollbar-track{background:transparent;}
-  .sidebar::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:10px;}
+  .sidebar::-webkit-scrollbar-thumb{background:#d8dade;border-radius:10px;}
   .sidebar .brand{padding:0 20px 18px;font-weight:700;font-size:14px;line-height:1.4;border-bottom:1px solid var(--border);margin-bottom:10px;text-align:center;color:#1a1a1a;}
   .sidebar .brand span{color:var(--primary);}
   .nav-item{
     position:relative;
-    margin:2px 10px;padding:10px 34px 10px 12px;border-radius:8px;font-size:13.5px;color:var(--text-sub);cursor:pointer;
+    margin:2px 10px;padding:10px 34px 10px 12px;border-radius:8px;font-size:13.5px;color:#2b2c31;font-weight:500;cursor:pointer;
     transition:background .15s ease,color .15s ease;
   }
-  .nav-item:hover{background:#f7f7f9;color:var(--primary);}
-  .nav-item.active{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(165,0,52,.25);}
+  .nav-item:hover{background:#ffffff;color:var(--primary);}
+  .nav-item.active{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(228,0,43,.25);}
+  .nav-item i.ti{margin-right:7px;font-size:14.5px;vertical-align:-2px;width:15px;text-align:center;display:inline-block;color:inherit;}
   /* 게시형 메뉴에 새 글이 올라오면 표시되는 작은 New 뱃지 (2026.08) */
   .nav-badge{
     position:absolute;top:5px;right:7px;background:var(--primary);color:#fff;
@@ -948,47 +951,47 @@
   <div class="sidebar">
     <div class="brand">혼매경북팀 <span>(경북2담당)</span><br>업무 지원 시스템</div>
     <div id="navPinnedGroup" style="display:none;"></div>
-    <div class="nav-item active" data-tab="home">홈</div>
+    <div class="nav-item active" data-tab="home"><i class="ti ti-home" aria-hidden="true"></i>홈</div>
     <div class="nav-group-label" id="navSystemAdminGroup" style="display:none;">시스템 관리</div>
-    <div class="nav-item sub" data-tab="systemAdmin" id="navSystemAdminItem" style="display:none;">시스템 관리</div>
+    <div class="nav-item sub" data-tab="systemAdmin" id="navSystemAdminItem" style="display:none;"><i class="ti ti-settings" aria-hidden="true"></i>시스템 관리</div>
     <div class="nav-group-label">실적 관리</div>
     <div class="nav-item sub" data-tab="metricsOverview">
-      <div>지표 한 눈에 보기</div>
+      <div><i class="ti ti-chart-bar" aria-hidden="true"></i>지표 한 눈에 보기</div>
       <div class="nav-sub-date">(LG전자DATA 기준)</div>
     </div>
-    <div class="nav-item sub" data-tab="goals">목표 관리(MSIS기준)</div>
-    <div class="nav-item sub" data-tab="subscription">구독 실적</div>
-    <div class="nav-item sub sub2" data-tab="subB2bSales">구독 소상공인 판매건 등록</div>
-    <div class="nav-item sub" data-tab="sales">실적/제품 분석</div>
-    <div class="nav-item sub sub2" data-tab="incentiveOverview">지점별 인센티브(참고용)</div>
+    <div class="nav-item sub" data-tab="goals"><i class="ti ti-target-arrow" aria-hidden="true"></i>목표 관리(MSIS기준)</div>
+    <div class="nav-item sub" data-tab="subscription"><i class="ti ti-refresh" aria-hidden="true"></i>구독 실적</div>
+    <div class="nav-item sub sub2" data-tab="subB2bSales"><i class="ti ti-building-store" aria-hidden="true"></i>구독 소상공인 판매건 등록</div>
+    <div class="nav-item sub" data-tab="sales"><i class="ti ti-chart-line" aria-hidden="true"></i>실적/제품 분석</div>
+    <div class="nav-item sub sub2" data-tab="incentiveOverview"><i class="ti ti-coin" aria-hidden="true"></i>지점별 인센티브(참고용)</div>
     <div class="nav-group-label">운영 관리</div>
-    <div class="nav-item sub" data-tab="notices">공지사항</div>
-    <div class="nav-item sub" data-tab="materials">각종 자료</div>
-    <div class="nav-item sub" data-tab="infoReports">정보보고</div>
+    <div class="nav-item sub" data-tab="notices"><i class="ti ti-speakerphone" aria-hidden="true"></i>공지사항</div>
+    <div class="nav-item sub" data-tab="materials"><i class="ti ti-folder" aria-hidden="true"></i>각종 자료</div>
+    <div class="nav-item sub" data-tab="infoReports"><i class="ti ti-file-text" aria-hidden="true"></i>정보보고</div>
     <div class="nav-item sub" data-tab="inventory" id="navInventoryLabel">
-      <div>재고 조회</div>
+      <div><i class="ti ti-box" aria-hidden="true"></i>재고 조회</div>
       <div id="navInventoryDate" class="nav-sub-date"></div>
     </div>
-    <div class="nav-item sub" data-tab="kakaoFriends">카카오 플친 관리 현황</div>
-    <div class="nav-item sub" data-tab="prospects">개별 가망고객 관리현황</div>
+    <div class="nav-item sub" data-tab="kakaoFriends"><i class="ti ti-brand-hipchat" aria-hidden="true"></i>카카오 플친 관리 현황</div>
+    <div class="nav-item sub" data-tab="prospects"><i class="ti ti-heart-handshake" aria-hidden="true"></i>개별 가망고객 관리현황</div>
     <div class="nav-subgroup-label">교육 관리</div>
-    <div class="nav-item sub sub2" data-tab="eduHq">교육 일정 안내</div>
-    <div class="nav-item sub sub2" data-tab="eduVideo">교육 이수율 확인</div>
+    <div class="nav-item sub sub2" data-tab="eduHq"><i class="ti ti-calendar-event" aria-hidden="true"></i>교육 일정 안내</div>
+    <div class="nav-item sub sub2" data-tab="eduVideo"><i class="ti ti-checkbox" aria-hidden="true"></i>교육 이수율 확인</div>
     <div class="nav-group-label">각종 취합</div>
-    <div class="nav-item sub" data-tab="collectPhoto">실행력 점검 사진 취합</div>
-    <div class="nav-item sub" data-tab="collectGiftcard">모바일 상품권 취합</div>
-    <div class="nav-item sub" data-tab="collectContest">구독연동사은품 취합</div>
+    <div class="nav-item sub" data-tab="collectPhoto"><i class="ti ti-camera" aria-hidden="true"></i>실행력 점검 사진 취합</div>
+    <div class="nav-item sub" data-tab="collectGiftcard"><i class="ti ti-ticket" aria-hidden="true"></i>모바일 상품권 취합</div>
+    <div class="nav-item sub" data-tab="collectContest"><i class="ti ti-gift" aria-hidden="true"></i>구독연동사은품 취합</div>
     <div class="nav-item sub" data-tab="subTierContest">
-      <div>기타 사은품 취합</div>
+      <div><i class="ti ti-gifts" aria-hidden="true"></i>기타 사은품 취합</div>
       <div class="nav-sub-date">(다품목/금액대/연동사은품등)</div>
     </div>
     <div class="nav-group-label">성장 지원</div>
-    <div class="nav-item sub" data-tab="mistakeNote">통합 링크 허브 바로가기</div>
-    <div class="nav-item sub" data-tab="issueCase">이슈제품 판매 성공 사례</div>
-    <div class="nav-item sub" data-tab="bestPractice">우수 활동 사례 공유</div>
-    <div class="nav-item sub" data-tab="policyQuiz">금주 주말 정책 숙지도 점검</div>
+    <div class="nav-item sub" data-tab="mistakeNote"><i class="ti ti-link" aria-hidden="true"></i>통합 링크 허브 바로가기</div>
+    <div class="nav-item sub" data-tab="issueCase"><i class="ti ti-trophy" aria-hidden="true"></i>이슈제품 판매 성공 사례</div>
+    <div class="nav-item sub" data-tab="bestPractice"><i class="ti ti-star" aria-hidden="true"></i>우수 활동 사례 공유</div>
+    <div class="nav-item sub" data-tab="policyQuiz"><i class="ti ti-notebook" aria-hidden="true"></i>금주 주말 정책 숙지도 점검</div>
     <div class="nav-group-label">건의함</div>
-    <div class="nav-item sub" data-tab="suggestions">현장 건의사항</div>
+    <div class="nav-item sub" data-tab="suggestions"><i class="ti ti-message-2" aria-hidden="true"></i>현장 건의사항</div>
     <div class="user-box">
       <b id="sbUserName">-</b>
       <span id="sbUserMeta">-</span>
