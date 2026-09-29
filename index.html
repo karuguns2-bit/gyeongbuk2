@@ -472,6 +472,17 @@
   .stat-tile-green{background:#e7f9ee;color:#1a9c56;}
   .stat-tile-amber{background:#fff6e0;color:#b9821a;}
   .stat-tile-num,.stat-tile-label,.stat-tile-sub{color:inherit;}
+  /* 2026.09: 홈 대시보드 전용 - 파스텔 배경 없이 흰 바탕+테두리로만 카드를 구분하고,
+     글씨는 검은색, 진행 막대(그래프)만 빨간색으로 통일. 다른 페이지의 stat-tile 색상은
+     그대로 유지되도록 .home-plain 안에서만 덮어쓴다. 여백도 줄여서 스크롤을 최소화한다. */
+  .home-plain .card{padding:14px 16px;}
+  .home-plain .grid{gap:10px;}
+  .home-plain h3{margin:0 0 8px;font-size:14px;}
+  .home-plain .mo-kpi-row{gap:8px;}
+  .home-plain .stat-tile{background:#fff;border:1px solid var(--border);color:var(--text);}
+  .home-plain .stat-tile-blue,.home-plain .stat-tile-pink,.home-plain .stat-tile-purple,
+  .home-plain .stat-tile-green,.home-plain .stat-tile-amber{background:#fff;color:var(--text);}
+  .home-plain #homeWidgetList{gap:10px;margin-bottom:0;}
   .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
   .badge.good{background:#e7f8ee;color:var(--good);}
   .badge.warn{background:#fff6e0;color:var(--warn);}

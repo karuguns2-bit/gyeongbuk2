@@ -3032,14 +3032,13 @@ function renderHomeBranchBadges(){
   const rankYear = period.slice(0,4);
   const medalMarks = ['🥇','🥈','🥉'];
   const rankRowsHtml = BRANCH_BADGE_CATEGORIES.map(cat=>{
-    const g = cat.grad || ['#ffe9b3','#ffd76a','#f2a300'];
     const ranked = branchBadgeRankingByMode(cat, rankMode, period, rankYear).slice(0,3);
     const listHtml = ranked.length>0
-      ? ranked.map((r,idx)=>`<span class="bbadge-rank-entry"><span class="bbadge-rank-medal">${medalMarks[idx]}</span> ${escapeHtml(branchName(r.branchId))} <span class="bbadge-rank-val" style="color:${g[2]};">${escapeHtml(cat.fmt(r.value))}</span></span>`).join('<span class="bbadge-rank-sep">·</span>')
+      ? ranked.map((r,idx)=>`<span class="bbadge-rank-entry"><span class="bbadge-rank-medal">${medalMarks[idx]}</span> ${escapeHtml(branchName(r.branchId))} <span class="bbadge-rank-val">${escapeHtml(cat.fmt(r.value))}</span></span>`).join('<span class="bbadge-rank-sep">·</span>')
       : `<span class="bbadge-rank-empty">아직 데이터가 없습니다</span>`;
     return `
       <div class="bbadge-rank-row">
-        <div class="bbadge-rank-cat"><span>${cat.icon}</span><span>${cat.label}</span></div>
+        <div class="bbadge-rank-cat"><i class="ti ${bbadgeTablerIcon(cat.svg)}" aria-hidden="true"></i><span>${cat.label}</span></div>
         <div class="bbadge-rank-list">${listHtml}</div>
       </div>`;
   }).join('');
@@ -3118,10 +3117,11 @@ function renderHomeBranchBadges(){
         }
         .bbadge-rank-row{ padding:7px 9px; background:#fff; border:1px solid var(--border); border-radius:8px; display:flex; flex-direction:column; justify-content:center; }
         .bbadge-rank-cat{ font-size:11px; font-weight:700; color:var(--text-sub); margin-bottom:3px; display:flex; gap:5px; align-items:center; }
+        .bbadge-rank-cat i.ti{ font-size:13px; color:#9a9ba1; }
         .bbadge-rank-list{ font-size:11.5px; line-height:1.6; }
         .bbadge-rank-entry{ white-space:nowrap; font-weight:600; }
         .bbadge-rank-medal{ margin-right:1px; }
-        .bbadge-rank-val{ font-weight:700; }
+        .bbadge-rank-val{ font-weight:700; color:var(--primary); }
         .bbadge-rank-sep{ margin:0 5px; color:var(--border); }
         .bbadge-rank-empty{ color:#b7b8bf; font-size:9.5px; }
         .bbadge-rule-info{ font-size:9px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:4px 8px; line-height:1.35; margin-bottom:6px; }
@@ -3434,9 +3434,9 @@ function renderHomeGoalsManagerBanner(){
       <div class="stat-tile-sub" style="margin-top:4px;">${fmtKK(m.achieved)} / ${fmtKK(m.target)}</div>
     </div>`).join('');
   return `
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card" style="margin-bottom:10px;">
       <h3>👥 관리자별 목표 달성 현황 <small>(${goalsPeriodLabel(period)} · MSIS실판매등록 기준 예상 목표치 · 전체 지점 공개)</small></h3>
-      <div class="mo-kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
+      <div class="mo-kpi-row" style="display:flex;gap:8px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
 // 지점별 경쟁력(msis경쟁력 시트) 조회 — 월별 히스토리(DB.competitivenessHistory)에서 먼저 찾고,
@@ -3508,9 +3508,9 @@ function renderHomeManagerCompetitivenessBanner(){
       <div class="stat-tile-sub" style="margin-top:4px;">LG ${fmtKK(m.lgWon)} · SS ${fmtKK(m.ssWon)} · GAP ${gapCell(m.gapWon)}</div>
     </div>`).join('');
   return `
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card" style="margin-bottom:10px;">
       <h3>🏆 관리자별 합산 경쟁력 <small>(${goalsPeriodLabel(period)} · msis경쟁력 시트 기준 · 전체 지점 공개)</small></h3>
-      <div class="mo-kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;">${cards}</div>
+      <div class="mo-kpi-row" style="display:flex;gap:8px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
 // 홈 대시보드 - 개인화 가능한 위젯 목록(교육 안내/근무 일정/AI 분석 피드백). 순서는
@@ -3852,11 +3852,12 @@ function renderHome(){
       ${renderHomeNoticeTicker()}
     </div>
     ${state.noticeFormOpen ? renderNoticeForm() : ''}
-    <div style="margin-bottom:16px;">${renderHomeBranchBadges()}</div>
+    <div class="home-plain">
+    <div style="margin-bottom:10px;">${renderHomeBranchBadges()}</div>
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
     ${branchSelectorHtml}
-    <div class="grid ${homeCompBranch&&homeCompBranch.msPct!=null?'grid-4 stat-grid-4':'grid-3 stat-grid-3'}" style="margin-bottom:16px;">
+    <div class="grid ${homeCompBranch&&homeCompBranch.msPct!=null?'grid-4 stat-grid-4':'grid-3 stat-grid-3'}" style="margin-bottom:10px;">
       <div class="card stat-tile stat-tile-blue">
         <div class="stat-tile-label">이번 달 목표 <span style="font-weight:400;opacity:.8;">(MSIS실판매등록 기준 예상 목표치)</span></div>
         <div class="stat-tile-num">${fmtWon(msisTarget)}</div>
@@ -3883,6 +3884,7 @@ function renderHome(){
     </div>
 
     ${renderHomeWidgetSection(homeWidgetHtmlByKey)}
+    </div>
 
     <div id="homeStatusWidget" style="position:fixed;bottom:20px;right:20px;z-index:60;">
       <div id="homeStatusWidgetCollapsedBtn" title="시계/알림 펼치기" onclick="toggleHomeStatusWidget()" style="display:${isHomeStatusWidgetCollapsed()?'flex':'none'};align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:#fff;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.15);cursor:pointer;font-size:20px;">🕐</div>
