@@ -9127,6 +9127,24 @@ function subB2bMonthKey(dateStr){ return String(dateStr||'').slice(0,7); }
 function canEditSubB2bSale(r){
   return !!(r && (SESSION.role==='admin' || r.empId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
+// 지점별/월별 합계 막대 차트 — 금액(만원 단위) 기준 막대 + 툴팁에 건수도 함께 표기.
+// 색은 붉은색(--primary) 한 가지로 통일한다.
+function subB2bBarConfig(labels, amounts, qtys){
+  const amtsMan = amounts.map(a=>Math.round((a||0)/10000));
+  return {
+    type:'bar',
+    data:{ labels, datasets:[{ data: amtsMan, backgroundColor:'#A50034' }] },
+    plugins:[barValueLabelsPlugin(v=>v.toLocaleString('ko-KR')+'만원')],
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ left:8, right:50 } },
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=> `${qtys[c.dataIndex]}건 · ${c.parsed.x.toLocaleString('ko-KR')}만원`}} },
+      scales:{ x:{ grid:{color:'#eee'}, ticks:{ callback:(v)=> v.toLocaleString('ko-KR')+'만원' } } } }
+  };
+}
+function toggleB2bForm(){
+  state.b2bFormOpen = !state.b2bFormOpen;
+  renderTab('subB2bSales');
+}
 function renderSubB2bSales(){
   const isAdmin = SESSION.role==='admin';
   const myBranch = collectScopeBranch();
@@ -9138,15 +9156,13 @@ function renderSubB2bSales(){
 
   const byBranch = {};
   scoped.forEach(r=>{ byBranch[r.branchId] = byBranch[r.branchId] || {qty:0, amt:0}; byBranch[r.branchId].qty+=r.qty; byBranch[r.branchId].amt+=r.amountWon; });
-  const byBranchRows = Object.entries(byBranch).map(([bid,v])=>`<tr><td>${branchName(bid)}</td><td>${fmtNum(v.qty)}건</td><td>${fmtWon(v.amt)}</td></tr>`).join('') || `<tr><td colspan="3" class="muted">데이터가 없습니다.</td></tr>`;
-
-  const byManager = {};
-  scoped.forEach(r=>{ byManager[r.empId] = byManager[r.empId] || {name:r.empName, qty:0, amt:0}; byManager[r.empId].qty+=r.qty; byManager[r.empId].amt+=r.amountWon; });
-  const byManagerRows = Object.values(byManager).sort((a,b)=>b.amt-a.amt).map(v=>`<tr><td>${escapeHtml(v.name)}</td><td>${fmtNum(v.qty)}건</td><td>${fmtWon(v.amt)}</td></tr>`).join('') || `<tr><td colspan="3" class="muted">데이터가 없습니다.</td></tr>`;
+  const byBranchEntries = Object.entries(byBranch).map(([bid,v])=>({label:branchName(bid), qty:v.qty, amt:v.amt})).sort((a,b)=>b.amt-a.amt);
+  const byBranchChartHeight = Math.max(140, byBranchEntries.length*36+20);
 
   const byMonth = {};
   scoped.forEach(r=>{ const mk = subB2bMonthKey(r.saleDate); byMonth[mk] = byMonth[mk] || {qty:0, amt:0}; byMonth[mk].qty+=r.qty; byMonth[mk].amt+=r.amountWon; });
-  const byMonthRows = Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([mk,v])=>`<tr><td>${mk}</td><td>${fmtNum(v.qty)}건</td><td>${fmtWon(v.amt)}</td></tr>`).join('') || `<tr><td colspan="3" class="muted">데이터가 없습니다.</td></tr>`;
+  const byMonthEntries = Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([mk,v])=>({label:mk, qty:v.qty, amt:v.amt}));
+  const byMonthChartHeight = Math.max(140, byMonthEntries.length*36+20);
 
   const rows = sorted.map(r=>{
     const canEdit = canEditSubB2bSale(r);
@@ -9181,33 +9197,40 @@ function renderSubB2bSales(){
     </tr>`;
   }).join('') || `<tr><td colspan="9" class="muted">등록된 내역이 없습니다.</td></tr>`;
 
-  return `
+  const b2bFormOpen = !!state.b2bFormOpen;
+
+  const html = `
+    <div class="b2b-plain">
     <div class="page-title">구독 소상공인 판매건 등록</div>
-    <div class="page-desc">구독 소상공인(사업자) 판매 건을 등록하면 지점별·월별·등록자(매니저)별로 자동 집계됩니다.</div>
+    <div class="page-desc">구독 소상공인(사업자) 판매 건을 등록하면 지점별·월별로 자동 집계됩니다.</div>
     ${collectBranchPills('subB2bSales')}
 
-    <div class="card ai-box" style="margin-bottom:16px;">
-      <div class="ai-title">📊 집계 현황 (${isAdmin && state.viewBranchId==='ALL' ? '전체 지점' : branchName(myBranch)} 기준)</div>
+    <div class="card ai-box" style="margin-bottom:10px;">
+      <div class="ai-title"><i class="ti ti-chart-bar" aria-hidden="true"></i> 집계 현황 (${isAdmin && state.viewBranchId==='ALL' ? '전체 지점' : branchName(myBranch)} 기준)</div>
       <div>전체 <b>${fmtNum(totalQty)}건</b> · 합계 금액 <b>${fmtWon(totalAmt)}</b></div>
     </div>
 
-    <div class="grid grid-3" style="margin-bottom:16px;">
-      <div class="card">
-        <h3>지점별 합계</h3>
-        <table><thead><tr><th>지점</th><th>건수</th><th>금액</th></tr></thead><tbody>${byBranchRows}</tbody></table>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px;">
+      <div style="flex:1;min-width:340px;">
+        <div class="card">
+          <h3>지점별 합계</h3>
+          <div style="position:relative;height:${byBranchChartHeight}px;"><canvas id="b2bByBranchChart"></canvas></div>
+        </div>
       </div>
-      <div class="card">
-        <h3>등록자(매니저)별 합계</h3>
-        <table><thead><tr><th>이름</th><th>건수</th><th>금액</th></tr></thead><tbody>${byManagerRows}</tbody></table>
-      </div>
-      <div class="card">
-        <h3>월별 합계</h3>
-        <table><thead><tr><th>월</th><th>건수</th><th>금액</th></tr></thead><tbody>${byMonthRows}</tbody></table>
+      <div style="flex:1;min-width:340px;">
+        <div class="card">
+          <h3>월별 합계</h3>
+          <div style="position:relative;height:${byMonthChartHeight}px;"><canvas id="b2bByMonthChart"></canvas></div>
+        </div>
       </div>
     </div>
 
-    <div class="card" style="margin-bottom:16px;">
-      <h3>새 건 등록</h3>
+    <div class="card" style="margin-bottom:10px;">
+      <h3 style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+        <span>새 건 등록</span>
+        <button class="btn btn-sm" onclick="toggleB2bForm()">${b2bFormOpen ? '<i class="ti ti-x" aria-hidden="true"></i> 닫기' : '<i class="ti ti-plus" aria-hidden="true"></i> 등록하기'}</button>
+      </h3>
+      ${b2bFormOpen ? `
       <div class="form-row">
         <div class="field"><label>판매일자</label><input id="b2bSaleDate" type="date" value="${todayStr()}"></div>
         <div class="field"><label>지점</label><select id="b2bBranch" style="width:160px">${branchOptionsHtml(myBranch)}</select></div>
@@ -9215,17 +9238,23 @@ function renderSubB2bSales(){
         <div class="field"><label>판매모델명</label><input id="b2bModel" placeholder="예: SC5GMR81S.AKOR" style="width:170px"></div>
         <div class="field"><label>판매금액</label><input id="b2bAmount" type="number" placeholder="예: 500000" style="width:130px"></div>
         <div class="field"><label>판매건수</label><input id="b2bQty" type="number" placeholder="예: 1" style="width:90px"></div>
-        <button class="btn btn-primary" onclick="addSubB2bSale()">등록</button>
-      </div>
+        <button class="btn btn-primary" onclick="addSubB2bSale()">저장</button>
+      </div>` : ''}
     </div>
 
     <div class="card">
+      <div class="table-scroll">
       <table>
         <thead><tr><th>판매일자</th><th>지점</th><th>업체명</th><th>판매모델명</th><th>판매금액</th><th>판매건수</th><th>등록자</th><th>등록일시</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      </div>
+    </div>
     </div>
   `;
+  moRenderChart('b2bByBranchChart', subB2bBarConfig(byBranchEntries.map(x=>x.label), byBranchEntries.map(x=>x.amt), byBranchEntries.map(x=>x.qty)));
+  moRenderChart('b2bByMonthChart', subB2bBarConfig(byMonthEntries.map(x=>x.label), byMonthEntries.map(x=>x.amt), byMonthEntries.map(x=>x.qty)));
+  return html;
 }
 function addSubB2bSale(){
   const saleDate = document.getElementById('b2bSaleDate').value;
