@@ -43,7 +43,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 <style>
   @font-face{
     font-family:"LGSmartH";
@@ -67,7 +66,7 @@
   }
 
   /* ---------- 개인화: 다크 모드 / 글자 크기 / 카드 밀도 ---------- */
-  /* 2026.09: 사이드바를 LG OnAir 톤에 맞춰 흰색으로 바꾸면서, 다크 모드에서는 사이드바만
+  /* 2026.08: 사이드바를 흰색으로 리스킨하면서, 다크 모드에서는 사이드바만
      따로 어두운 색으로 되돌려야 한다(그대로 두면 다크 모드에서 사이드바만 하얗게 튐).
      본문 영역(배경/카드/글자/테두리)은 기존처럼 다크 팔레트로 바꾼다. 각 색상 있는 통계
      카드(stat-tile-*)는 자체 배경색을 쓰고 있어 다크 모드에서도 그대로 유지된다. */
@@ -364,25 +363,24 @@
   #app{display:none;min-height:100vh;}
   #app.active{display:flex;}
   .sidebar{
-    width:236px;background:#ffe3ec;color:#3a3a40;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
-    height:100vh;overflow-y:auto;border-right:1px solid #f7c9d8;
+    width:236px;background:#ffffff;color:#3a3a40;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
+    height:100vh;overflow-y:auto;border-right:1px solid var(--border);
   }
   /* 메뉴가 30개 가까이 되면서 사이드바 높이가 화면보다 길어져 본문과 함께 통째로
      끌려 내려가던 문제 - 사이드바를 독립 스크롤 영역으로 분리해 항상 메뉴에
-     바로 접근할 수 있게 한다. (2026.08 / 2026.09: LG OnAir 톤 - 흰색 사이드바로 리스킨) */
+     바로 접근할 수 있게 한다. (2026.08: 흰색 사이드바로 리스킨) */
   .sidebar::-webkit-scrollbar{width:6px;}
   .sidebar::-webkit-scrollbar-track{background:transparent;}
-  .sidebar::-webkit-scrollbar-thumb{background:#f3b8cc;border-radius:10px;}
-  .sidebar .brand{padding:0 20px 18px;font-weight:700;font-size:14px;line-height:1.4;border-bottom:1px solid #f7c9d8;margin-bottom:10px;text-align:center;color:#1a1a1a;}
+  .sidebar::-webkit-scrollbar-thumb{background:#e5e7eb;border-radius:10px;}
+  .sidebar .brand{padding:0 20px 18px;font-weight:700;font-size:14px;line-height:1.4;border-bottom:1px solid var(--border);margin-bottom:10px;text-align:center;color:#1a1a1a;}
   .sidebar .brand span{color:var(--primary);}
   .nav-item{
     position:relative;
-    margin:2px 10px;padding:10px 34px 10px 12px;border-radius:8px;font-size:13.5px;color:#5a3a44;cursor:pointer;
+    margin:2px 10px;padding:10px 34px 10px 12px;border-radius:8px;font-size:13.5px;color:var(--text-sub);cursor:pointer;
     transition:background .15s ease,color .15s ease;
   }
-  .nav-item:hover{background:#ffffff;color:var(--primary);}
+  .nav-item:hover{background:#f7f7f9;color:var(--primary);}
   .nav-item.active{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(165,0,52,.25);}
-  .nav-item i.ti{margin-right:7px;font-size:14.5px;vertical-align:-2px;width:15px;text-align:center;display:inline-block;}
   /* 게시형 메뉴에 새 글이 올라오면 표시되는 작은 New 뱃지 (2026.08) */
   .nav-badge{
     position:absolute;top:5px;right:7px;background:var(--primary);color:#fff;
@@ -400,18 +398,18 @@
   .nav-item.active .nav-pin-star{color:rgba(255,255,255,.8);}
   .nav-item.active .nav-pin-star.pinned{color:#ffe066;}
   .nav-pin-item{font-weight:500;}
-  .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#a15068;text-transform:uppercase;border-top:1px solid #f7c9d8;margin-top:8px;}
+  .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--text-sub);text-transform:uppercase;border-top:1px solid var(--border);margin-top:8px;}
   .nav-item.sub{padding:8px 34px 8px 20px;font-size:13px;}
   .nav-item.sub.sub2{padding:7px 34px 7px 28px;font-size:12px;}
-  .nav-subgroup-label{padding:8px 20px 2px 30px;font-size:10.5px;letter-spacing:.02em;color:#a15068;}
-  .nav-sub-date{font-size:10px;color:#a15068;margin-top:2px;font-weight:400;}
+  .nav-subgroup-label{padding:8px 20px 2px 30px;font-size:10.5px;letter-spacing:.02em;color:var(--text-sub);}
+  .nav-sub-date{font-size:10px;color:var(--text-sub);margin-top:2px;font-weight:400;}
   .inv-filter-row .field label{font-size:13.5px;font-weight:700;color:var(--text);margin-bottom:5px;}
   .inv-filter-row select,.inv-filter-row input{font-size:15.5px;padding:11px 14px;border-radius:8px;border:1.5px solid var(--border);min-height:22px;}
   .inv-filter-row select:focus,.inv-filter-row input:focus{border-color:var(--primary);outline:none;}
-  .sidebar .user-box{margin-top:auto;padding:16px 20px;border-top:1px solid #f7c9d8;font-size:12.5px;color:#a15068;}
+  .sidebar .user-box{margin-top:auto;padding:16px 20px;border-top:1px solid var(--border);font-size:12.5px;color:var(--text-sub);}
   .sidebar .user-box b{color:#1a1a1a;display:block;font-size:13.5px;margin-bottom:2px;}
   .sidebar .logout-btn{
-    margin-top:10px;width:100%;padding:8px;background:#ffffff;color:#5a3a44;border:1px solid #f7c9d8;border-radius:6px;font-size:12.5px;
+    margin-top:10px;width:100%;padding:8px;background:#ffffff;color:var(--text-sub);border:1px solid var(--border);border-radius:6px;font-size:12.5px;
   }
   .sidebar .logout-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary);}
 
@@ -433,8 +431,8 @@
   .export-btn.photos{color:#2b6cb0;}
   .export-btn.danger{color:#b3261e;}
   .export-btn:disabled{opacity:.6;cursor:not-allowed;}
-  .page-title{font-size:23px;font-weight:800;margin:0 0 6px;letter-spacing:-.02em;padding-left:11px;border-left:4px solid var(--primary);}
-  .page-desc{color:var(--text-sub);font-size:13.5px;margin:0 0 22px 11px;line-height:1.6;}
+  .page-title{font-size:23px;font-weight:800;margin:0 0 6px;letter-spacing:-.02em;}
+  .page-desc{color:var(--text-sub);font-size:13.5px;margin:0 0 22px;line-height:1.6;}
 
   .grid{display:grid;gap:16px;}
   .grid-3{grid-template-columns:repeat(3,1fr);}
@@ -466,17 +464,11 @@
   .stat-tile-num{font-size:24px;font-weight:800;letter-spacing:-.02em;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .stat-tile-sub{font-size:11.5px;margin-top:6px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .stat-tile-pink{background:#ffe9ef;color:#c72f5e;}
-  .stat-tile-blue{background:#faece7;color:#a8401c;}
-  .stat-tile-purple{background:#f5e2e8;color:#7d2340;}
+  .stat-tile-blue{background:#e7f0fd;color:#1c64d1;}
+  .stat-tile-purple{background:#f2e7fd;color:#6b21a8;}
   .stat-tile-green{background:#e7f9ee;color:#1a9c56;}
   .stat-tile-amber{background:#fff6e0;color:#b9821a;}
   .stat-tile-num,.stat-tile-label,.stat-tile-sub{color:inherit;}
-  .home-minibar-row{display:flex;align-items:flex-end;gap:8px;height:120px;padding-top:6px;overflow-x:auto;}
-  .home-minibar-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;flex:1 1 0;min-width:36px;max-width:64px;height:100%;}
-  .home-minibar-val{font-size:11px;font-weight:700;color:var(--text,#333);margin-bottom:3px;white-space:nowrap;}
-  .home-minibar-track{width:100%;max-width:28px;flex:1;display:flex;align-items:flex-end;background:var(--bg-soft,#f7f7f9);border-radius:6px 6px 0 0;overflow:hidden;}
-  .home-minibar{width:100%;border-radius:6px 6px 0 0;transition:height .3s ease;}
-  .home-minibar-label{font-size:11px;color:var(--muted,#888);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60px;text-align:center;}
   .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
   .badge.good{background:#e7f8ee;color:var(--good);}
   .badge.warn{background:#fff6e0;color:var(--warn);}
@@ -843,47 +835,47 @@
       <div id="globalSearchDropdown" class="gs-dropdown" style="display:none;"></div>
     </div>
     <div id="navPinnedGroup" style="display:none;"></div>
-    <div class="nav-item active" data-tab="home"><i class="ti ti-home" aria-hidden="true"></i> 홈</div>
+    <div class="nav-item active" data-tab="home">홈</div>
     <div class="nav-group-label" id="navSystemAdminGroup" style="display:none;">시스템 관리</div>
-    <div class="nav-item sub" data-tab="systemAdmin" id="navSystemAdminItem" style="display:none;"><i class="ti ti-settings" aria-hidden="true"></i> 시스템 관리</div>
+    <div class="nav-item sub" data-tab="systemAdmin" id="navSystemAdminItem" style="display:none;">시스템 관리</div>
     <div class="nav-group-label">실적 관리</div>
     <div class="nav-item sub" data-tab="metricsOverview">
-      <div><i class="ti ti-chart-bar" aria-hidden="true"></i> 지표 한 눈에 보기</div>
+      <div>지표 한 눈에 보기</div>
       <div class="nav-sub-date">(LG전자DATA 기준)</div>
     </div>
-    <div class="nav-item sub" data-tab="goals"><i class="ti ti-target-arrow" aria-hidden="true"></i> 목표 관리(MSIS기준)</div>
-    <div class="nav-item sub" data-tab="subscription"><i class="ti ti-refresh" aria-hidden="true"></i> 구독 실적</div>
-    <div class="nav-item sub sub2" data-tab="subB2bSales"><i class="ti ti-building-store" aria-hidden="true"></i> 구독 소상공인 판매건 등록</div>
-    <div class="nav-item sub" data-tab="sales"><i class="ti ti-chart-line" aria-hidden="true"></i> 실적/제품 분석</div>
-    <div class="nav-item sub sub2" data-tab="incentiveOverview"><i class="ti ti-coin" aria-hidden="true"></i> 지점별 인센티브(참고용)</div>
+    <div class="nav-item sub" data-tab="goals">목표 관리(MSIS기준)</div>
+    <div class="nav-item sub" data-tab="subscription">구독 실적</div>
+    <div class="nav-item sub sub2" data-tab="subB2bSales">구독 소상공인 판매건 등록</div>
+    <div class="nav-item sub" data-tab="sales">실적/제품 분석</div>
+    <div class="nav-item sub sub2" data-tab="incentiveOverview">지점별 인센티브(참고용)</div>
     <div class="nav-group-label">운영 관리</div>
-    <div class="nav-item sub" data-tab="notices"><i class="ti ti-speakerphone" aria-hidden="true"></i> 공지사항</div>
-    <div class="nav-item sub" data-tab="materials"><i class="ti ti-folder" aria-hidden="true"></i> 각종 자료</div>
-    <div class="nav-item sub" data-tab="infoReports"><i class="ti ti-file-text" aria-hidden="true"></i> 정보보고</div>
+    <div class="nav-item sub" data-tab="notices">공지사항</div>
+    <div class="nav-item sub" data-tab="materials">각종 자료</div>
+    <div class="nav-item sub" data-tab="infoReports">정보보고</div>
     <div class="nav-item sub" data-tab="inventory" id="navInventoryLabel">
-      <div><i class="ti ti-box" aria-hidden="true"></i> 재고 조회</div>
+      <div>재고 조회</div>
       <div id="navInventoryDate" class="nav-sub-date"></div>
     </div>
-    <div class="nav-item sub" data-tab="kakaoFriends"><i class="ti ti-brand-hipchat" aria-hidden="true"></i> 카카오 플친 관리 현황</div>
-    <div class="nav-item sub" data-tab="prospects"><i class="ti ti-heart-handshake" aria-hidden="true"></i> 개별 가망고객 관리현황</div>
+    <div class="nav-item sub" data-tab="kakaoFriends">카카오 플친 관리 현황</div>
+    <div class="nav-item sub" data-tab="prospects">개별 가망고객 관리현황</div>
     <div class="nav-subgroup-label">교육 관리</div>
-    <div class="nav-item sub sub2" data-tab="eduHq"><i class="ti ti-calendar-event" aria-hidden="true"></i> 교육 일정 안내</div>
-    <div class="nav-item sub sub2" data-tab="eduVideo"><i class="ti ti-checkbox" aria-hidden="true"></i> 교육 이수율 확인</div>
+    <div class="nav-item sub sub2" data-tab="eduHq">교육 일정 안내</div>
+    <div class="nav-item sub sub2" data-tab="eduVideo">교육 이수율 확인</div>
     <div class="nav-group-label">각종 취합</div>
-    <div class="nav-item sub" data-tab="collectPhoto"><i class="ti ti-camera" aria-hidden="true"></i> 실행력 점검 사진 취합</div>
-    <div class="nav-item sub" data-tab="collectGiftcard"><i class="ti ti-ticket" aria-hidden="true"></i> 모바일 상품권 취합</div>
-    <div class="nav-item sub" data-tab="collectContest"><i class="ti ti-gift" aria-hidden="true"></i> 구독연동사은품 취합</div>
+    <div class="nav-item sub" data-tab="collectPhoto">실행력 점검 사진 취합</div>
+    <div class="nav-item sub" data-tab="collectGiftcard">모바일 상품권 취합</div>
+    <div class="nav-item sub" data-tab="collectContest">구독연동사은품 취합</div>
     <div class="nav-item sub" data-tab="subTierContest">
-      <div><i class="ti ti-gifts" aria-hidden="true"></i> 기타 사은품 취합</div>
+      <div>기타 사은품 취합</div>
       <div class="nav-sub-date">(다품목/금액대/연동사은품등)</div>
     </div>
     <div class="nav-group-label">성장 지원</div>
-    <div class="nav-item sub" data-tab="mistakeNote"><i class="ti ti-link" aria-hidden="true"></i> 통합 링크 허브 바로가기</div>
-    <div class="nav-item sub" data-tab="issueCase"><i class="ti ti-trophy" aria-hidden="true"></i> 이슈제품 판매 성공 사례</div>
-    <div class="nav-item sub" data-tab="bestPractice"><i class="ti ti-star" aria-hidden="true"></i> 우수 활동 사례 공유</div>
-    <div class="nav-item sub" data-tab="policyQuiz"><i class="ti ti-notebook" aria-hidden="true"></i> 금주 주말 정책 숙지도 점검</div>
+    <div class="nav-item sub" data-tab="mistakeNote">통합 링크 허브 바로가기</div>
+    <div class="nav-item sub" data-tab="issueCase">이슈제품 판매 성공 사례</div>
+    <div class="nav-item sub" data-tab="bestPractice">우수 활동 사례 공유</div>
+    <div class="nav-item sub" data-tab="policyQuiz">금주 주말 정책 숙지도 점검</div>
     <div class="nav-group-label">건의함</div>
-    <div class="nav-item sub" data-tab="suggestions"><i class="ti ti-message-2" aria-hidden="true"></i> 현장 건의사항</div>
+    <div class="nav-item sub" data-tab="suggestions">현장 건의사항</div>
     <div class="user-box">
       <b id="sbUserName">-</b>
       <span id="sbUserMeta">-</span>

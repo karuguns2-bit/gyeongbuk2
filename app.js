@@ -3810,65 +3810,6 @@ function renderClearanceRecommendationWidget(){
         </div>`).join('')}
     </div>`;
 }
-// 홈 대시보드 "목표 달성 현황(지점별)" 미니 막대그래프 - 참고 이미지(LG OnAir)의 관리지표 위젯을
-// 실제 목표관리 데이터(branchTarget/branchAchieved)로 재구현한 것. 지점별 달성률을 막대로
-// 보여주고, 100% 이상은 초록, 미만은 레드 톤으로 구분한다. 라벨은 길어도 줄바꿈되지 않고
-// 말줄임 처리된다.
-function renderHomeGoalsBarWidget(period){
-  const rows = (DB.branches||[]).map(b=>{
-    const tgt = branchTarget(b.id, period);
-    const ach = branchAchieved(b.id, period);
-    const pct = pctOf(ach, tgt);
-    return { name:b.name, pct };
-  }).filter(r=>r.pct>0);
-  if(rows.length===0){
-    return `<div class="card"><h3 style="margin:0 0 10px;">목표 달성 현황 <small>(지점별)</small></h3><div class="muted">표시할 목표 데이터가 없습니다.</div></div>`;
-  }
-  rows.sort((a,b)=>b.pct-a.pct);
-  const maxPct = Math.max(100, ...rows.map(r=>r.pct));
-  const bars = rows.map(r=>{
-    const h = Math.max(4, Math.min(100, (r.pct/maxPct)*100));
-    const color = r.pct>=100 ? 'var(--good)' : 'var(--primary)';
-    return `<div class="home-minibar-col" title="${escapeHtml(r.name)} ${r.pct.toFixed(1)}%">
-      <div class="home-minibar-val">${r.pct.toFixed(0)}%</div>
-      <div class="home-minibar-track"><div class="home-minibar" style="height:${h}%;background:${color};"></div></div>
-      <div class="home-minibar-label">${escapeHtml(r.name)}</div>
-    </div>`;
-  }).join('');
-  return `
-    <div class="card">
-      <h3 style="margin:0 0 10px;">목표 달성 현황 <small>(지점별 · ${goalsPeriodLabel(period)})</small></h3>
-      <div class="home-minibar-row">${bars}</div>
-    </div>`;
-}
-// 홈 대시보드 "구독 실적" 미니 막대그래프 - [구독 판매 실적] 업로드 자료(DB.subSalesUpload)가
-// 있는 최근 달(최대 3개월)의 실판 수량 합계를 막대로 보여준다. 자료가 없으면 안내 문구만 표시.
-function renderHomeSubTrendWidget(){
-  const periods = Object.keys((DB.subSalesUpload && DB.subSalesUpload.byPeriod) || {}).sort();
-  const last3 = periods.slice(-3);
-  if(last3.length===0){
-    return `<div class="card"><h3 style="margin:0 0 10px;">구독 실적</h3><div class="muted">아직 업로드된 [구독 판매 실적] 자료가 없습니다.</div></div>`;
-  }
-  const sums = last3.map(p=>{
-    const entry = DB.subSalesUpload.byPeriod[p];
-    const total = Object.values(entry.byKey||{}).reduce((s,r)=>s+(Number(r.sp_qty)||0),0);
-    return { period:p, total };
-  });
-  const maxV = Math.max(1, ...sums.map(s=>s.total));
-  const bars = sums.map(s=>{
-    const h = Math.max(4, (s.total/maxV)*100);
-    return `<div class="home-minibar-col" title="${s.period} ${s.total.toLocaleString('ko-KR')}건">
-      <div class="home-minibar-val">${s.total.toLocaleString('ko-KR')}</div>
-      <div class="home-minibar-track"><div class="home-minibar" style="height:${h}%;background:var(--primary);"></div></div>
-      <div class="home-minibar-label">${Number(s.period.slice(5,7))}월</div>
-    </div>`;
-  }).join('');
-  return `
-    <div class="card">
-      <h3 style="margin:0 0 10px;">구독 실적 <small>(최근 ${sums.length}개월 · 실판 수량 합계)</small></h3>
-      <div class="home-minibar-row">${bars}</div>
-    </div>`;
-}
 function renderHome(){
   // 지점별 이달의 배지: 달이 넘어간 첫 조회 시점에만 실제로 갱신되고(내부에서 기간을 확인),
   // 평소에는 아무 것도 하지 않는다(migrateDB()의 __migrateBefore/After 비교 방식과 동일한 패턴).
@@ -3966,10 +3907,6 @@ function renderHome(){
       ${renderHomeNoticeTicker()}
     </div>
     ${state.noticeFormOpen ? renderNoticeForm() : ''}
-    <div class="grid grid-2" style="margin-bottom:16px;">
-      ${renderHomeGoalsBarWidget(homePeriod)}
-      ${renderHomeSubTrendWidget()}
-    </div>
     <div style="margin-bottom:16px;">${renderHomeBranchBadges()}</div>
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
@@ -4502,10 +4439,9 @@ function renderSystemAdmin(){
 
 <div class="card sysadmin-span2">
       <h3>재고 조회 파일 업로드(담당자 : 이광환B) <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.<br>※ 구분(상태)를 매니저가 직접 고른 적이 없는 품목은 수량에 맞춰 자동으로 표시됩니다 — 수량이 0이 되면 "소진완료", 이후 재입고돼 수량이 다시 생기면 "보유중"으로 자동 복원됩니다. 매니저가 드롭다운에서 직접 상태를 고른 품목은 수량이 어떻든 그 값 그대로 유지되고 자동 조정 대상에서 제외됩니다.${uploadLogStatusHtml('inventory')}</div>
+      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.${uploadLogStatusHtml('inventory')}</div>
       <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
       <div id="inventoryUploadMsg" class="small-note"></div>
-      <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="manualApplyZeroQtyAutoStatus()">지금 수량-상태 일괄 자동 조정</button>
     </div>
 
 <div class="card sysadmin-span2">
@@ -4907,7 +4843,7 @@ function renderHomeNoticeTicker(){
   }
   return `
     <style>
-      .nb-ticker{ flex:1 1 260px; min-width:200px; display:flex; align-items:center; gap:8px; background:var(--primary-light,#ffe3ec); border:1px solid var(--primary); border-radius:20px; padding:6px 8px 6px 12px; overflow:hidden; box-sizing:border-box; }
+      .nb-ticker{ flex:1 1 260px; min-width:200px; display:flex; align-items:center; gap:8px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:20px; padding:6px 8px 6px 12px; overflow:hidden; box-sizing:border-box; }
       .nb-ticker-label{ flex-shrink:0; font-size:13px; }
       .nb-ticker-wrap{ flex:1 1 auto; overflow:hidden; white-space:nowrap; position:relative; height:18px; }
       .nb-ticker-track{ display:inline-flex; align-items:center; white-space:nowrap; position:absolute; left:0; top:0; }
@@ -7471,13 +7407,12 @@ function applyInventorySnapshot(parsedInventory){
         cat1: (prev.cat1!=null && prev.cat1!=='') ? prev.cat1 : r.cat1,
         note: prev.note || '',
         status: prev.status || '보유중',
-        statusAuto: prev.statusAuto || false,
         saleStatus: prev.saleStatus || '판매가능',
         displayDate: prev.displayDate || '',
         displaySoldOutDate: prev.displaySoldOutDate || ''
       };
     }
-    return { ...r, id: 'inv_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6), note:'', status:'보유중', statusAuto:false, saleStatus:'판매가능', displayDate:'', displaySoldOutDate:'' };
+    return { ...r, id: 'inv_' + Date.now() + '_' + idx + '_' + Math.random().toString(36).slice(2,6), note:'', status:'보유중', saleStatus:'판매가능', displayDate:'', displaySoldOutDate:'' };
   });
   DB.inventory = next;
   return next.length;
@@ -7541,49 +7476,11 @@ function applyClearanceDepletion(){
     if(Object.prototype.hasOwnProperty.call(baseline.rows, key)){
       if((Number(r.qty)||0) <= 0 && r.status!=='소진완료'){
         r.status = '소진완료';
-        r.statusAuto = true;
         count++;
       }
     }
   });
   return count;
-}
-// 소진집중 리스트/기준선 여부와 무관하게, 수량과 구분(상태)이 어긋난 모든 재고 품목을 양방향으로
-// 자동 동기화한다:
-//  - 수량이 0 이하인데 상태가 아직 기본값("보유중")이거나 예전에 이 함수가 자동으로 "소진완료"
-//    처리해 둔 품목(statusAuto===true) → "소진완료"로 표시
-//  - 반대로, 이 함수가 자동으로 "소진완료" 처리해 뒀던 품목(statusAuto===true)의 수량이 다시
-//    0보다 커지면(재입고) → 자동으로 "보유중"으로 되돌림
-// 매니저가 화면에서 직접 상태를 고른 품목(statusAuto===false, 예: 직접 "소진완료"나 "타점 이관
-// 예정"으로 지정)은 수량이 어떻든 절대 건드리지 않는다 - setInvMeta에서 수동 변경 시 statusAuto를
-// false로 내려서 이후 자동 조정 대상에서 제외시킨다. 반환값은 이번에 자동으로 조정된 건수.
-function applyZeroQtyAutoStatus(){
-  let count = 0;
-  (DB.inventory||[]).forEach(r=>{
-    const qty = Number(r.qty)||0;
-    if(qty <= 0){
-      if(r.status==='보유중' || r.statusAuto){
-        if(r.status!=='소진완료'){ r.status = '소진완료'; count++; }
-        r.statusAuto = true;
-      }
-    }else if(r.status==='소진완료' && r.statusAuto){
-      r.status = '보유중';
-      r.statusAuto = false;
-      count++;
-    }
-  });
-  return count;
-}
-// 재고 파일을 다시 올리지 않아도, 지금 반영돼 있는 재고의 수량-상태 불일치를 관리자가 즉시
-// 일괄 정리할 수 있게 하는 수동 버튼용 함수.
-function manualApplyZeroQtyAutoStatus(){
-  if(SESSION.role!=='admin'){ alert('이 작업은 관리자만 가능합니다.'); return; }
-  if(!confirm('현재 재고 중 수량이 0인데 아직 자동으로 정리되지 않은 품목은 "소진완료"로, 재입고(수량 발생)됐는데 예전에 자동으로 "소진완료" 처리됐던 품목은 "보유중"으로 일괄 조정하시겠습니까? (매니저가 직접 지정한 상태는 그대로 유지됩니다)')) return;
-  const count = applyZeroQtyAutoStatus();
-  saveDB();
-  logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 수량-상태 불일치 ${count}건을 자동 조정했습니다`);
-  renderTab('systemAdmin');
-  showUploadResult('inventoryUploadMsg', true, count>0 ? `수량-상태 불일치 ${count}건을 자동 조정했습니다.` : '조정할 대상이 없습니다.');
 }
 // 기준선 대비 현재까지 몇 건이 소진됐는지/소진율을 계산한다. 기준선에 있던 품목이 이번 파일에서
 // 아예 사라진 경우(단종/철수 등)도 소진된 것으로 집계한다.
@@ -7693,17 +7590,12 @@ function handleInventoryFile(evt){
       // DB.inventoryClearanceCodes가 모두 최신 상태로 반영된 뒤에 실행해야 정확히 판정된다).
       const depletedCount = applyClearanceDepletion();
       const depletionMsg = depletedCount>0 ? ` / 소진집중 ${depletedCount}건 소진완료 자동 반영` : '';
-      // 소진집중 여부와 무관하게, 수량-상태가 어긋난 나머지 품목도 양방향으로 자동 정리한다
-      // (수량 0 → 소진완료 / 자동 소진완료였던 품목이 재입고되면 → 보유중).
-      const zeroQtyCount = applyZeroQtyAutoStatus();
-      const zeroQtyMsg = zeroQtyCount>0 ? ` / 수량-상태 ${zeroQtyCount}건 자동 조정` : '';
-
       recordUploadLog('inventory', file);
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
-      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${otherTeamMsg}${clearanceMsg}${baselineMsg}${depletionMsg}${zeroQtyMsg}`);
+      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${otherTeamMsg}${clearanceMsg}${baselineMsg}${depletionMsg}`);
     }catch(err){
       showUploadResult('inventoryUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
@@ -10112,7 +10004,7 @@ function setInvMeta(id, field, val){
   const r = invById(id);
   if(!r) return;
   if(field==='note') r.note = val;
-  if(field==='status'){ r.status = val; r.statusAuto = false; } // 매니저가 직접 고른 값이므로 이후 자동 조정 대상에서 제외
+  if(field==='status') r.status = val;
   if(field==='saleStatus') r.saleStatus = val;
   if(field==='cat1') r.cat1 = val;
   if(field==='displayDate') r.displayDate = val;
