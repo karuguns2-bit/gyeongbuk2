@@ -677,6 +677,19 @@
   .home-widget-item[data-widget-key="attendance"], .home-widget-item[data-widget-key="aiFeedback"]{ flex:1 1 calc(50% - 8px); }
   .home-widget-body{ flex:1; min-width:0; }
   .home-widget-body > .card{ margin:0; }
+  /* 2026.09: 근무 일정 카드는 선택한 지점의 인원 수에 따라 표 길이가 늘거나 줄어서
+     옆의 AI 분석 피드백 카드와 높이가 안 맞고 레이아웃이 흔들려 보였다. 두 카드 모두
+     높이를 고정하고, 내용이 넘치면 카드 안쪽만 스크롤되게 한다. */
+  .home-widget-item[data-widget-key="attendance"] .card,
+  .home-widget-item[data-widget-key="aiFeedback"] .card{
+    height:260px; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .home-widget-item[data-widget-key="attendance"] .card .table-scroll{
+    flex:1; min-height:0; max-height:none;
+  }
+  .home-widget-item[data-widget-key="aiFeedback"] .card .ai-box{
+    flex:1; min-height:0; overflow-y:auto;
+  }
   .small-note{font-size:11.5px;color:var(--text-sub);margin-top:8px;}
   /* 가로 스크롤이 긴 취합/등록 표에서 수정·삭제 버튼이 화면 밖으로 밀려나 안 보인다는
      문의가 반복되어, 해당 열을 오른쪽에 고정해 스크롤 위치와 무관하게 항상 보이도록 한다. */
