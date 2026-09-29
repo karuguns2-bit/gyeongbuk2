@@ -16186,12 +16186,13 @@ function clearProspectFilterDate(){
 }
 // 값별 등록 건수를 집계해 "A건(B건), C건(D건)" 형태로 이어붙인다(값이 없는 건은 제외).
 // 방문경로/고객구분처럼 새로 추가된 항목별 분포를 피드백 문구에 간단히 얹을 때 재사용한다.
-function prospectGroupCountsLabel(list, field){
+// 2026.09: 방문경로/고객구분/방문단위별 분포를 텍스트 한 줄이 아니라 미니 막대그래프로 보여주기
+// 위해, 라벨 문자열 대신 [값,건수] 정렬된 배열 자체를 돌려준다(최대 6개까지만 - 그래프가
+// 너무 빽빽해지지 않도록). 값이 하나도 없으면 빈 배열.
+function prospectGroupCounts(list, field){
   const counts = {};
   list.forEach(p=>{ const v = p[field]; if(v) counts[v] = (counts[v]||0)+1; });
-  const entries = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
-  if(entries.length===0) return null;
-  return entries.map(([k,v])=>`${k} ${v}건`).join(' · ');
+  return Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,6);
 }
 function prospectMonthlyStats(){
   const thisMonth = todayStr().slice(0,7);
@@ -16202,11 +16203,11 @@ function prospectMonthlyStats(){
   const notSold = mine.filter(p=>p.saleStatus==='미구매').length;
   const pending = mine.filter(p=>!p.saleStatus).length; // 판매여부 미입력(기존 판매/미판매/보류 값 포함)
   const noHappyCall = mine.filter(p=>p.happyCall!=='실행').length;
-  // 2026-08-24 추가: 방문경로/고객구분/방문단위별 분포(값이 하나도 입력 안 된 달에는 null)
-  const channelLabel = prospectGroupCountsLabel(mine, 'visitChannel');
-  const ageGroupLabel = prospectGroupCountsLabel(mine, 'customerAgeGroup');
-  const visitUnitLabel = prospectGroupCountsLabel(mine, 'visitUnit');
-  return {total, totalAmt, sold, notSold, pending, noHappyCall, channelLabel, ageGroupLabel, visitUnitLabel};
+  // 2026-08-24 추가: 방문경로/고객구분/방문단위별 분포(값이 하나도 입력 안 된 달에는 빈 배열)
+  const channelCounts = prospectGroupCounts(mine, 'visitChannel');
+  const ageGroupCounts = prospectGroupCounts(mine, 'customerAgeGroup');
+  const visitUnitCounts = prospectGroupCounts(mine, 'visitUnit');
+  return {total, totalAmt, sold, notSold, pending, noHappyCall, channelCounts, ageGroupCounts, visitUnitCounts};
 }
 function prospectFeedback(){
   const s = prospectMonthlyStats();
@@ -16221,12 +16222,25 @@ function prospectFeedback(){
   } else {
     lines.push('이번 달 등록된 가망고객이 없습니다. 신규 상담 고객을 등록해 관리를 시작해 보세요.');
   }
-  if(s.noHappyCall>0) lines.push(`⚠ 해피콜 미실행 고객이 <b>${s.noHappyCall}명</b> 있습니다. 우선적으로 연락해 보세요.`);
+  if(s.noHappyCall>0) lines.push(`<i class="ti ti-alert-triangle" aria-hidden="true"></i> 해피콜 미실행 고객이 <b>${s.noHappyCall}명</b> 있습니다. 우선적으로 연락해 보세요.`);
   if(s.pending>0) lines.push(`판매여부 미입력 고객 <b>${s.pending}명</b> — 구매희망일이 임박한 고객부터 순차적으로 재상담을 권장합니다.`);
-  if(s.channelLabel) lines.push(`방문경로별: ${s.channelLabel}`);
-  if(s.ageGroupLabel) lines.push(`고객구분별: ${s.ageGroupLabel}`);
-  if(s.visitUnitLabel) lines.push(`방문단위별: ${s.visitUnitLabel}`);
   return lines;
+}
+// 방문경로별/고객구분별/방문단위별 미니 막대그래프 설정 - 피드백 박스 왼쪽에 3개를 나란히
+// 그린다. 자리가 좁으므로 범례/축 없이 막대와 값 라벨만 작게 표시한다.
+function prospectMiniBarConfig(labels, values){
+  return {
+    type:'bar',
+    data:{ labels, datasets:[{ data: values, backgroundColor:'#A50034', borderRadius:3 }] },
+    plugins: [barValueLabelsPlugin(v=>String(v), 9)],
+    options:{ responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ top:14 } },
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=>c.parsed.y+'건'}} },
+      scales:{
+        x:{ ticks:{ font:{ size:9 }, autoSkip:false, maxRotation:35, minRotation:0 }, grid:{ display:false } },
+        y:{ display:false, ticks:{ precision:0 } }
+      } }
+  };
 }
 function renderProspects(){
   const isAdmin = canSwitchBranch();
@@ -16235,13 +16249,24 @@ function renderProspects(){
   const pfActiveCount = state.prospectFieldFilters ? Object.keys(state.prospectFieldFilters).length : 0;
   const list = [...visibleProspects()].sort((a,b)=> String(b.createdAt).localeCompare(String(a.createdAt)));
   const feedback = prospectFeedback();
+  const monthlyStats = prospectMonthlyStats();
+  const miniCharts = [
+    { id:'prospectChannelChart', title:'방문경로별', entries: monthlyStats.channelCounts },
+    { id:'prospectAgeGroupChart', title:'고객구분별', entries: monthlyStats.ageGroupCounts },
+    { id:'prospectVisitUnitChart', title:'방문단위별', entries: monthlyStats.visitUnitCounts }
+  ];
+  miniCharts.forEach(c=>{
+    if(c.entries.length>0){
+      moRenderChart(c.id, prospectMiniBarConfig(c.entries.map(e=>e[0]), c.entries.map(e=>e[1])));
+    }
+  });
   // 등록 건수가 계속 늘어나므로 다른 게시판들과 동일한 10/20/전체 목록 개수 설정 + 검색을 적용한다.
   const paging = applyBoardSearchAndPaging('prospects','prospects', list,
     p => `${p.customerName||''} ${p.phone||''} ${p.desiredItem||''} ${p.consultProduct||''}`,
     '고객명 · 연락처 · 구매희망품목 · 상담제품으로 검색');
 
   const adminFilterHtml = isAdmin ? `
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card" style="margin-bottom:10px;">
       <h3>지점 / 담당자별 조회 <small>(관리자·임원 전용)</small></h3>
       <div style="margin-bottom:10px;">
         <span class="branch-pill ${!state.prospectFilterBranchId?'active':''}" onclick="setProspectFilterBranch('')">전체 지점</span>
@@ -16333,18 +16358,38 @@ function renderProspects(){
     </tr>`;
   }).join('') || `<tr><td colspan="${isAdmin?18:16}" class="muted">등록된 가망고객이 없습니다.</td></tr>`;
 
+  const miniChartsHtml = miniCharts.some(c=>c.entries.length>0) ? `
+    <div style="flex:1.3;min-width:260px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+      ${miniCharts.map(c=>`
+        <div>
+          <div class="muted" style="font-size:11.5px;margin-bottom:4px;">${c.title}</div>
+          ${c.entries.length>0
+            ? `<div style="position:relative;height:80px;background:#f8f7f5;border-radius:6px;padding:4px;box-sizing:border-box;"><canvas id="${c.id}"></canvas></div>
+               <div class="muted" style="font-size:10px;margin-top:3px;">${c.entries.map(e=>`${e[0]} ${e[1]}건`).join(' · ')}</div>`
+            : `<div class="muted" style="height:80px;background:#f8f7f5;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;">데이터 없음</div>`}
+        </div>`).join('')}
+    </div>` : '';
+  const feedbackTextHtml = `
+    <div style="flex:1;min-width:220px;${miniChartsHtml ? 'border-left:1px solid var(--border);padding-left:14px;' : ''}">
+      ${feedback.map(l=>`<div style="margin-bottom:6px;">${l}</div>`).join('')}
+    </div>`;
+
   return `
+    <div class="prospect-plain">
     <div class="page-title">개별 가망고객 관리현황</div>
     <div class="page-desc">${isAdmin ? '관리자는 전체 지점/담당자의 가망고객 현황을 지점별·개인별로 조회할 수 있습니다. 다른 담당자가 등록한 건은 조회만 가능하며 수정·삭제는 본인 등록 건만 할 수 있습니다.' : '개인정보 보호를 위해 본인 사번으로 로그인한 경우 본인이 등록한 가망고객만 조회·등록·관리할 수 있습니다. (다른 직원의 가망고객 정보는 조회되지 않습니다)'}</div>
 
     ${adminFilterHtml}
 
-    <div class="card ai-box" style="margin-bottom:16px;">
-      <div class="ai-title">📋 이번 달 가망고객 관리 현황 및 피드백</div>
-      ${feedback.map(l=>`<div style="margin-bottom:6px;">${l}</div>`).join('')}
+    <div class="card ai-box" style="margin-bottom:10px;">
+      <div class="ai-title"><i class="ti ti-clipboard-list" aria-hidden="true"></i> 이번 달 가망고객 관리 현황 및 피드백</div>
+      <div style="display:flex;gap:14px;align-items:stretch;flex-wrap:wrap;margin-top:8px;">
+        ${miniChartsHtml}
+        ${feedbackTextHtml}
+      </div>
     </div>
 
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card" style="margin-bottom:10px;">
       <h3>가망고객 등록</h3>
       <div class="form-row">
         <div class="field"><label>방문일자</label><input id="pgVisitDate" type="date"></div>
@@ -16404,6 +16449,7 @@ function renderProspects(){
       </table>
       </div>
       ${paging.pagerHtml}
+    </div>
     </div>
   `;
 }
