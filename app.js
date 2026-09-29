@@ -8412,7 +8412,7 @@ function moRenderChart(canvasId, config){
 // 위/아래 끝)에 값을 직접 그려주는 범용 Chart.js 플러그인. 별도 CDN(chartjs-plugin-datalabels)
 // 없이 afterDatasetsDraw 훅만으로 구현한다. formatter로 표시 문자열을 차트마다 다르게 지정한다
 // (예: "1,234명", "+12.3%", "56건" 등). null 값은 그리지 않는다(신장률처럼 데이터 없는 구간이 있을 수 있음).
-function barValueLabelsPlugin(formatter){
+function barValueLabelsPlugin(formatter, fontSize){
   return {
     id: 'barValueLabelsPlugin',
     afterDatasetsDraw(chart){
@@ -8426,7 +8426,7 @@ function barValueLabelsPlugin(formatter){
           const text = formatter ? formatter(value) : String(value);
           ctx.save();
           ctx.fillStyle = '#333';
-          ctx.font = 'bold 11px sans-serif';
+          ctx.font = `bold ${fontSize||11}px sans-serif`;
           if(horizontal){
             ctx.textBaseline = 'middle';
             ctx.textAlign = value>=0 ? 'left' : 'right';
@@ -9521,7 +9521,7 @@ function renderSales(){
             { label:'경쟁사(SS)', data: salesCompData.categories.map(c=>c.ssQty), backgroundColor:'#c7c7cc' }
           ]
         },
-        plugins: [barValueLabelsPlugin(v=>`${Math.round(v).toLocaleString('ko-KR')}대`)],
+        plugins: [barValueLabelsPlugin(v=>`${Math.round(v).toLocaleString('ko-KR')}대`, 9)],
         options:{
           indexAxis:'x', responsive:true, maintainAspectRatio:false, layout:{padding:{top:16}},
           plugins:{
@@ -9544,14 +9544,17 @@ function renderSales(){
             { label:'경쟁사(SS)', data: salesCompData.categories.map(c=>c.ssAmtWon), backgroundColor:'#c7c7cc' }
           ]
         },
-        plugins: [barValueLabelsPlugin(v=>fmtKK(v))],
+        plugins: [barValueLabelsPlugin(v=>wonToKKRaw(v).toLocaleString('ko-KR')+'KK', 9)],
         options:{
           indexAxis:'x', responsive:true, maintainAspectRatio:false, layout:{padding:{top:16}},
           plugins:{
             legend:{position:'top', labels:{boxWidth:12, font:{size:11}}},
             tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${fmtKK(ctx.parsed.y)}`}}
           },
-          scales:{ x:{ ticks:{ font:{size:10}, maxRotation:45, minRotation:0 } } }
+          scales:{
+            x:{ ticks:{ font:{size:10}, maxRotation:45, minRotation:0 } },
+            y:{ ticks:{ font:{size:10}, callback:(v)=> wonToKKRaw(v).toLocaleString('ko-KR')+'KK' } }
+          }
         }
       });
     }
