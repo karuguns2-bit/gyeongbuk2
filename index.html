@@ -528,6 +528,14 @@
   .goals-plain .stat-tile-blue,.goals-plain .stat-tile-pink,.goals-plain .stat-tile-purple,
   .goals-plain .stat-tile-green,.goals-plain .stat-tile-amber{background:#fff;color:var(--text);}
   .goals-plain .badge.good,.goals-plain .badge.warn,.goals-plain .badge.bad{background:#f2f2f4;color:var(--text);}
+  /* 2026.09: 구독 실적 전용 - 파스텔 배경 제거하고 흰 바탕+검은 글씨,
+     강조 수치/그래프는 붉은색(--primary) 하나로 통일. */
+  .sub-plain .card{padding:10px 12px;}
+  .sub-plain h3{margin:0 0 6px;font-size:14px;}
+  .sub-plain .stat-tile{background:#fff;border:1px solid var(--border);color:var(--text);}
+  .sub-plain .stat-tile-blue,.sub-plain .stat-tile-pink,.sub-plain .stat-tile-purple,
+  .sub-plain .stat-tile-green,.sub-plain .stat-tile-amber{background:#fff;color:var(--text);}
+  .sub-plain .badge.good,.sub-plain .badge.warn,.sub-plain .badge.bad{background:#f2f2f4;color:var(--text);}
   .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
   .badge.good{background:#e7f8ee;color:var(--good);}
   .badge.warn{background:#fff6e0;color:var(--warn);}

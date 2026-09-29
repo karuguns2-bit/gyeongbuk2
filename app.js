@@ -8464,6 +8464,22 @@ function moYoyBarConfig(labels, values, highlightIdx, unit, redOnly, vertical){
       scales:{ x:{ grid:{color:'#eee'}, ticks:{ callback:(v)=> (v>=0?'+':'')+v+unit } } } }
   };
 }
+// 두 개의 달성률 계열(예: 총판 달성률/실판 달성률)을 항목별(관리자 등)로 나란히 비교하는 가로 막대 차트.
+// 색은 진한 빨강(총판/1번 계열)·연한 빨강(실판/2번 계열) 붉은 계열로만 통일한다.
+function moDualRateBarConfig(labels, valuesA, valuesB, labelA, labelB){
+  return {
+    type:'bar',
+    data:{ labels, datasets:[
+      { label: labelA, data: valuesA.map(v=>v==null?null:Math.round(v*10)/10), backgroundColor: '#A50034' },
+      { label: labelB, data: valuesB.map(v=>v==null?null:Math.round(v*10)/10), backgroundColor: '#e8b0ba' }
+    ] },
+    plugins: [barValueLabelsPlugin(v=>v+'%')],
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ left:8, right:8 } },
+      plugins:{ legend:{display:true, position:'top', labels:{boxWidth:12, font:{size:11}}}, tooltip:{callbacks:{label:(c)=> c.dataset.label+' '+c.parsed.x+'%'}} },
+      scales:{ x:{ grid:{color:'#eee'}, ticks:{ callback:(v)=> v+'%' } } } }
+  };
+}
 function moHeadline(agg){
   const yoy = agg.g_tp_yoy;
   let title;
@@ -8959,48 +8975,47 @@ function renderSubscription(){
     branchesInScope.map(r=>`<option value="${r.branchId}" ${r.branchId===selBranch?'selected':''}>${escapeHtml(r.branchName)}</option>`).join('') +
     `</select>`;
 
-  // 관리자별 요약 표 — 전체 보기(관리자/지점 미선택)일 때만 보여준다. 행을 클릭하면 해당 관리자
-  // 소속 지점 상세로 바로 이동한다. 맨 아래 합계 행을 추가한다(경북팀 전체 총계).
-  const managerTrs = managers.map(m=>{
-    const a = moAggregate(moBranchesOf(m).map(subMergedRow));
-    return `<tr style="cursor:pointer;" onclick="setSubOverviewManager('${escapeHtml(m)}')">
+  // 관리자별 목표대비 달성율 차트 데이터 + 참고사항(목표/비중/전년마감比) — 전체 보기(관리자/지점
+  // 미선택)일 때만 보여준다. 행을 클릭하면 해당 관리자 소속 지점 상세로 바로 이동한다.
+  const managerAggs = managers.map(m=>({ m, a: moAggregate(moBranchesOf(m).map(subMergedRow)) }));
+  const managerChartHeight = Math.max(160, managerAggs.length*42+40);
+  const managerRefRows = managerAggs.map(({m,a})=>`<tr style="cursor:pointer;" onclick="setSubOverviewManager('${escapeHtml(m)}')">
       <td>${escapeHtml(m)}</td>
       <td>${moFmt(a.s_target)}</td>
-      <td>${moFmt(a.s_tp_cur)}</td><td>${moPct(a.s_tp_rate)} ${pctBadge(a.s_tp_rate||0)}</td>
-      <td>${moFmt(a.s_sp_cur)}</td><td>${moPct(a.s_sp_rate)} ${pctBadge(a.s_sp_rate||0)}</td>
       <td>${moPct(a.s_sp_ratio)}</td>
       <td>${moYoy(a.s_tp_closeYoy)}</td><td>${moYoy(a.s_sp_closeYoy)}</td>
-    </tr>`;
-  }).join('');
+    </tr>`).join('');
 
-  // 지점별 상세 표 — 요청에 따라 전년동기 칸은 빼고, 총판/실판 각각 당월/전년마감/전년마감比/달성률만 보여준다.
+  // 지점별 상세 표 — 요청에 따라 전년동기/전년마감 칸은 빼고, 총판/실판 각각 당월/전년마감比/달성률만 보여준다.
   const sSpCurRankMap = {}; branchesInScope.slice().sort((a,b)=>(b.m.s_sp_cur||0)-(a.m.s_sp_cur||0)).forEach((x,i)=>{ sSpCurRankMap[x.branchId]=i+1; });
   const branchTrs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
     const m = r.m;
     return `<tr>
       <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
       <td>${moFmt(m.s_target)}</td>
-      <td>${moFmt(m.s_tp_cur)}</td><td class="muted">${moFmt(m.s_tp_lyClose)}</td><td>${moYoy(moCloseYoy(m.s_tp_cur, m.s_tp_lyClose))}</td><td>${moPct(m.s_tp_rate)} ${pctBadge(m.s_tp_rate||0)}</td>
-      <td>${moFmt(m.s_sp_cur)} ${moBadgeRank(sSpCurRankMap[r.branchId], branchesInScope.length)}</td><td class="muted">${moFmt(m.s_sp_lyClose)}</td><td>${moYoy(moCloseYoy(m.s_sp_cur, m.s_sp_lyClose))}</td><td>${moPct(m.s_sp_rate)} ${pctBadge(m.s_sp_rate||0)}</td>
+      <td>${moFmt(m.s_tp_cur)}</td><td>${moYoy(moCloseYoy(m.s_tp_cur, m.s_tp_lyClose))}</td><td>${moPct(m.s_tp_rate)} ${pctBadge(m.s_tp_rate||0)}</td>
+      <td>${moFmt(m.s_sp_cur)} ${moBadgeRank(sSpCurRankMap[r.branchId], branchesInScope.length)}</td><td>${moYoy(moCloseYoy(m.s_sp_cur, m.s_sp_lyClose))}</td><td>${moPct(m.s_sp_rate)} ${pctBadge(m.s_sp_rate||0)}</td>
       <td>${moPct(m.s_sp_ratio)}</td><td>${m.s_sp_qty!=null?Math.round(m.s_sp_qty).toLocaleString('ko-KR'):'-'}건</td>
     </tr>`;
   }).join('');
 
   const chartRows = branchesInScope.map(r=>({key:r.branchId,label:r.branchName,v:r.m.s_sp_rate})).sort((a,b)=>(b.v||0)-(a.v||0));
+  const branchChartHeight = Math.max(160, chartRows.length*32);
 
   const html = `
+    <div class="sub-plain">
     <div class="page-title">구독 실적</div>
     <div class="page-desc">관리자별·지점별 구독 목표/총판/실판/달성율/비중/전년마감 대비 실적입니다. ${dataSourceNote}</div>
     ${moPeriodSelectorHtml()}
 
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card" style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div>${managerPills}</div>
         ${branchSelectHtml}
       </div>
     </div>
 
-    <div class="card" style="border-left:4px solid var(--primary);margin-bottom:16px;">
+    <div class="card" style="border-left:4px solid var(--primary);margin-bottom:10px;">
       <div class="muted" style="font-size:12px;">${escapeHtml(scopeLabel)} 요약 · 단위 KK(백만원)</div>
       <div class="mo-kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
         <div class="card stat-tile stat-tile-blue" style="min-width:150px;flex:1;">
@@ -9018,7 +9033,7 @@ function renderSubscription(){
           <div class="stat-tile-num" style="font-size:19px;">${moPct(agg.s_sp_ratio)}</div>
           <div class="stat-tile-sub" style="margin-top:2px;">경북팀 평균 대비 ${moGap(agg.s_sp_ratio - teamAgg.s_sp_ratio)}</div>
         </div>
-        <div class="card stat-tile ${(agg.s_sp_rate||0)>=100?'stat-tile-green':(agg.s_sp_rate||0)>=80?'stat-tile-amber':'stat-tile-pink'}" style="min-width:150px;flex:1;">
+        <div class="card stat-tile stat-tile-pink" style="min-width:150px;flex:1;">
           <div class="stat-tile-sub">실판 목표 달성률</div>
           <div class="stat-tile-num" style="font-size:19px;">${moPct(agg.s_sp_rate)}</div>
           ${progressBarRunnerHtml(agg.s_sp_rate||0, {marginTop:4})}
@@ -9027,55 +9042,72 @@ function renderSubscription(){
     </div>
 
     ${(!selManager && !selBranch) ? `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>👤 관리자별 구독 실적</h3>
-      <div style="overflow-x:auto;">
-      <table>
-        <thead><tr><th>관리자</th><th>목표</th><th>총판</th><th>총판 달성률</th><th>실판</th><th>실판 달성률</th><th>비중</th><th>총판 전년마감比</th><th>실판 전년마감比</th></tr></thead>
-        <tbody>
-          ${managerTrs || '<tr><td colspan="9" class="muted">데이터 없음</td></tr>'}
-          <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
-            <td>합계</td>
-            <td>${moFmt(teamAgg.s_target)}</td>
-            <td>${moFmt(teamAgg.s_tp_cur)}</td><td>${moPct(teamAgg.s_tp_rate)}</td>
-            <td>${moFmt(teamAgg.s_sp_cur)}</td><td>${moPct(teamAgg.s_sp_rate)}</td>
-            <td>${moPct(teamAgg.s_sp_ratio)}</td>
-            <td>${moYoy(teamAgg.s_tp_closeYoy)}</td><td>${moYoy(teamAgg.s_sp_closeYoy)}</td>
-          </tr>
-        </tbody>
-      </table>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px;">
+      <div style="flex:1;min-width:340px;">
+        <div class="card">
+          <h3><i class="ti ti-users" aria-hidden="true"></i> 관리자별 목표대비 달성율</h3>
+          <div style="position:relative;height:${managerChartHeight}px;"><canvas id="subManagerRateChart"></canvas></div>
+        </div>
       </div>
-      <div class="small-note" style="margin-top:8px;">※ 관리자 행을 클릭하면 소속 지점별 상세로 이동합니다.</div>
+      <div style="flex:1;min-width:340px;">
+        <div class="card">
+          <h3>참고사항 <small>목표/비중/전년마감比 · 단위 KK(백만원)</small></h3>
+          <div class="table-scroll">
+          <table>
+            <thead><tr><th>관리자</th><th>목표</th><th>비중</th><th>총판 전년마감比</th><th>실판 전년마감比</th></tr></thead>
+            <tbody>
+              ${managerRefRows || '<tr><td colspan="5" class="muted">데이터 없음</td></tr>'}
+              <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
+                <td>합계</td>
+                <td>${moFmt(teamAgg.s_target)}</td>
+                <td>${moPct(teamAgg.s_sp_ratio)}</td>
+                <td>${moYoy(teamAgg.s_tp_closeYoy)}</td><td>${moYoy(teamAgg.s_sp_closeYoy)}</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+          <div class="small-note" style="margin-top:8px;">※ 관리자 행을 클릭하면 소속 지점별 상세로 이동합니다.</div>
+        </div>
+      </div>
     </div>` : ''}
 
-    <div class="card">
-      <h3>🏬 지점별 구독 실적 상세 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
-      <div style="overflow-x:auto;">
-      <table>
-        <thead><tr>
-          <th rowspan="2">지점</th><th rowspan="2">관리자</th><th rowspan="2">목표</th>
-          <th colspan="4">총판</th><th colspan="4">실판</th><th rowspan="2">비중</th><th rowspan="2">건수</th>
-        </tr>
-        <tr><th>당월</th><th>전년마감</th><th>전년마감比</th><th>달성률</th><th>당월</th><th>전년마감</th><th>전년마감比</th><th>달성률</th></tr></thead>
-        <tbody>
-          ${branchTrs || '<tr><td colspan="13" class="muted">데이터 없음</td></tr>'}
-          <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
-            <td colspan="2">합계</td><td>${moFmt(agg.s_target)}</td>
-            <td>${moFmt(agg.s_tp_cur)}</td><td>${moFmt(agg.s_tp_lyClose)}</td><td>${moYoy(agg.s_tp_closeYoy)}</td><td>${moPct(agg.s_tp_rate)}</td>
-            <td>${moFmt(agg.s_sp_cur)}</td><td>${moFmt(agg.s_sp_lyClose)}</td><td>${moYoy(agg.s_sp_closeYoy)}</td><td>${moPct(agg.s_sp_rate)}</td>
-            <td>${moPct(agg.s_sp_ratio)}</td><td>${Math.round(agg.s_sp_qty||0).toLocaleString('ko-KR')}건</td>
-          </tr>
-        </tbody>
-      </table>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
+      <div style="flex:1;min-width:340px;">
+        <div class="card">
+          <h3>지점별 구독 실판 달성률 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 '+branchesInScope.length+'개 지점'}</small></h3>
+          <div style="position:relative;height:${branchChartHeight}px;"><canvas id="subOverviewChart"></canvas></div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:340px;">
+        <div class="card">
+          <h3><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 구독 실적 상세 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
+          <div class="table-scroll">
+          <table>
+            <thead><tr>
+              <th rowspan="2">지점</th><th rowspan="2">관리자</th><th rowspan="2">목표</th>
+              <th colspan="3">총판</th><th colspan="3">실판</th><th rowspan="2">비중</th><th rowspan="2">건수</th>
+            </tr>
+            <tr><th>당월</th><th>전년마감比</th><th>달성률</th><th>당월</th><th>전년마감比</th><th>달성률</th></tr></thead>
+            <tbody>
+              ${branchTrs || '<tr><td colspan="11" class="muted">데이터 없음</td></tr>'}
+              <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
+                <td colspan="2">합계</td><td>${moFmt(agg.s_target)}</td>
+                <td>${moFmt(agg.s_tp_cur)}</td><td>${moYoy(agg.s_tp_closeYoy)}</td><td>${moPct(agg.s_tp_rate)}</td>
+                <td>${moFmt(agg.s_sp_cur)}</td><td>${moYoy(agg.s_sp_closeYoy)}</td><td>${moPct(agg.s_sp_rate)}</td>
+                <td>${moPct(agg.s_sp_ratio)}</td><td>${Math.round(agg.s_sp_qty||0).toLocaleString('ko-KR')}건</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
       </div>
     </div>
-
-    <div class="card" style="margin-top:16px;">
-      <h3>지점별 구독 실판 달성률 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 '+branchesInScope.length+'개 지점'}</small></h3>
-      <div style="position:relative;height:${Math.max(160, chartRows.length*32)}px;"><canvas id="subOverviewChart"></canvas></div>
     </div>
   `;
-  moRenderChart('subOverviewChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%'));
+  if(!selManager && !selBranch){
+    moRenderChart('subManagerRateChart', moDualRateBarConfig(managerAggs.map(x=>x.m), managerAggs.map(x=>x.a.s_tp_rate), managerAggs.map(x=>x.a.s_sp_rate), '총판 달성률', '실판 달성률'));
+  }
+  moRenderChart('subOverviewChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%', true));
   return html;
 }
 function rateBadgeKK(rate){
