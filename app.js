@@ -13977,6 +13977,17 @@ function policyQuizWeekDeadline(weekStart){
   const meta = (DB.policyQuizWeekMeta || {})[weekStart];
   return (meta && meta.deadline) ? meta.deadline : null;
 }
+// 2026.09 추가: 응시 시작일 - 이 날짜가 되기 전까지는 문제가 등록돼 있어도 응시할 수 없다.
+// 비어있으면(관리자가 설정하지 않으면) 기존과 동일하게 언제든 응시 가능.
+function policyQuizWeekStartDate(weekStart){
+  const meta = (DB.policyQuizWeekMeta || {})[weekStart];
+  return (meta && meta.startDate) ? meta.startDate : null;
+}
+function isPolicyQuizBeforeStart(weekStart){
+  const startDate = policyQuizWeekStartDate(weekStart);
+  if(!startDate) return false;
+  return todayStr() < startDate;
+}
 // 오늘이 해당 주의 응시 마감일을 지났는지. 마감일이 설정되어 있지 않으면 항상 응시 가능.
 function isPolicyQuizPastDeadline(weekStart){
   const deadline = policyQuizWeekDeadline(weekStart);
@@ -14025,6 +14036,10 @@ function policyQuizStats(week){
 }
 function startPolicyQuiz(){
   const week = currentPolicyQuizWeek();
+  if(isPolicyQuizBeforeStart(week)){
+    alert(`이번 주(${policyQuizWeekLabel(week)}) 응시는 ${policyQuizWeekStartDate(week)}부터 시작됩니다.`);
+    return;
+  }
   if(isPolicyQuizPastDeadline(week)){
     alert(`이번 주(${policyQuizWeekLabel(week)}) 응시 기간이 종료되었습니다. (마감: ${policyQuizWeekDeadline(week)})`);
     return;
@@ -14037,6 +14052,7 @@ function startPolicyQuiz(){
   state.policyQuizQuestions = shuffle(bank).slice(0, Math.min(5, bank.length));
   state.policyQuizStep = 'taking';
   state.policyQuizResult = null;
+  state.policyQuizJustSubmitted = false;
   renderTab('policyQuiz');
 }
 function submitPolicyQuiz(){
@@ -14077,7 +14093,15 @@ function submitPolicyQuiz(){
   saveDB();
   state.policyQuizStep = 'result';
   state.policyQuizResult = attempt;
+  // 응시 제출 직후 한 번만 "응시완료되었습니다" 축하 팝업을 띄운다 - 이 화면을 다시 그리게
+  // 만드는 다른 동작(주차 선택 등)에서는 계속 뜨지 않도록, 팝업을 닫을 때 이 플래그를 끈다.
+  state.policyQuizJustSubmitted = true;
   renderTab('policyQuiz');
+}
+function closePolicyQuizCompleteModal(){
+  state.policyQuizJustSubmitted = false;
+  const modal = document.getElementById('modal_policyQuizComplete');
+  if(modal) modal.style.display = 'none';
 }
 function parseQuizAnswersInput(raw){
   return String(raw||'').split(',').map(s=>s.trim()).filter(s=>s.length>0);
@@ -14107,13 +14131,24 @@ function buildPolicyQuizQuestionFromForm(text, options, answers){
   if(answers.length===0){ alert('정답을 최소 1개 이상 입력해 주세요.'); return null; }
   return { text, answers };
 }
+// 2026.09 개편: "문제 작성하기" 팝업 한 곳에서 주차 표시 이름/응시 시작일·마감일/문제·정답을
+// 한 번에 입력받아 저장한다(기존엔 "이번 주 설정" 카드와 "새 문제" 카드가 따로 떨어져 있어
+// 관리자가 두 번 저장해야 했다). 주차 메타(라벨/시작일/마감일)는 문제를 추가할 때마다 함께
+// 저장되므로, 처음 한 번만 제대로 입력해두면 이후 문제를 추가할 때는 그대로 유지된다.
 function addPolicyQuizQuestion(){
   if(SESSION.role!=='admin') return;
+  const week = currentPolicyQuizWeek();
+  const label = (document.getElementById('pqWeekLabelInput')||{}).value || '';
+  const startDate = (document.getElementById('pqWeekStartInput')||{}).value || '';
+  const deadline = (document.getElementById('pqWeekDeadlineInput')||{}).value || '';
+  if(startDate && deadline && startDate > deadline){ alert('응시 시작일은 마감일보다 늦을 수 없습니다.'); return; }
   const text = document.getElementById('pqNewText').value.trim();
   const options = readQuizOptionInputs('pqNewOpt');
   const answers = parseQuizAnswersInput(document.getElementById('pqNewAnswers').value);
   const q = buildPolicyQuizQuestionFromForm(text, options, answers);
   if(!q) return;
+  if(!DB.policyQuizWeekMeta) DB.policyQuizWeekMeta = {};
+  DB.policyQuizWeekMeta[week] = { label: label.trim() || null, startDate: startDate || null, deadline: deadline || null };
   currentPolicyQuizBank().push(Object.assign({ id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7) }, q));
   touchTabContent('policyQuiz');
   saveDB();
@@ -14149,19 +14184,6 @@ function deletePolicyQuizQuestion(id){
   if(!confirm('이 문제를 삭제하시겠습니까?')) return;
   const week = currentPolicyQuizWeek();
   DB.policyQuizWeeklyBanks[week] = currentPolicyQuizBank().filter(q=>q.id!==id);
-  saveDB();
-  renderTab('policyQuiz');
-}
-// 이번 주(현재 주) 문제은행에 대한 표시 라벨/응시 마감일을 관리자가 설정한다.
-function savePolicyQuizWeekMeta(){
-  if(SESSION.role!=='admin') return;
-  const week = currentPolicyQuizWeek();
-  const labelInput = document.getElementById('pqWeekLabelInput');
-  const deadlineInput = document.getElementById('pqWeekDeadlineInput');
-  const label = labelInput ? labelInput.value.trim() : '';
-  const deadline = deadlineInput ? deadlineInput.value : '';
-  if(!DB.policyQuizWeekMeta) DB.policyQuizWeekMeta = {};
-  DB.policyQuizWeekMeta[week] = { label: label || null, deadline: deadline || null };
   saveDB();
   renderTab('policyQuiz');
 }
@@ -14209,16 +14231,7 @@ function renderPolicyQuiz(){
 
     const weekMeta = (DB.policyQuizWeekMeta||{})[currentWeek] || {};
     const weekPastDeadline = isPolicyQuizPastDeadline(currentWeek);
-    adminSection = `
-      <div class="card" style="margin-bottom:16px;">
-        <h3>이번 주 설정 (관리자 전용)</h3>
-        <div class="form-row">
-          <div class="field" style="min-width:220px;"><label>주차 표시 이름</label><input id="pqWeekLabelInput" value="${escapeHtml(weekMeta.label||'')}" placeholder="예: 26년 8월3주차" style="width:100%;"></div>
-          <div class="field" style="min-width:180px;"><label>응시 마감일 (이 날짜까지만 응시 가능, 비워두면 마감 없음)</label><input id="pqWeekDeadlineInput" type="date" value="${weekMeta.deadline||''}" style="width:100%;"></div>
-        </div>
-        <button class="btn btn-primary btn-sm" onclick="savePolicyQuizWeekMeta()">저장</button>
-        ${weekMeta.deadline ? `<span class="small-note ${weekPastDeadline?'':'muted'}" style="margin-left:10px;${weekPastDeadline?'color:var(--bad);':''}">${weekPastDeadline ? '⚠️ 마감일이 지나 현재 응시가 차단된 상태입니다.' : `${weekMeta.deadline}까지 응시 가능`}</span>` : ''}
-      </div>` + adminSection;
+    const weekBeforeStart = isPolicyQuizBeforeStart(currentWeek);
 
     const bank = currentPolicyQuizBank();
     const bankRows = bank.map((q,idx)=>{
@@ -14252,27 +14265,46 @@ function renderPolicyQuiz(){
         </tr>`;
     }).join('') || `<tr><td colspan="4" class="muted">등록된 문제가 없습니다.</td></tr>`;
 
+    const statusNoteHtml = (weekMeta.startDate || weekMeta.deadline) ? `
+        <div class="small-note" style="margin-bottom:10px;">
+          ${weekMeta.startDate ? `<span class="${weekBeforeStart?'':'muted'}" style="${weekBeforeStart?'color:var(--bad);':''}">${weekBeforeStart ? `⚠️ ${weekMeta.startDate}부터 응시 가능 (아직 시작 전)` : `${weekMeta.startDate}부터 응시 가능`}</span>` : ''}
+          ${(weekMeta.startDate && weekMeta.deadline) ? ' · ' : ''}
+          ${weekMeta.deadline ? `<span class="${weekPastDeadline?'':'muted'}" style="${weekPastDeadline?'color:var(--bad);':''}">${weekPastDeadline ? `⚠️ ${weekMeta.deadline} 마감 — 응시 기간 종료` : `${weekMeta.deadline}까지 응시 가능`}</span>` : ''}
+        </div>` : '';
+
+    const pqWriteModalBody = `
+      <div class="form-row">
+        <div class="field" style="min-width:220px;"><label>주차 표시 이름</label><input id="pqWeekLabelInput" value="${escapeHtml(weekMeta.label||'')}" placeholder="예: 26년 8월3주차" style="width:100%;"></div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="min-width:160px;"><label>응시 시작일 (비워두면 언제든 응시 가능)</label><input id="pqWeekStartInput" type="date" value="${weekMeta.startDate||''}" style="width:100%;"></div>
+        <div class="field" style="min-width:160px;"><label>응시 마감일 (비워두면 마감 없음)</label><input id="pqWeekDeadlineInput" type="date" value="${weekMeta.deadline||''}" style="width:100%;"></div>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:260px;"><label>문제</label><textarea id="pqNewText" rows="2" style="width:100%;" placeholder="객관식 예: 판촉 기간은?  /  빈칸채우기 예: 판촉 기간은 8/01~___ 이다."></textarea></div>
+        <div class="field" style="flex:1;min-width:220px;">
+          <label>보기 (객관식인 경우만 입력, 2~4개)</label>
+          <input id="pqNewOpt1" placeholder="보기 1" style="width:100%;margin-bottom:4px;">
+          <input id="pqNewOpt2" placeholder="보기 2" style="width:100%;margin-bottom:4px;">
+          <input id="pqNewOpt3" placeholder="보기 3" style="width:100%;margin-bottom:4px;">
+          <input id="pqNewOpt4" placeholder="보기 4" style="width:100%;">
+        </div>
+        <div class="field" style="flex:1;min-width:200px;"><label>정답 (객관식: 보기 중 하나와 동일한 텍스트 1개 / 빈칸채우기: 쉼표로 구분, 여러 개 가능)</label><input id="pqNewAnswers" style="width:100%;" placeholder="예: 8/03, 8/3, 8월3일"></div>
+      </div>
+      <div class="small-note muted" style="margin-top:6px;">보기를 2개 이상 입력하면 객관식 문제로, 보기를 비워두고 문제에 ___ 를 포함하면 빈칸채우기 문제로 등록됩니다.</div>
+      <button class="btn btn-primary" onclick="addPolicyQuizQuestion()" style="margin-top:8px;">등록</button>`;
+
     questionBankSection = `
       <div class="card" style="margin-bottom:16px;">
         <h3>${policyQuizWeekLabel(currentWeek)} 문제 은행 관리 (관리자 전용) — 총 ${bank.length}문제, 응시 시 무작위 ${Math.min(5,bank.length)}문제 출제</h3>
-        <table>
+        ${statusNoteHtml}
+        ${boardWriteButtonHtml('policyQuizWrite','문제 작성하기')}
+        <table style="margin-top:12px;">
           <thead><tr><th>#</th><th>문제</th><th>정답</th><th></th></tr></thead>
           <tbody>${bankRows}</tbody>
         </table>
-        <div class="form-row" style="margin-top:14px;">
-          <div class="field" style="flex:1;min-width:260px;"><label>새 문제</label><textarea id="pqNewText" rows="2" style="width:100%;" placeholder="객관식 예: 판촉 기간은?  /  빈칸채우기 예: 판촉 기간은 8/01~___ 이다."></textarea></div>
-          <div class="field" style="flex:1;min-width:220px;">
-            <label>보기 (객관식인 경우만 입력, 2~4개)</label>
-            <input id="pqNewOpt1" placeholder="보기 1" style="width:100%;margin-bottom:4px;">
-            <input id="pqNewOpt2" placeholder="보기 2" style="width:100%;margin-bottom:4px;">
-            <input id="pqNewOpt3" placeholder="보기 3" style="width:100%;margin-bottom:4px;">
-            <input id="pqNewOpt4" placeholder="보기 4" style="width:100%;">
-          </div>
-          <div class="field" style="flex:1;min-width:200px;"><label>정답 (객관식: 보기 중 하나와 동일한 텍스트 1개 / 빈칸채우기: 쉼표로 구분, 여러 개 가능)</label><input id="pqNewAnswers" style="width:100%;" placeholder="예: 8/03, 8/3, 8월3일"></div>
-        </div>
-        <div class="small-note muted" style="margin-top:6px;">보기를 2개 이상 입력하면 객관식 문제로, 보기를 비워두고 문제에 ___ 를 포함하면 빈칸채우기 문제로 등록됩니다.</div>
-        <button class="btn btn-primary" onclick="addPolicyQuizQuestion()" style="margin-top:8px;">문제 추가</button>
-      </div>`;
+      </div>
+      ${boardWriteModalHtml('policyQuizWrite','문제 작성',pqWriteModalBody)}`;
   }
 
   if(SESSION.role!=='staff'){
@@ -14333,7 +14365,17 @@ function renderPolicyQuiz(){
           ? `<div class="small-note" style="color:var(--bad);margin-top:10px;">⚠️ 이번 주(${policyQuizWeekLabel(currentWeek)}) 응시 기간이 종료되어 재응시할 수 없습니다.</div>`
           : `<button class="btn btn-sm" style="margin-top:10px;" onclick="startPolicyQuiz()">다시 응시하기</button>`
         }
-      </div>`;
+      </div>
+      ${state.policyQuizJustSubmitted ? `
+      <div id="modal_policyQuizComplete" class="board-modal-overlay" style="display:flex;" onclick="if(event.target===this) closePolicyQuizCompleteModal()">
+        <div class="board-modal-box" onclick="event.stopPropagation()" style="text-align:center;max-width:340px;">
+          <div style="font-size:32px;margin-bottom:8px;"><i class="ti ti-circle-check" aria-hidden="true" style="color:var(--primary);"></i></div>
+          <div style="font-weight:800;font-size:17px;margin-bottom:6px;">응시완료되었습니다!</div>
+          <div class="muted" style="margin-bottom:12px;">수고하셨습니다!</div>
+          <div style="font-size:24px;font-weight:800;margin-bottom:16px;">${r.score}점</div>
+          <button class="btn btn-primary" style="width:100%;" onclick="closePolicyQuizCompleteModal()">확인</button>
+        </div>
+      </div>` : ''}`;
   } else {
     const bank = currentPolicyQuizBank();
     const bankLen = bank.length;
@@ -14374,9 +14416,11 @@ function renderSuggestions(){
     : '';
 
   const formHtml = `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>건의사항 작성</h3>
+    <div style="margin-bottom:16px;">
       ${confirmHtml}
+      ${boardWriteButtonHtml('suggestionWrite', '건의사항 작성하기')}
+    </div>
+    ${boardWriteModalHtml('suggestionWrite', '건의사항 작성', `
       <div class="form-row">
         <div class="field">
           <label>지점명</label>
@@ -14394,9 +14438,9 @@ function renderSuggestions(){
           <label>첨부파일 (선택, 사진/PPT/엑셀 등)</label>
           <input id="sgFile" type="file">
         </div>
-        <button class="btn btn-primary" onclick="submitSuggestion()">제출</button>
       </div>
-    </div>`;
+      <button class="btn btn-primary" onclick="submitSuggestion()">제출</button>
+    `)}`;
 
   function commentsHtml(s){
     const items = (s.comments||[]).map(c=>`
