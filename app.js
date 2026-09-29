@@ -9343,6 +9343,14 @@ function chartColors(n){
   for(let i=0;i<n;i++) out.push(CHART_PALETTE[i % CHART_PALETTE.length]);
   return out;
 }
+// 붉은색 계열로만 이루어진 램프 — 실적/제품 분석 페이지의 비중(도넛) 차트처럼 여러 조각을
+// 구분해서 보여줘야 하는 경우에도 "그래프는 붉은색으로 통일" 원칙을 지키기 위해 사용한다.
+const CHART_RED_RAMP = ['#A50034','#6b0f2a','#c94a68','#8f1f3f','#e07a94','#752a3d','#f0a5b6','#5c0020'];
+function chartColorsRed(n){
+  const out = [];
+  for(let i=0;i<n;i++) out.push(CHART_RED_RAMP[i % CHART_RED_RAMP.length]);
+  return out;
+}
 let productChartInstance = null;
 let empShareChartInstance = null;
 let categoryShareChartInstance = null;
@@ -9484,7 +9492,7 @@ function renderSales(){
         type:'doughnut',
         data:{
           labels: empShareEntries.map(([,d])=>d.name),
-          datasets:[{ data: empShareEntries.map(([,d])=>d.amount), backgroundColor: chartColors(empShareEntries.length) }]
+          datasets:[{ data: empShareEntries.map(([,d])=>d.amount), backgroundColor: chartColorsRed(empShareEntries.length) }]
         },
         options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:pctLegendPlugin(), tooltip:pctTooltip()} }
       });
@@ -9496,7 +9504,7 @@ function renderSales(){
         type:'doughnut',
         data:{
           labels: categoryEntries.map(([cat])=>cat),
-          datasets:[{ data: categoryEntries.map(([,amt])=>amt), backgroundColor: chartColors(categoryEntries.length) }]
+          datasets:[{ data: categoryEntries.map(([,amt])=>amt), backgroundColor: chartColorsRed(categoryEntries.length) }]
         },
         options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:pctLegendPlugin(), tooltip:pctTooltip()} }
       });
@@ -9547,7 +9555,10 @@ function renderSales(){
     }
   }, 0);
 
-  let rightCardHtml;
+  // 요청에 따라 "AI 분석 피드백"과 "담당자별 제품군 판매 상세(또는 개인 판매 제품 상세)"를
+  // 하나의 카드로 합치지 않고 각각 독립된 카드로 분리한다 — 아래에서 제품군 비중/매니저별
+  // 판매 비중과 함께 4개 카드를 한 행에 나란히 배치하기 위함.
+  let aiFeedbackCardHtml, detailCardHtml;
   if(state.salesEmp==='ALL'){
     // simple AI feedback on product concentration for the scope
     let concentrationNote = '';
@@ -9557,16 +9568,18 @@ function renderSales(){
         ? `<div class="ai-item">판매 비중이 <b>${topProducts[0][0]}</b>에 ${share.toFixed(0)}% 집중되어 있습니다. 타 카테고리 교차판매(연계판매) 전략을 검토하세요.</div>`
         : `<div class="ai-item">특정 제품 편중 없이 비교적 고르게 판매되고 있습니다.</div>`;
     }
-    rightCardHtml = `
+    aiFeedbackCardHtml = `
       <div class="card">
         <h3>AI 분석 피드백</h3>
-        <div class="ai-box">
-          <div class="ai-title">💡 제품 믹스 코멘트</div>
+        <div class="ai-box" style="flex:1;overflow-y:auto;">
+          <div class="ai-title"><i class="ti ti-bulb" aria-hidden="true"></i> 제품 믹스 코멘트</div>
           ${concentrationNote}
         </div>
-        <div class="divider"></div>
+      </div>`;
+    detailCardHtml = `
+      <div class="card">
         <h3>담당자별 제품군 판매 상세 <small>(수량 · 금액(KK))</small></h3>
-        <div style="overflow:auto;max-height:280px;">
+        <div style="overflow:auto;flex:1;">
         <table><thead><tr><th>이름</th><th>판매금액(KK)</th>${categoryOrder.map(cat=>`<th>${cat}</th>`).join('')}</tr></thead><tbody>${empRows}</tbody></table>
         </div>
       </div>`;
@@ -9577,84 +9590,97 @@ function renderSales(){
       const share = totalAmt>0 ? (v.amount/totalAmt*100) : 0;
       return `<tr><td>${product}</td><td>${v.qty}</td><td>${fmtKK(v.amount)}</td><td>${share.toFixed(1)}%</td></tr>`;
     }).join('') || `<tr><td colspan="4" class="muted">판매 데이터가 없습니다.</td></tr>`;
-    rightCardHtml = `
+    aiFeedbackCardHtml = `
       <div class="card">
         <h3>${empUser?empUser.name:state.salesEmp} 님 AI 분석 피드백</h3>
-        <div class="ai-box">
-          <div class="ai-title">💡 개인별 코멘트</div>
+        <div class="ai-box" style="flex:1;overflow-y:auto;">
+          <div class="ai-title"><i class="ti ti-bulb" aria-hidden="true"></i> 개인별 코멘트</div>
           ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('') || '<div class="ai-item">데이터가 부족합니다.</div>'}
         </div>
-        <div class="divider"></div>
+      </div>`;
+    detailCardHtml = `
+      <div class="card">
         <h3>${empUser?empUser.name:''} 판매 제품 상세 <small>(전체 ${sortedProducts.length}개 품목)</small></h3>
-        <div style="overflow:auto;max-height:280px;">
+        <div style="overflow:auto;flex:1;">
         <table><thead><tr><th>제품</th><th>수량</th><th>금액(KK)</th><th>비중</th></tr></thead><tbody>${detailRows}</tbody></table>
         </div>
       </div>`;
   }
 
-  // 관리자는 좌측에 기간/담당자 선택 사이드바 + 지점 목록으로 배치하지만, 지점 매니저는 지점
-  // 목록이 없어 사이드바에 선택 카드 하나만 덩그러니 남으므로 — 사이드바 없이 선택 카드를 페이지
-  // 맨 위에 기존 방식대로(전체 폭) 배치하고 그 아래로 같은 본문(차트/표)을 이어붙인다.
-  const salesMainContentHtml = `
-      <div style="flex:1;min-width:380px;">
-        <div class="card" style="margin-bottom:16px;">
-          <h3>제품별 판매 Top 10 (금액 기준) <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
-          <div style="position:relative;height:200px;"><canvas id="productChart"></canvas></div>
-        </div>
-        ${rightCardHtml}
-      </div>
+  // 요청에 따라 레이아웃을 두 행으로 재구성한다.
+  // 1행: 제품별 판매 Top10 / 제품별 수량·금액 경쟁력 — 같은 열에 동일한 크기로(스트레치)
+  // 2행: 제품군 비중 / 매니저별 판매 비중 / AI 분석 피드백 / 담당자별(개인) 제품군 판매 상세 —
+  //      같은 열에 카드 종류에 맞게 비중을 다르게(표가 있는 카드는 더 넓게) 배치
+  const empPersonalSuffix = state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : '';
 
-      <div style="width:280px;flex-shrink:0;display:flex;flex-direction:column;gap:16px;">
-        <div class="card">
-          <h3>제품군 비중 <small>${state.salesEmp!=='ALL' && DB.users.find(u=>u.empId===state.salesEmp) ? '· '+DB.users.find(u=>u.empId===state.salesEmp).name+' 개인 기준' : ''}</small></h3>
-          <div style="position:relative;height:220px;"><canvas id="categoryShareChart"></canvas></div>
+  const salesRow1Html = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;">
+      <div style="flex:1;min-width:380px;display:flex;">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;">
+          <h3>제품별 판매 Top 10 (금액 기준) <small>${empPersonalSuffix}</small></h3>
+          <div style="position:relative;flex:1;min-height:260px;"><canvas id="productChart"></canvas></div>
         </div>
-        <div class="card">
+      </div>
+      <div style="flex:1;min-width:380px;display:flex;">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;">
+          <h3><i class="ti ti-chart-bar" aria-hidden="true"></i> 제품별 수량/금액 경쟁력 <small>(LG vs 경쟁사(SS)${salesCompData ? ' · '+goalsPeriodLabel(salesCompData.period)+(salesCompData.asOf?' · as of '+salesCompData.asOf:'') : ''})</small></h3>
+          ${salesCompData ? `
+          ${state.salesEmp!=='ALL' ? `<div class="small-note" style="margin-top:-4px;margin-bottom:4px;">※ 지점(Ship To) 단위 데이터라 ${scopeBranch==='ALL'?'전체 지점':branchName(scopeBranch)} 기준으로 표시됩니다.</div>` : ''}
+          <div style="display:flex;flex-direction:column;gap:8px;flex:1;">
+            <div style="flex:1;min-height:120px;">
+              <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:2px;">판매 수량 경쟁력</div>
+              <div style="position:relative;height:calc(100% - 16px);"><canvas id="compQtyChart"></canvas></div>
+            </div>
+            <div style="flex:1;min-height:120px;">
+              <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:2px;">판매 금액 경쟁력</div>
+              <div style="position:relative;height:calc(100% - 16px);"><canvas id="compAmtChart"></canvas></div>
+            </div>
+          </div>` : `
+          <div class="muted" style="font-size:13px;flex:1;">아직 경쟁력 데이터가 없습니다. [목표 관리] 파일 업로드 시 msis경쟁력 시트가 포함되어 있으면 자동으로 반영됩니다.</div>`}
+        </div>
+      </div>
+    </div>`;
+
+  const salesRow2Html = `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-top:10px;">
+      <div style="flex:1;min-width:220px;display:flex;">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;height:300px;overflow:hidden;">
+          <h3>제품군 비중 <small>${empPersonalSuffix}</small></h3>
+          <div style="position:relative;flex:1;"><canvas id="categoryShareChart"></canvas></div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:220px;display:flex;">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;height:300px;overflow:hidden;">
           <h3>매니저별 판매 비중</h3>
           ${showEmpShareChart
-            ? `<div style="position:relative;height:220px;"><canvas id="empShareChart"></canvas></div>`
-            : `<div style="height:220px;display:flex;align-items:center;justify-content:center;"><div class="muted" style="font-size:13px;text-align:center;">${state.salesEmp!=='ALL' ? '담당자를 &quot;전체&quot;로 선택하면<br>매니저별 판매 비중이 표시됩니다.' : '표시할 판매 데이터가 없습니다.'}</div></div>`}
+            ? `<div style="position:relative;flex:1;"><canvas id="empShareChart"></canvas></div>`
+            : `<div style="flex:1;display:flex;align-items:center;justify-content:center;"><div class="muted" style="font-size:13px;text-align:center;">${state.salesEmp!=='ALL' ? '담당자를 &quot;전체&quot;로 선택하면<br>매니저별 판매 비중이 표시됩니다.' : '표시할 판매 데이터가 없습니다.'}</div></div>`}
         </div>
-      </div>`;
+      </div>
+      <div style="flex:1;min-width:220px;display:flex;">
+        <div style="display:flex;flex-direction:column;flex:1;height:300px;overflow:hidden;">${aiFeedbackCardHtml.replace('<div class="card">','<div class="card" style="display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden;">')}</div>
+      </div>
+      <div style="flex:2;min-width:340px;display:flex;">
+        <div style="display:flex;flex-direction:column;flex:1;height:300px;overflow:hidden;">${detailCardHtml.replace('<div class="card">','<div class="card" style="display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden;">')}</div>
+      </div>
+    </div>`;
 
   const salesFilterCardHtml = `
-        <div class="card" style="margin-bottom:16px;padding:14px;">
+        <div class="card" style="margin-bottom:10px;padding:14px;">
           ${periodSelectorHtml}
           ${empSelectorHtml}
         </div>`;
 
-  // 제품별 수량/금액 경쟁력 카드: 좌우로(위아래 아님) 나란히 배치해 스크롤 범위를 줄인다.
-  // msis경쟁력 시트는 지점(Ship To) 단위 데이터라 담당자 선택과는 무관하게 지점 기준으로만 표시된다.
-  const salesCompCardHtml = salesCompData ? `
-    <div class="card" style="margin-top:16px;">
-      <h3>📊 제품별 수량/금액 경쟁력 <small>(LG vs 경쟁사(SS) · msis경쟁력 시트 기준 · ${goalsPeriodLabel(salesCompData.period)}${salesCompData.asOf?' · as of '+salesCompData.asOf:''})</small></h3>
-      ${state.salesEmp!=='ALL' ? `<div class="small-note" style="margin-top:-4px;">※ 지점(Ship To) 단위 데이터라 담당자 선택과 무관하게 ${scopeBranch==='ALL'?'전체 지점':branchName(scopeBranch)} 기준으로 표시됩니다.</div>` : ''}
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;">
-        <div style="flex:1;min-width:340px;">
-          <div class="muted" style="font-size:12px;font-weight:700;margin-bottom:6px;">판매 수량 경쟁력</div>
-          <div style="position:relative;height:${Math.max(220, salesCompData.categories.length*34)}px;"><canvas id="compQtyChart"></canvas></div>
-        </div>
-        <div style="flex:1;min-width:340px;">
-          <div class="muted" style="font-size:12px;font-weight:700;margin-bottom:6px;">판매 금액 경쟁력</div>
-          <div style="position:relative;height:${Math.max(220, salesCompData.categories.length*34)}px;"><canvas id="compAmtChart"></canvas></div>
-        </div>
-      </div>
-    </div>` : `
-    <div class="card" style="margin-top:16px;">
-      <h3>📊 제품별 수량/금액 경쟁력 <small>(LG vs 경쟁사(SS) · msis경쟁력 시트 기준)</small></h3>
-      <div class="muted" style="font-size:13px;">아직 경쟁력 데이터가 없습니다. [목표 관리] 파일 업로드 시 msis경쟁력 시트가 포함되어 있으면 자동으로 반영됩니다.</div>
-    </div>`;
-
   return `
+    <div class="sales-plain">
     <div class="page-title">실적 / 제품 분석</div>
     <div class="page-desc">${scopeBranch==='ALL' ? '전체 지점' : branchName(scopeBranch)} · ${salesPeriod ? salesPeriod+' 월 데이터' : '전체 기간 누적 데이터'} · 금액은 모두 KK(백만원) 단위 · "실판매 목표대비 실적조회" 시트 기반(관리자가 [시스템 관리]에서 목표/실적 파일을 새로 올리면 갱신됩니다)</div>
     ${filterPresetBarHtml('sales')}
     ${branchSelectorHtml}
     ${salesFilterCardHtml}
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-      ${salesMainContentHtml}
+    ${salesRow1Html}
+    ${salesRow2Html}
     </div>
-    ${salesCompCardHtml}
   `;
 }
 // =========================================================================
