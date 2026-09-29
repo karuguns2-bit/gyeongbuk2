@@ -5015,6 +5015,29 @@ function setBoardSearch(prefix, tab, value){
   st.page = 1;
   renderTab(tab);
 }
+// 2026.09 버그 수정: 검색창에 글자를 입력할 때마다(oninput) setBoardSearch가 즉시 renderTab을
+// 호출해 입력창 DOM 자체를 다시 그렸다. 한글은 자음/모음을 조합하는 중에도 input 이벤트가
+// 발생하는데, 이 시점에 입력창 DOM이 통째로 교체되면 브라우저의 한글 조합(IME composition)이
+// 강제로 끊겨서 "ㅇ 한 번만 눌러도 그 뒤로 입력이 안 되는" 증상이 생겼다. 재고 조회 검색창과
+// 동일하게, 입력을 멈추고 350ms가 지난 뒤에만 실제로 검색을 적용해 다시 그리도록 디바운스하고
+// (타이핑 도중에는 절대 다시 그리지 않음 - 조합이 안전하게 끝까지 진행된다), 다시 그린 뒤에는
+// 입력창에 포커스와 커서 위치를 되돌려준다.
+const boardSearchDebounceTimers = {};
+function handleBoardSearchInput(prefix, tab, value, inputId){
+  clearTimeout(boardSearchDebounceTimers[prefix]);
+  boardSearchDebounceTimers[prefix] = setTimeout(()=>{
+    const st = boardListState(prefix);
+    st.search = value;
+    st.page = 1;
+    renderTab(tab);
+    const el = document.getElementById(inputId);
+    if(el){
+      el.focus();
+      const pos = el.value.length;
+      try{ el.setSelectionRange(pos, pos); }catch(e){}
+    }
+  }, 350);
+}
 function setBoardPageSize(prefix, tab, size){
   const st = boardListState(prefix);
   st.pageSize = size; // 10, 20, 또는 'all'
@@ -5043,7 +5066,7 @@ function applyBoardSearchAndPaging(prefix, tab, list, searchTextFn, placeholder)
   const barHtml = `
     <div class="form-row" style="align-items:center;margin-bottom:10px;gap:8px;">
       <div class="field" style="flex:1;min-width:180px;">
-        <input type="text" value="${escapeHtml(st.search)}" placeholder="${escapeHtml(placeholder||'검색어를 입력하세요')}" oninput="setBoardSearch('${prefix}','${tab}',this.value)" style="width:100%;">
+        <input id="boardSearch_${prefix}" type="text" value="${escapeHtml(st.search)}" placeholder="${escapeHtml(placeholder||'검색어를 입력하세요')}" oninput="handleBoardSearchInput('${prefix}','${tab}',this.value,'boardSearch_${prefix}')" style="width:100%;">
       </div>
       <div style="display:flex;gap:6px;flex-shrink:0;">
         <button type="button" class="btn btn-sm ${pageSize===10?'btn-primary':''}" onclick="setBoardPageSize('${prefix}','${tab}',10)">10개씩 보기</button>
