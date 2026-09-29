@@ -9523,11 +9523,12 @@ function renderSales(){
         },
         plugins: [barValueLabelsPlugin(v=>`${Math.round(v).toLocaleString('ko-KR')}대`)],
         options:{
-          indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:36}},
+          indexAxis:'x', responsive:true, maintainAspectRatio:false, layout:{padding:{top:16}},
           plugins:{
             legend:{position:'top', labels:{boxWidth:12, font:{size:11}}},
-            tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${Math.round(ctx.parsed.x).toLocaleString('ko-KR')}대`}}
-          }
+            tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${Math.round(ctx.parsed.y).toLocaleString('ko-KR')}대`}}
+          },
+          scales:{ x:{ ticks:{ font:{size:10}, maxRotation:45, minRotation:0 } } }
         }
       });
     }
@@ -9545,11 +9546,12 @@ function renderSales(){
         },
         plugins: [barValueLabelsPlugin(v=>fmtKK(v))],
         options:{
-          indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{padding:{right:36}},
+          indexAxis:'x', responsive:true, maintainAspectRatio:false, layout:{padding:{top:16}},
           plugins:{
             legend:{position:'top', labels:{boxWidth:12, font:{size:11}}},
-            tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${fmtKK(ctx.parsed.x)}`}}
-          }
+            tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${fmtKK(ctx.parsed.y)}`}}
+          },
+          scales:{ x:{ ticks:{ font:{size:10}, maxRotation:45, minRotation:0 } } }
         }
       });
     }
@@ -9626,14 +9628,15 @@ function renderSales(){
           <h3><i class="ti ti-chart-bar" aria-hidden="true"></i> 제품별 수량/금액 경쟁력 <small>(LG vs 경쟁사(SS)${salesCompData ? ' · '+goalsPeriodLabel(salesCompData.period)+(salesCompData.asOf?' · as of '+salesCompData.asOf:'') : ''})</small></h3>
           ${salesCompData ? `
           ${state.salesEmp!=='ALL' ? `<div class="small-note" style="margin-top:-4px;margin-bottom:4px;">※ 지점(Ship To) 단위 데이터라 ${scopeBranch==='ALL'?'전체 지점':branchName(scopeBranch)} 기준으로 표시됩니다.</div>` : ''}
-          <div style="display:flex;flex-direction:column;gap:8px;flex:1;">
-            <div style="flex:1;min-height:120px;">
-              <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:2px;">판매 수량 경쟁력</div>
-              <div style="position:relative;height:calc(100% - 16px);"><canvas id="compQtyChart"></canvas></div>
+          <div style="display:flex;gap:10px;flex:1;">
+            <div style="flex:1;min-width:150px;display:flex;flex-direction:column;">
+              <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:2px;text-align:center;">판매 수량 경쟁력</div>
+              <div style="position:relative;flex:1;min-height:220px;"><canvas id="compQtyChart"></canvas></div>
             </div>
-            <div style="flex:1;min-height:120px;">
-              <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:2px;">판매 금액 경쟁력</div>
-              <div style="position:relative;height:calc(100% - 16px);"><canvas id="compAmtChart"></canvas></div>
+            <div style="width:1px;background:var(--border);"></div>
+            <div style="flex:1;min-width:150px;display:flex;flex-direction:column;">
+              <div class="muted" style="font-size:11px;font-weight:700;margin-bottom:2px;text-align:center;">판매 금액 경쟁력</div>
+              <div style="position:relative;flex:1;min-height:220px;"><canvas id="compAmtChart"></canvas></div>
             </div>
           </div>` : `
           <div class="muted" style="font-size:13px;flex:1;">아직 경쟁력 데이터가 없습니다. [목표 관리] 파일 업로드 시 msis경쟁력 시트가 포함되어 있으면 자동으로 반영됩니다.</div>`}
