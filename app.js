@@ -9883,10 +9883,10 @@ function renderIncentiveOverview(){
 
   // ---- 관리자/임원(admin/exec) 화면: 전 지점 조회 가능(canSwitchBranch()===true인 admin·exec만
   // 이 분기에 들어온다). 매니저(staff)는 위쪽 !canBrowseAll 분기에서 본인 지점만 보게 되어 있다.
-  // 2026-09-29 개선: 지점을 클릭해서 상세로 이동하던 방식 대신, 14개 지점을 7X2 그리드로
-  // 한 번에 모두 보여준다(참고 파일의 stats5 + sr-grid 구조 반영). 개별 지점의 더 깊은 상세
-  // (제품수당 그리드, Grade 수당표)는 이 카드형 요약에서는 생략하고, 아래 정렬 가능한 표에서
-  // 전체 수치를 계속 확인할 수 있게 유지한다.
+  // 2026-09-29 개선: 지점을 클릭해서 "페이지 이동"하던 방식 대신, 14개 지점을 7X2 그리드로
+  // 한 번에 모두 보여준다(참고 파일의 stats5 + sr-grid 구조 반영). 다만 지점별 상세(제품수당
+  // 일시불/구독 그리드, 매니저별 구독 Grade 수당표)가 없어졌다는 지적을 반영해, 카드를 누르면
+  // 페이지 이동 없이 그리드 바로 아래에 그 지점의 상세가 펼쳐지도록 복원한다(그리드/표는 그대로 유지).
   const managers = moManagerList();
   const selManager = state.incOverviewManager && managers.includes(state.incOverviewManager) ? state.incOverviewManager : null;
   const branchesInScope = moBranchesOf(selManager);
@@ -9915,13 +9915,19 @@ function renderIncentiveOverview(){
       <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">제품수당 구독</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalSub)}</div></div>
     </div>`;
 
-  // 지점별 카드 그리드: 인센티브 합계 큰 순으로 정렬, 상위 3개는 붉은 테두리로 강조
+  // 지점별 카드 그리드: 인센티브 합계 큰 순으로 정렬, 상위 3개는 붉은 테두리로 강조.
+  // 카드를 클릭하면(페이지 이동 없이) 그리드 바로 아래에 그 지점의 상세가 펼쳐진다 —
+  // 선택된 지점이 없으면 1위 지점을 기본으로 보여준다.
   const sortedBranches = branchesInScope.slice().sort((a,b)=>incBranchTotal(b.m)-incBranchTotal(a.m));
+  const selBranch = state.incOverviewBranch && branchesInScope.some(r=>r.branchId===state.incOverviewBranch) ? state.incOverviewBranch : (sortedBranches[0] ? sortedBranches[0].branchId : null);
+  const selBranchRow = selBranch ? branchesInScope.find(r=>r.branchId===selBranch) : null;
   const branchCardsHtml = `<div class="mo-branch-grid">` +
     sortedBranches.map((r,i)=>{
       const m = r.m;
       const total = incBranchTotal(m);
-      return `<div class="card mo-branch-card" style="${i<3?'border-color:var(--primary);background:#fff8f9;':''}">
+      const isSel = r.branchId===selBranch;
+      const isTop3 = i<3;
+      return `<div class="card mo-branch-card" style="cursor:pointer;${isSel?'border-color:var(--primary);border-width:2px;background:#fff8f9;':(isTop3?'border-color:var(--primary);background:#fff8f9;':'')}" onclick="setIncOverviewBranch('${r.branchId}')">
         <div style="font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.branchName)}</div>
         <div class="muted" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.manager||'-')}</div>
         <div style="font-size:15px;font-weight:800;color:var(--primary);margin-top:3px;">${moFmtWonRaw(total)}</div>
@@ -9932,6 +9938,19 @@ function renderIncentiveOverview(){
       </div>`;
     }).join('') +
     `</div>`;
+
+  const branchDetailHtml = selBranchRow ? `
+    <div class="card" style="border-left:4px solid var(--primary);margin-bottom:10px;">
+      <div class="muted" style="font-size:12px;">${escapeHtml(selBranchRow.branchName)} · 관리자 ${escapeHtml(selBranchRow.manager||'-')} · 단위 원</div>
+      <h3 style="margin-top:4px;">지점 인센티브 상세</h3>
+      <div style="margin-top:8px;">
+      ${incBranchDetailRowsHtml(selBranchRow.m)}
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px;">
+      <h3><i class="ti ti-trophy" aria-hidden="true"></i> ${escapeHtml(selBranchRow.branchName)} 매니저별 구독 Grade 수당</h3>
+      ${incGradeTableHtml(incGradeRecordsForBranch(selBranchRow.branchName), selBranchRow.branchName)}
+    </div>` : '';
 
   const expectedRankMap = {}; branchesInScope.slice().sort((a,b)=>(b.m.inc_expectedAmt||0)-(a.m.inc_expectedAmt||0)).forEach((x,i)=>{ expectedRankMap[x.branchId]=i+1; });
   const trs = branchesInScope.map(r=>{
@@ -9954,9 +9973,10 @@ function renderIncentiveOverview(){
     </div>
     ${statsHtml}
     <div class="card" style="margin-bottom:10px;">
-      <h3><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 인센티브 카드 <small>${escapeHtml(scopeLabel)} · 인센티브 합계가 큰 순서</small></h3>
+      <h3><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 인센티브 카드 <small>${escapeHtml(scopeLabel)} · 인센티브 합계가 큰 순서 · 카드를 누르면 아래에 상세가 표시됩니다</small></h3>
       ${branchCardsHtml}
     </div>
+    ${branchDetailHtml}
     <div class="card">
       <h3><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 인센티브 현황 <small>${escapeHtml(scopeLabel)} · 단위 원</small></h3>
       <div style="overflow-x:auto;">
