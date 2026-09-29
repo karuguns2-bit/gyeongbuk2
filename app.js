@@ -2884,7 +2884,7 @@ function renderHomeManagerBadges(){
     const mgrName = won ? (winnerInfo.length>2 ? `${escapeHtml(winnerInfo[0].name)} 외 ${winnerInfo.length-1}명` : winnerInfo.map(w=>escapeHtml(w.name)).join(' · ')) : '미정';
     const maxStreak = won ? Math.max(...winnerInfo.map(w=>w.streak)) : 0;
     const stars = won ? Math.floor(maxStreak/3) : 0;
-    const starsHtml = stars>0 ? `<div class="bbadge-stars">${'⭐'.repeat(Math.min(stars,5))}</div>` : '';
+    const starsHtml = stars>0 ? `<div class="bbadge-stars">${'<i class="ti ti-star" aria-hidden="true"></i>'.repeat(Math.min(stars,5))}</div>` : '';
     const tooltip = won
       ? `${cat.label}(${cat.desc}) · ${isTie?'공동 1위 · ':''}${winnerInfo.map(w=>`${escapeHtml(w.name)}${w.branchNm?`(${escapeHtml(w.branchNm)})`:''} ${escapeHtml(cat.fmt(w.value))}`).join(', ')}${!isTie && maxStreak>1?` · ${maxStreak}개월 연속`:''}`
       : `${cat.label}(${cat.desc}) · 이번 달은 아직 1위가 없습니다`;
@@ -2909,8 +2909,8 @@ function renderHomeManagerBadges(){
   // 적용하고, 대신 지점 그랜드슬램 기준을 "전 종목"에서 "5개 이상 종목 동시 1위"로 완화했다.)
   return `
     <div style="margin-top:5px;padding-top:5px;border-top:1px solid var(--border);">
-      <div style="font-size:10.5px;font-weight:700;color:var(--text-sub);margin-bottom:3px;">🧑‍💼 ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
-      <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요. <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가! (배지에 마우스를 올리면 획득 조건을 볼 수 있어요)</div>
+      <div style="font-size:10.5px;font-weight:700;color:var(--text-sub);margin-bottom:3px;"><i class="ti ti-user" aria-hidden="true"></i> ${goalsPeriodLabel(period)} 이달의 매니저 배지</div>
+      <div class="bbadge-rule-info">종목별로 이번 달 실적·활동이 가장 많은 매니저 개인에게 배지가 주어져요. <b style="color:var(--primary);">3개월 연속 1위</b> 시 별 아이콘 추가! (배지에 마우스를 올리면 획득 조건을 볼 수 있어요)</div>
       <div class="bbadge-medals">${cardsHtml}</div>
     </div>`;
 }
@@ -3000,7 +3000,7 @@ function renderHomeBranchBadges(){
     const branchNm = won ? (winnerInfo.length>2 ? `${escapeHtml(winnerInfo[0].name)} 외 ${winnerInfo.length-1}개점` : winnerInfo.map(w=>escapeHtml(w.name)).join(' · ')) : '미정';
     const maxStreak = won ? Math.max(...winnerInfo.map(w=>w.streak)) : 0;
     const stars = won ? Math.floor(maxStreak/3) : 0;
-    const starsHtml = stars>0 ? `<div class="bbadge-stars">${'⭐'.repeat(Math.min(stars,5))}</div>` : '';
+    const starsHtml = stars>0 ? `<div class="bbadge-stars">${'<i class="ti ti-star" aria-hidden="true"></i>'.repeat(Math.min(stars,5))}</div>` : '';
     const tooltip = won
       ? `${r.cat.label}(${r.cat.desc}) · ${isTie?'공동 1위 · ':''}${winnerInfo.map(w=>`${escapeHtml(w.name)} ${escapeHtml(r.cat.fmt(w.value))}`).join(', ')}${!isTie && maxStreak>1?` · ${maxStreak}개월 연속`:''}`
       : `${r.cat.label}(${r.cat.desc}) · 이번 달은 아직 1위가 없습니다`;
@@ -3066,7 +3066,7 @@ function renderHomeBranchBadges(){
     <div class="bbadge-rankpanel">
       ${eventBannerHtml}
       <div class="bbadge-rank-header">
-        <span style="font-weight:700;font-size:12px;color:var(--text-sub);">🏆 종목별 TOP3</span>
+        <span style="font-weight:700;font-size:12px;color:var(--text-sub);"><i class="ti ti-trophy" aria-hidden="true"></i> 종목별 TOP3</span>
         <div class="bbadge-rank-toggle">
           <button type="button" class="bbadge-rank-tab${rankMode==='month'?' active':''}" onclick="setBranchBadgeRankMode('month')">이번달</button>
           <button type="button" class="bbadge-rank-tab${rankMode==='year'?' active':''}" onclick="setBranchBadgeRankMode('year')">${rankYear}년 누적</button>
@@ -3089,7 +3089,8 @@ function renderHomeBranchBadges(){
         .bbadge-flaticon{ display:flex; }
         .bbadge-flaticon i{ font-size:19px; color:#c7c8cc; }
         .bbadge-flatcard.won .bbadge-flaticon i{ color:var(--primary); }
-        .bbadge-stars{ position:absolute; top:-9px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:9px; letter-spacing:-1px; z-index:5; }
+        .bbadge-stars{ position:absolute; top:-9px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:8px; z-index:5; }
+        .bbadge-stars i.ti{ color:var(--primary); }
         .bbadge-branch{ font-size:9.5px; font-weight:700; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-sub); }
         .bbadge-item.bbadge-won .bbadge-branch{ color:var(--text); }
         .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:10px; }
@@ -3131,8 +3132,8 @@ function renderHomeBranchBadges(){
         .bbadge-event-winner{ margin-top:4px; padding-top:4px; border-top:1px dashed var(--border); font-size:9.5px; font-weight:700; color:var(--text); }
         .bbadge-event-winner i.ti{ font-size:11px; color:var(--primary); vertical-align:-1px; }
       </style>
-      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:3px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
-      <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${BRANCH_BADGE_CATEGORIES.length}개 중 ${BRANCH_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
+      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:3px;"><i class="ti ti-medal" aria-hidden="true"></i> ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
+      <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별 아이콘 추가, <b style="color:var(--primary);">${BRANCH_BADGE_CATEGORIES.length}개 중 ${BRANCH_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
       <div class="bbadge-outer">
         <div class="bbadge-leftcol">
           <div class="bbadge-medals">${cardsHtml}</div>
@@ -3433,7 +3434,7 @@ function renderHomeGoalsManagerBanner(){
     </div>`).join('');
   return `
     <div class="card" style="margin-bottom:10px;">
-      <h3>👥 관리자별 목표 달성 현황 <small>(${goalsPeriodLabel(period)} · MSIS실판매등록 기준 예상 목표치 · 전체 지점 공개)</small></h3>
+      <h3><i class="ti ti-users" aria-hidden="true"></i> 관리자별 목표 달성 현황 <small>(${goalsPeriodLabel(period)} · MSIS실판매등록 기준 예상 목표치 · 전체 지점 공개)</small></h3>
       <div class="mo-kpi-row" style="display:flex;gap:8px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
@@ -3507,7 +3508,7 @@ function renderHomeManagerCompetitivenessBanner(){
     </div>`).join('');
   return `
     <div class="card" style="margin-bottom:10px;">
-      <h3>🏆 관리자별 합산 경쟁력 <small>(${goalsPeriodLabel(period)} · msis경쟁력 시트 기준 · 전체 지점 공개)</small></h3>
+      <h3><i class="ti ti-trophy" aria-hidden="true"></i> 관리자별 합산 경쟁력 <small>(${goalsPeriodLabel(period)} · msis경쟁력 시트 기준 · 전체 지점 공개)</small></h3>
       <div class="mo-kpi-row" style="display:flex;gap:8px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
@@ -3634,7 +3635,7 @@ function checkGoalCelebration(pct, period){
 }
 function showGoalCelebration(){
   fireConfetti();
-  showSaveBanner('🎉 이번 달 목표를 달성했어요! 수고하셨습니다.');
+  showSaveBanner('<i class="ti ti-trophy" aria-hidden="true"></i> 이번 달 목표를 달성했어요! 수고하셨습니다.');
 }
 function fireConfetti(){
   const colors = ['#A50034','#ffb400','#1a9c56','#3355cc','#ff6f91','#7d0027'];
@@ -3701,7 +3702,7 @@ function renderClearanceRecommendationWidget(){
   if(!rec) return '';
   return `
     <div class="card">
-      <h3>🎯 소진 추천 <small>(내 판매 이력 기반 참고용 추천)</small></h3>
+      <h3><i class="ti ti-target-arrow" aria-hidden="true"></i> 소진 추천 <small>(내 판매 이력 기반 참고용 추천)</small></h3>
       <div class="muted" style="font-size:12px;margin-bottom:8px;">최근 <b>${escapeHtml(rec.category)}</b> 판매 실적이 좋으셔서, 아래 소진집중 대상 제품을 추천드려요.</div>
       ${rec.items.map(r=>`
         <div class="flex-between" style="padding:8px 0;border-bottom:1px solid var(--border);">
@@ -3709,7 +3710,7 @@ function renderClearanceRecommendationWidget(){
             <div style="font-weight:600;font-size:13px;">${escapeHtml(r.product||'')}</div>
             <div class="muted" style="font-size:11.5px;">${escapeHtml(r.store||'')} · ${escapeHtml(r.model||'')}</div>
           </div>
-          <span class="badge" style="background:#fdeee2;color:#c2622b;">🔥 소진집중</span>
+          <span class="badge" style="background:#fdeee2;color:#c2622b;"><i class="ti ti-flame" aria-hidden="true"></i> 소진집중</span>
         </div>`).join('')}
     </div>`;
 }
@@ -3796,7 +3797,7 @@ function renderHome(){
       <div class="card">
         <h3>AI 분석 피드백 <small>(규칙 기반 자동 분석)</small></h3>
         <div class="ai-box">
-          <div class="ai-title">💡 오늘의 코멘트</div>
+          <div class="ai-title"><i class="ti ti-bulb" aria-hidden="true"></i> 오늘의 코멘트</div>
           ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
         </div>
       </div>`,
@@ -3845,7 +3846,7 @@ function renderHome(){
     </div>
 
     <div id="homeStatusWidget" style="position:fixed;bottom:20px;right:20px;z-index:60;">
-      <div id="homeStatusWidgetCollapsedBtn" title="시계/알림 펼치기" onclick="toggleHomeStatusWidget()" style="display:${isHomeStatusWidgetCollapsed()?'flex':'none'};align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:#fff;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.15);cursor:pointer;font-size:20px;">🕐</div>
+      <div id="homeStatusWidgetCollapsedBtn" title="시계/알림 펼치기" onclick="toggleHomeStatusWidget()" style="display:${isHomeStatusWidgetCollapsed()?'flex':'none'};align-items:center;justify-content:center;width:46px;height:46px;border-radius:50%;background:#fff;border:1px solid var(--border);box-shadow:0 4px 20px rgba(0,0,0,.15);cursor:pointer;font-size:20px;color:var(--text-sub);"><i class="ti ti-clock" aria-hidden="true"></i></div>
       <div id="homeStatusWidgetBody" style="display:${isHomeStatusWidgetCollapsed()?'none':'block'};background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.15);padding:14px 16px;width:230px;">
         <div class="flex-between" style="align-items:flex-start;">
           <div style="font-weight:700;font-size:12.5px;color:var(--text-sub);" id="homeClockDate">-</div>
@@ -3858,7 +3859,7 @@ function renderHome(){
         </div>
         <div style="padding-top:9px;margin-top:9px;border-top:1px solid var(--border);">
           <div class="flex-between" style="cursor:pointer;font-size:12.5px;" onclick="toggleHomeNotifList()">
-            <span class="muted">🔔 알림 <span id="homeNotifBadge" style="${homeNotifBadgeStyle(cachedNotifItems)}">${homeNotifUnreadCount(cachedNotifItems)}</span></span>
+            <span class="muted"><i class="ti ti-bell" aria-hidden="true"></i> 알림 <span id="homeNotifBadge" style="${homeNotifBadgeStyle(cachedNotifItems)}">${homeNotifUnreadCount(cachedNotifItems)}</span></span>
             <span id="homeNotifToggleIcon" class="muted">▾</span>
           </div>
           <div id="homeNotifList" style="display:none;margin-top:8px;max-height:220px;overflow-y:auto;">${homeNotifListHtml(cachedNotifItems)}</div>
@@ -8389,12 +8390,14 @@ function barValueLabelsPlugin(formatter){
 }
 // 신장률(%) 값들을 가로 막대 차트로 — Chart.js가 자동으로 보기 좋은 눈금(0, ±20%, ±40%...)을
 // 잡아주므로, 극단적인 값 하나 때문에 축 전체가 왜곡되어 읽기 어려워지는 문제가 줄어든다.
-function moYoyBarConfig(labels, values, highlightIdx, unit){
+function moYoyBarConfig(labels, values, highlightIdx, unit, redOnly){
   unit = unit || '%';
   return {
     type:'bar',
     data:{ labels, datasets:[{ data: values.map(v=>v==null?null:Math.round(v*10)/10),
-      backgroundColor: values.map((v,i)=> i===highlightIdx ? '#A50034' : (v>=0 ? '#a9d3b3' : '#e8b4b4')) }] },
+      backgroundColor: values.map((v,i)=> redOnly
+        ? (i===highlightIdx ? '#A50034' : '#e8b0ba')
+        : (i===highlightIdx ? '#A50034' : (v>=0 ? '#a9d3b3' : '#e8b4b4'))) }] },
     plugins: [barValueLabelsPlugin(v=>(v>=0?'+':'')+v+unit)],
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ left:8, right:8 } },
@@ -8430,29 +8433,28 @@ function moChipsHtml(chips){
     `</div>`;
 }
 // 지점 하나를 "한눈에" 보여주는 미니 카드 — 클릭하면 그 지점의 상세 한눈에 보기로 드릴다운
-function moBranchCardHtml(r, showManager){
+function moBranchCardHtml(r, showManager, isTopHalf){
   const m = r.m;
   const rate = m.g_tp_rate;
-  const rateColor = rate==null ? '#999' : rate>=100 ? 'var(--good)' : rate>=80 ? 'var(--warn)' : 'var(--bad)';
+  const accentColor = isTopHalf ? '#A50034' : '#e8b0ba';
   return `
-    <div class="card" style="padding:10px 12px;min-width:270px;flex:1;cursor:pointer;border-left:3px solid ${rateColor};transition:box-shadow .15s;" onclick="setMetricsOverviewBranch('${r.branchId}')">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
-        <div style="font-weight:700;font-size:13.5px;">${escapeHtml(r.branchName)}</div>
-        ${showManager?`<div class="muted" style="font-size:11px;white-space:nowrap;">${escapeHtml(r.manager||'-')}</div>`:''}
+    <div class="card mo-branch-card" style="cursor:pointer;border-left:3px solid ${accentColor};transition:box-shadow .15s;" onclick="setMetricsOverviewBranch('${r.branchId}')">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:4px;">
+        <div style="font-weight:700;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.branchName)}</div>
+        ${showManager?`<div class="muted" style="font-size:10px;white-space:nowrap;">${escapeHtml(r.manager||'-')}</div>`:''}
       </div>
-      <div style="font-size:18px;font-weight:800;color:${rateColor};margin-top:3px;">${moPct(rate)}</div>
-      <div class="progress-bar" style="margin-top:3px;height:6px;"><div style="width:${Math.min(rate||0,100)}%;background:${rateColor};"></div></div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:7px;color:var(--text-sub);">
-        <span>전년동기비 ${moYoy(m.g_tp_yoy)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:11px;margin-top:3px;color:var(--text-sub);">
+      <div style="font-size:15px;font-weight:800;color:var(--primary);margin-top:2px;">${moPct(rate)}</div>
+      <div class="progress-bar" style="margin-top:3px;height:5px;"><div style="width:${Math.min(rate||0,100)}%;background:var(--primary);"></div></div>
+      <div style="font-size:10px;margin-top:5px;color:var(--text-sub);white-space:nowrap;">동기비 ${moYoy(m.g_tp_yoy)}</div>
+      <div style="display:flex;justify-content:space-between;font-size:10px;margin-top:2px;color:var(--text-sub);">
         <span>구독 ${moPct(m.s_sp_ratio)}</span><span>고수익 ${moPct(m.h_sp_highRatio)}</span>
       </div>
     </div>`;
 }
 function moBranchGridHtml(rows, showManager){
   const sorted = rows.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
-  return `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">${sorted.map(r=>moBranchCardHtml(r, showManager)).join('')}</div>`;
+  const half = Math.ceil(sorted.length/2);
+  return `<div class="mo-branch-grid">${sorted.map((r,i)=>moBranchCardHtml(r, showManager, i<half)).join('')}</div>`;
 }
 function renderMetricsOverview(){
   const moEntry = moDataFor();
@@ -8518,8 +8520,8 @@ function renderMetricsOverview(){
   // 지점별 한눈에 보기 그리드 — 상단 필터 카드 안에 함께 배치해 관리자/탭 전환과 지점 선택을
   // 한 자리에서 할 수 있게 한다. 지점을 하나씩 눌러보지 않아도 전체 상태를 카드로 동시에 파악.
   const branchGridHtml = !selBranch ? `
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid #eef0f2;">
-      <div class="muted" style="font-size:12px;font-weight:700;margin-bottom:8px;">🏬 지점별 한눈에 보기 <span style="font-weight:400;">· ${selManager?escapeHtml(selManager)+' 소속 '+branchesInScope.length+'개 지점':'전체 '+branchesInScope.length+'개 지점'} · 카드를 클릭하면 해당 지점 상세로 이동</span></div>
+    <div class="card" style="margin-top:10px;">
+      <div class="muted" style="font-size:12px;font-weight:700;margin-bottom:8px;"><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 한눈에 보기 <span style="font-weight:400;">· ${selManager?escapeHtml(selManager)+' 소속 '+branchesInScope.length+'개 지점':'전체 '+branchesInScope.length+'개 지점'} · 카드를 클릭하면 해당 지점 상세로 이동</span></div>
       ${moBranchGridHtml(branchesInScope, !selManager)}
     </div>` : '';
 
@@ -8564,19 +8566,19 @@ function renderMetricsOverview(){
     if(selBranch){
       const labels = ['경북팀 전체 평균', ...(managerAgg?[`${selManager} 관리자 평균`]:[]), scopeLabel];
       const values = [teamAgg.g_tp_yoy, ...(managerAgg?[managerAgg.g_tp_yoy]:[]), agg.g_tp_yoy];
-      compareHtml = `<div class="card" style="margin-top:16px;">
-        <h3>📐 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
+      compareHtml = `<div class="card" style="margin-top:10px;">
+        <h3><i class="ti ti-ruler-2" aria-hidden="true"></i> 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
         <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
       </div>`;
-      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1));
+      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1, '%', true));
     } else if(selManager){
       const labels = ['경북팀 전체 평균', scopeLabel];
       const values = [teamAgg.g_tp_yoy, agg.g_tp_yoy];
-      compareHtml = `<div class="card" style="margin-top:16px;">
-        <h3>📐 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
+      compareHtml = `<div class="card" style="margin-top:10px;">
+        <h3><i class="ti ti-ruler-2" aria-hidden="true"></i> 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
         <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
       </div>`;
-      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1));
+      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1, '%', true));
     }
 
     // 순위 차트: 관리자 선택/지점 선택에 따라 "관리자별" 또는 "소속 지점별" 신장률·달성률 순위를 각각 막대 차트로
@@ -8606,22 +8608,22 @@ function renderMetricsOverview(){
         ${kpiCards}
       </div>
       ${compareHtml}
-      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;margin-top:16px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-top:10px;">
         <div style="flex:1;min-width:340px;">
           <div class="card">
-            <h3>📈 ${yoyRankTitle} <small>전년 동기 대비, 단위 %</small></h3>
+            <h3><i class="ti ti-trending-up" aria-hidden="true"></i> ${yoyRankTitle} <small>전년 동기 대비, 단위 %</small></h3>
             <div style="position:relative;height:${Math.max(160, yoyRankLabels.length*36)}px;"><canvas id="moYoyRankChart"></canvas></div>
           </div>
         </div>
         <div style="flex:1;min-width:340px;">
           <div class="card">
-            <h3>🎯 ${rateRankTitle} <small>단위 %</small></h3>
+            <h3><i class="ti ti-target-arrow" aria-hidden="true"></i> ${rateRankTitle} <small>단위 %</small></h3>
             <div style="position:relative;height:${Math.max(160, rateRankLabels.length*36)}px;"><canvas id="moRateRankChart"></canvas></div>
           </div>
         </div>
       </div>`;
-    moRenderChart('moYoyRankChart', moYoyBarConfig(yoyRankLabels, yoyRankValues, yoyHighlightIdx));
-    moRenderChart('moRateRankChart', moYoyBarConfig(rateRankLabels, rateRankValues, rateHighlightIdx));
+    moRenderChart('moYoyRankChart', moYoyBarConfig(yoyRankLabels, yoyRankValues, yoyHighlightIdx, '%', true));
+    moRenderChart('moRateRankChart', moYoyBarConfig(rateRankLabels, rateRankValues, rateHighlightIdx, '%', true));
   } else if(tab==='gross'){
     const scopeRows = selBranch ? rowsForAgg : branchesInScope;
     const gTpCurRankMap = {}; branchListRaw.slice().sort((a,b)=>(b.m.g_tp_cur||0)-(a.m.g_tp_cur||0)).forEach((x,i)=>{ gTpCurRankMap[x.key]=i+1; });
@@ -8639,7 +8641,7 @@ function renderMetricsOverview(){
     const chartRows = branchListRaw.slice().sort((a,b)=>(b.m.g_tp_rate||0)-(a.m.g_tp_rate||0));
     bodyHtml = `
       <div class="card">
-        <h3>📊 GROSS 판매 현황 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
+        <h3><i class="ti ti-chart-bar" aria-hidden="true"></i> GROSS 판매 현황 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
         <div style="overflow-x:auto;">
         <table>
           <thead><tr>
@@ -8660,11 +8662,11 @@ function renderMetricsOverview(){
         </div>
         <div class="small-note" style="margin-top:8px;">※ 구독목표/구독총판은 [구독] 시트 기준입니다. 인센티브(목표달성 예상금액 등)는 [지점별 인센티브(참고용)] 페이지에서 확인할 수 있습니다.</div>
       </div>
-      <div class="card" style="margin-top:16px;">
+      <div class="card" style="margin-top:10px;">
         <h3>지점별 총판 달성률 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 14개 지점'}</small></h3>
         <div style="position:relative;height:${Math.max(160, chartRows.length*32)}px;"><canvas id="moGrossBranchChart"></canvas></div>
       </div>`;
-    moRenderChart('moGrossBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.m.g_tp_rate), chartRows.findIndex(d=>d.key===selBranch), '%'));
+    moRenderChart('moGrossBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.m.g_tp_rate), chartRows.findIndex(d=>d.key===selBranch), '%', true));
   } else if(tab==='sub'){
     const sSpCurRankMap = {}; branchListRaw.slice().sort((a,b)=>(b.m.s_sp_cur||0)-(a.m.s_sp_cur||0)).forEach((x,i)=>{ sSpCurRankMap[x.key]=i+1; });
     const trs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
@@ -8680,7 +8682,7 @@ function renderMetricsOverview(){
     const chartRows = branchRankScopeRows.map(r=>({key:r.branchId,label:r.branchName,v:r.m.s_sp_rate})).sort((a,b)=>(b.v||0)-(a.v||0));
     bodyHtml = `
       <div class="card">
-        <h3>📱 구독 실적 현황 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
+        <h3><i class="ti ti-device-mobile" aria-hidden="true"></i> 구독 실적 현황 <small>${escapeHtml(scopeLabel)} · 단위 KK(백만원)</small></h3>
         <div style="overflow-x:auto;">
         <table>
           <thead><tr><th>지점</th><th>관리자</th><th>목표</th><th>총판 당월</th><th>총판 달성률</th><th>실판 당월</th><th>실판 달성률</th><th>실판 비중(전체 대비)</th><th>실판 건수</th></tr></thead>
@@ -8696,11 +8698,11 @@ function renderMetricsOverview(){
         </table>
         </div>
       </div>
-      <div class="card" style="margin-top:16px;">
+      <div class="card" style="margin-top:10px;">
         <h3>지점별 구독 실판 달성률 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 14개 지점'}</small></h3>
         <div style="position:relative;height:${Math.max(160, chartRows.length*32)}px;"><canvas id="moSubBranchChart"></canvas></div>
       </div>`;
-    moRenderChart('moSubBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%'));
+    moRenderChart('moSubBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%', true));
   } else if(tab==='high'){
     const hRatioRankMap = {}; branchListRaw.slice().sort((a,b)=>(b.m.h_sp_highRatio||0)-(a.m.h_sp_highRatio||0)).forEach((x,i)=>{ hRatioRankMap[x.key]=i+1; });
     const trs = (selBranch ? rowsForAgg : branchesInScope).map(r=>{
@@ -8718,7 +8720,7 @@ function renderMetricsOverview(){
     const chartRows = branchRankScopeRows.map(r=>({key:r.branchId,label:r.branchName,v:r.m.h_sp_highRatio})).sort((a,b)=>(b.v||0)-(a.v||0));
     bodyHtml = `
       <div class="card">
-        <h3>💎 고수익(HIGH-END) 판매 비중 <small>${escapeHtml(scopeLabel)}</small></h3>
+        <h3><i class="ti ti-diamond" aria-hidden="true"></i> 고수익(HIGH-END) 판매 비중 <small>${escapeHtml(scopeLabel)}</small></h3>
         <div style="overflow-x:auto;">
         <table>
           <thead><tr><th rowspan="2">지점</th><th rowspan="2">관리자</th><th colspan="3">총판</th><th colspan="3">실판</th></tr>
@@ -8734,27 +8736,29 @@ function renderMetricsOverview(){
         </table>
         </div>
       </div>
-      <div class="card" style="margin-top:16px;">
+      <div class="card" style="margin-top:10px;">
         <h3>지점별 고수익 실판 비중 순위 <small>${selManager?escapeHtml(selManager)+' 소속':'전체 14개 지점'}</small></h3>
         <div style="position:relative;height:${Math.max(160, chartRows.length*32)}px;"><canvas id="moHighBranchChart"></canvas></div>
       </div>`;
-    moRenderChart('moHighBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%'));
+    moRenderChart('moHighBranchChart', moYoyBarConfig(chartRows.map(d=>d.label), chartRows.map(d=>d.v), chartRows.findIndex(d=>d.key===selBranch), '%', true));
   }
 
   return `
+    <div class="mo-plain">
     <div class="page-title">지표 한 눈에 보기</div>
     <div style="font-size:13px;font-weight:600;color:var(--text-sub);margin:-4px 0 8px;">(LG전자DATA 기준)</div>
     <div class="page-desc">기준일자 <b>${moEntry.asOfDate}</b> (D-1, 전일) · ${moEntry.rows.length}개 지점 · 전체 직원 조회 가능</div>
     ${moPeriodSelectorHtml()}
-    <div class="card" style="margin-bottom:16px;">
+    <div class="card" style="margin-bottom:10px;">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
         <div>${managerPills}</div>
         <div>${branchSelectHtml}</div>
       </div>
-      <div style="margin-top:10px;">${tabPillsHtml}</div>
-      ${branchGridHtml}
+      <div style="margin-top:8px;">${tabPillsHtml}</div>
     </div>
-    ${bodyHtml}`;
+    ${bodyHtml}
+    ${branchGridHtml}
+    </div>`;
 }
 
 
@@ -15167,7 +15171,7 @@ function renderEduReminderBanner(){
   return `
     <div class="card" style="margin-bottom:16px;border:1.5px solid var(--primary);background:#fff7f9;">
       <div class="flex-between" style="margin-bottom:6px;">
-        <div class="ai-title" style="margin:0;">🔔 교육 안내 및 미이수 확인</div>
+        <div class="ai-title" style="margin:0;"><i class="ti ti-bell" aria-hidden="true"></i> 교육 안내 및 미이수 확인</div>
         <button class="btn btn-sm" onclick="dismissEduReminders()">닫기</button>
       </div>
       ${msgs.map(m=>`<div style="margin-bottom:6px;">${m}</div>`).join('')}

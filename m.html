@@ -444,6 +444,17 @@
   .home-plain .stat-tile-blue,.home-plain .stat-tile-pink,.home-plain .stat-tile-purple,
   .home-plain .stat-tile-green,.home-plain .stat-tile-amber{background:#fff;color:var(--text);}
   .home-plain #homeWidgetList{gap:10px;margin-bottom:0;}
+  /* 2026.09: 지표 한 눈에 보기 전용 - 홈대시보드와 동일하게 파스텔 배경 제거하고
+     흰 바탕+검은 글씨, 강조 수치/그래프는 붉은색(--primary) 하나로 통일. 여백도 촘촘하게. */
+  .mo-plain .card{padding:10px 12px;}
+  .mo-plain h3{margin:0 0 6px;font-size:14px;}
+  .mo-plain .page-desc{margin-bottom:6px;}
+  .mo-plain .stat-tile{background:#fff;border:1px solid var(--border);color:var(--text);}
+  .mo-plain .stat-tile-blue,.mo-plain .stat-tile-pink,.mo-plain .stat-tile-purple,
+  .mo-plain .stat-tile-green,.mo-plain .stat-tile-amber{background:#fff;color:var(--text);}
+  .mo-plain .badge.good,.mo-plain .badge.warn,.mo-plain .badge.bad{background:#f2f2f4;color:var(--text);}
+  .mo-branch-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;}
+  .mo-branch-card{padding:7px 8px;}
   .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
   .badge.good{background:#e7f8ee;color:var(--good);}
   .badge.warn{background:#fff6e0;color:var(--warn);}
