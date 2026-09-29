@@ -4190,6 +4190,11 @@ function loginHistoryLabel(empId){
   if(!s) return '기록 없음';
   return `${s.count}회 · 최근 ${String(s.last||'').slice(0,16).replace('T',' ')}`;
 }
+// 시스템 관리 카드 제목 옆에 붙는 ⓘ 아이콘 - 평소엔 숨겨두는 부가 설명을 마우스오버 시에만
+// 말풍선으로 보여준다(카드 높이가 설명 길이에 따라 들쭉날쭉해지는 것을 막기 위함, 2026.09).
+function sysInfoIcon(html){
+  return `<span class="sysadmin-info">i<span class="sysadmin-tip">${html}</span></span>`;
+}
 function renderSystemAdmin(){
   if(!isSystemAdmin()){
     return `<div class="page-title">시스템 관리</div><div class="page-desc">관리자만 접근할 수 있는 화면입니다.</div>`;
@@ -4197,60 +4202,12 @@ function renderSystemAdmin(){
   const nowWeekIdx = currentGoalsWeekIndex();
   return `
     <div class="page-title">시스템 관리</div>
-    <div class="page-desc">관리자 전용 화면입니다. 계정(매니저/사원) 관리, 신규 계정 생성, 각종 데이터 업로드를 이 화면에서 한 번에 처리할 수 있습니다.</div>
+    <div class="page-desc">관리자 전용 화면입니다. 계정(매니저/사원) 관리, 신규 계정 생성, 각종 데이터 업로드를 이 화면에서 한 번에 처리할 수 있습니다. 제목 옆 <b>i</b> 아이콘에 마우스를 올리면 자세한 설명을 볼 수 있습니다.</div>
 
     <div class="sysadmin-grid">
 
-<div class="card">
-      <h3>스크린세이버 설정</h3>
-      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">로그인한 화면에서 10분간 마우스·키보드 등 사용이 없으면 자동으로 스크린세이버가 표시됩니다(화면을 클릭하면 바로 해제). 자리 비움 시 화면 내용이 노출되는 것을 막기 위한 기능이며, 필요 시 꺼둘 수 있습니다.</div>
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
-        <span class="toggle-switch">
-          <input type="checkbox" id="screensaverToggle" ${DB.screensaverEnabled ? 'checked' : ''} onchange="toggleScreensaverSetting(this.checked)">
-          <span class="slider"></span>
-        </span>
-        <span style="font-size:13.5px;">${DB.screensaverEnabled ? '사용 중' : '사용 안 함'}</span>
-      </label>
-    </div>
-
-<div class="card">
-      <h3>DB 용량 최적화</h3>
-      <div id="dbCapacityGauge">${dbCapacityGaugeHtml()}</div>
-      <div class="muted" style="margin:8px 0;font-size:12.5px;">그동안 등록된 사진 첨부가 많아지면 전체 저장/불러오기 속도가 느려지거나 오류가 발생할 수 있습니다. 아래 버튼을 누르면 기존에 저장된 사진들을 화질 손상 없이 용량만 압축합니다. (새로 올리는 사진은 자동으로 압축되어 저장됩니다)</div>
-      <button class="btn btn-primary" onclick="optimizeDbImages()">기존 사진 압축 실행</button>
-      <div class="muted" style="margin:10px 0 8px;font-size:12.5px;">2026-08부터 새로 올리는 사진은 별도 서버 저장소(Storage)에 저장되어 DB 용량에 거의 영향을 주지 않지만, 그 전에 올라온 사진/첨부파일은 여전히 DB 안에 그대로 들어있어 서버 트래픽(용량 초과 시 저장 오류의 원인)을 많이 차지합니다. 아래 버튼으로 예전 사진들을 서버 저장소로 옮기면 트래픽이 크게 줄어듭니다.</div>
-      <button class="btn btn-primary" onclick="migrateDbImagesToStorage()">기존 사진 Storage로 이전(트래픽 절감)</button>
-      <div id="dbOptStatus" class="small-note" style="margin-top:6px;"></div>
-    </div>
-
-<div class="card">
-      <h3>전체 데이터 백업 다운로드</h3>
-      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">공지사항·재고·실적·계정 등 현재 저장된 전체 데이터를 하나의 백업 파일(JSON)로 내려받습니다. 실수로 데이터가 손상되거나 손실됐을 때를 대비해 주기적으로 받아 안전한 곳(PC/USB 등)에 보관해 두는 것을 권장합니다.</div>
-      <button class="btn btn-primary" onclick="downloadDbBackup()">전체 데이터 백업 다운로드</button>
-      <div id="dbBackupMsg" class="small-note" style="margin-top:6px;"></div>
-    </div>
-
-<div class="card">
-      <h3>백업 파일로 복원 <small style="color:var(--bad);">(주의 - 되돌릴 수 없음)</small></h3>
-      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">위에서 받아둔 백업 파일(.json)을 선택하면 현재 저장된 모든 데이터를 그 백업 시점 상태로 완전히 되돌립니다. 진행 전 확인창이 한 번 더 뜨고, 복원 직전 현재 상태도 안전을 위해 자동으로 백업 다운로드됩니다.</div>
-      <input type="file" accept=".json" onchange="handleDbRestoreFile(event)">
-      <div id="dbRestoreMsg" class="small-note" style="margin-top:6px;"></div>
-    </div>
-
-<div class="card sysadmin-span4">
-      <div class="flex-between" style="align-items:center;">
-        <h3 style="margin:0;">저장 충돌 이력 <small>(여러 매니저가 거의 동시에 저장할 때 자동 병합된 기록)</small></h3>
-        <button class="btn btn-sm" id="conflictLogToggleBtn" onclick="toggleConflictLogVisible()">펼쳐보기 ▾</button>
-      </div>
-      <div id="conflictLogWrap" style="display:none;margin-top:10px;">
-        <div class="muted" style="margin-bottom:10px;font-size:12.5px;">두 사람이 비슷한 시간에 각자 다른 내용을 저장하면, 서버가 자동으로 두 내용을 모두 살려 병합합니다. 최근에 이런 병합이 있었다면 아래에 표시됩니다 - 등록한 내용이 잘 반영됐는지 궁금할 때 참고하세요.</div>
-        <div id="conflictLogList" class="muted" style="font-size:12.5px;">불러오는 중...</div>
-      </div>
-    </div>
-
 <div class="card sysadmin-span2">
-      <h3>신규 계정 생성</h3>
-      <div class="muted" style="margin-bottom:8px;font-size:12.5px;">이름과 사번만 입력해도 계정이 생성됩니다 (초기 비밀번호 1234). 지점명과 직책도 함께 지정할 수 있습니다.</div>
+      <h3>신규 계정 생성${sysInfoIcon('이름과 사번만 입력해도 계정이 생성됩니다 (초기 비밀번호 1234). 지점명과 직책도 함께 지정할 수 있습니다.')}</h3>
       <div class="form-row">
         <div class="field"><label>사번</label><input id="suNewEmpId" placeholder="예: 1234567" style="width:120px"></div>
         <div class="field"><label>이름</label><input id="suNewName" placeholder="예: 홍길동" style="width:110px"></div>
@@ -4262,39 +4219,41 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>계정 관리 <small>(현재 등록된 매니저/사원 명단)</small></h3>
-      <div class="muted" style="margin-bottom:10px;font-size:12.5px;">전체 계정 목록 조회, 사번·이름·지점명·직책 수정, 비밀번호 초기화·변경, 접속 기록 확인은 별도 화면에서 처리합니다. 계정 수가 많아지면 이 화면이 길어져 다른 관리 항목을 찾기 어려워지는 것을 막기 위함입니다.</div>
+      <h3>계정 관리 <small>(현재 등록된 매니저/사원 명단)</small>${sysInfoIcon('전체 계정 목록 조회, 사번·이름·지점명·직책 수정, 비밀번호 초기화·변경, 접속 기록 확인은 별도 화면에서 처리합니다. 계정 수가 많아지면 이 화면이 길어져 다른 관리 항목을 찾기 어려워지는 것을 막기 위함입니다.')}</h3>
       <button class="btn btn-primary" onclick="renderTab('accountManagement')">계정관리 상세</button>
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>📊 지표 한 눈에 보기 파일 업로드(담당자 : 박귀복C) <small>("일일실적 현황" 파일 · MASTER/Gross(CC포함)/구독/고수익 시트 포함 .xlsb/.xlsx)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"(인터비즈) 일일실적 현황" 파일을 그대로 올리면 됩니다. 파일명의 날짜를 기준일자(D-1, 전일)로 자동 인식하고, Gross(CC포함)/구독/고수익 시트에서 우리 팀 소속 지점(이마트 채널)만 자동으로 골라내어 [지표 한 눈에 보기] 페이지의 관리자별·지점별 GROSS 총판/실판, 구독, 고수익(HIGH-END) 비중 지표를 갱신합니다. 같은 달 안에서 다시 올리면 그 달 자료만 최신 값으로 갱신되고, 다른 달(예: 9월) 파일을 올리면 이전 달(8월) 자료는 지워지지 않고 그대로 보관되어 화면에서 달을 선택해 다시 볼 수 있습니다.<br>※ 파일 용량이 커서(약 20~30MB) 읽어오는 데 30초 이상 걸릴 수 있습니다. 업로드 중 메시지가 뜨면 창을 벗어나지 말고 잠시 기다려 주세요.
-      ${moUploadStatusHtml(DB.metricsOverview.byPeriod, d=>d.rows.length+'개 지점', ' 기준(D-1)')}</div>
+      <h3>📊 지표 한 눈에 보기 파일 업로드(담당자 : 박귀복C)${sysInfoIcon('"(인터비즈) 일일실적 현황" 파일("일일실적 현황" 파일 · MASTER/Gross(CC포함)/구독/고수익 시트 포함 .xlsb/.xlsx)을 그대로 올리면 됩니다. 파일명의 날짜를 기준일자(D-1, 전일)로 자동 인식하고, Gross(CC포함)/구독/고수익 시트에서 우리 팀 소속 지점(이마트 채널)만 자동으로 골라내어 [지표 한 눈에 보기] 페이지의 관리자별·지점별 GROSS 총판/실판, 구독, 고수익(HIGH-END) 비중 지표를 갱신합니다. 같은 달 안에서 다시 올리면 그 달 자료만 최신 값으로 갱신되고, 다른 달(예: 9월) 파일을 올리면 이전 달(8월) 자료는 지워지지 않고 그대로 보관되어 화면에서 달을 선택해 다시 볼 수 있습니다.<br>※ 파일 용량이 커서(약 20~30MB) 읽어오는 데 30초 이상 걸릴 수 있습니다. 업로드 중 메시지가 뜨면 창을 벗어나지 말고 잠시 기다려 주세요.')}</h3>
+      <div class="small-note">${moUploadStatusHtml(DB.metricsOverview.byPeriod, d=>d.rows.length+'개 지점', ' 기준(D-1)')}</div>
       <input type="file" id="metricsOverviewFileInput" accept=".xlsb,.xlsx,.xls" onchange="handleMetricsOverviewFile(event)">
       <div id="metricsOverviewUploadMsg" class="small-note"></div>
     </div>
 
+<div class="card sysadmin-span2" style="background:#fff7f9;border-color:#f0c7d4;">
+      <h3>📁 목표/실적 파일 업로드(담당자 : 배지우C)${sysInfoIcon(`"목표" 시트(구독목표/판매 금액 목표 표)와 "실판매 목표대비 실적조회" 시트가 들어있는 파일(.xlsx)을 그대로 올리면, 지점별 GROSS 목표·구독 금액 목표·팀원별 누적 실적이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리] 페이지 데이터로 한 번에 갱신됩니다. 오늘(${todayStr()})은 ${nowWeekIdx}주차로 인식되어, 주차별 달성율 계산용 실적 스냅샷으로 함께 기록됩니다. 지난 달로 넘어가면 지난 달 데이터는 그대로 보존되고, 이번 달 실적만 새로 올리면 됩니다.`)}</h3>
+      <div class="small-note">${uploadLogStatusHtml('goalsFile').replace(/^<br>/,'')}</div>
+      <input type="file" id="goalsFileInput" accept=".xlsx,.xls" onchange="handleGoalsFile(event)">
+      <div id="goalsUploadMsg" class="small-note"></div>
+    </div>
+
 <div class="card sysadmin-span2">
-      <h3>📱 목표관리(MSIS기준)DATA업로드(담당자 : 박귀복C) <small>("구독 총판 수기 실적 현황" 파일 · "지점별 구독 실적현황 (N월)수기" 시트)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"지점별 구독 실적현황 (N월)수기" 시트(시트명에 "구독"과 "수기"가 들어있으면 자동으로 찾습니다)를 그대로 올리면, 지점·매니저별 구독 실적(수량/금액)이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리(MSIS기준)] 페이지의 구독 실적 데이터로 반영됩니다. [구독 실적] 페이지에는 영향을 주지 않습니다.
-      ${goalsSubActualsStatusHtml()}</div>
+      <h3>📱 목표관리(MSIS기준)DATA업로드(담당자 : 박귀복C)${sysInfoIcon(`"구독 총판 수기 실적 현황" 파일의 "지점별 구독 실적현황 (N월)수기" 시트(시트명에 "구독"과 "수기"가 들어있으면 자동으로 찾습니다)를 그대로 올리면, 지점·매니저별 구독 실적(수량/금액)이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리(MSIS기준)] 페이지의 구독 실적 데이터로 반영됩니다. [구독 실적] 페이지에는 영향을 주지 않습니다.`)}</h3>
+      <div class="small-note">${goalsSubActualsStatusHtml()}</div>
       <input type="file" id="subSalesFileInput" accept=".xlsx,.xls" onchange="handleGoalsSubscriptionManualFile(event)">
       <div id="subSalesUploadMsg" class="small-note"></div>
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>🏆 구독 Grade 수당 파일 업로드(담당자 : 박귀복C) <small>(같은 파일의 "1. 매니저 구독 Grade" 시트)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">매니저(직원) 개인별 구독 판매 Grade 시상금 명단을 올리면 [지점별 인센티브(참고용)] 페이지에서 지점별로 매니저 개별 Grade 수당을 조회할 수 있습니다. 월별로 완전히 분리 저장되어 다음 달이 되면 자동으로 "미정" 처리됩니다(별도 조치 불필요).
-      ${moUploadStatusHtml(DB.subGradeIncentive.byPeriod, d=>Object.keys(d.byBranchKey||{}).length+'개 지점')}</div>
+      <h3>🏆 구독 Grade 수당 파일 업로드(담당자 : 박귀복C)${sysInfoIcon('같은 파일의 "1. 매니저 구독 Grade" 시트 - 매니저(직원) 개인별 구독 판매 Grade 시상금 명단을 올리면 [지점별 인센티브(참고용)] 페이지에서 지점별로 매니저 개별 Grade 수당을 조회할 수 있습니다. 월별로 완전히 분리 저장되어 다음 달이 되면 자동으로 "미정" 처리됩니다(별도 조치 불필요).')}</h3>
+      <div class="small-note">${moUploadStatusHtml(DB.subGradeIncentive.byPeriod, d=>Object.keys(d.byBranchKey||{}).length+'개 지점')}</div>
       <input type="file" id="subGradeFileInput" accept=".xlsx,.xls" onchange="handleSubGradeFile(event)">
       <div id="subGradeUploadMsg" class="small-note"></div>
       <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="resetSubGradeIncentiveForPeriod()">이번 달 자료 초기화</button>
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>근무일정 파일 업로드(담당자 : 배지우C) <small>(Shiftee 내보내기 .xlsx · 오늘 출근 현황에 반영)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">Shiftee에서 내보낸 월별 근무일정 파일을 올리면 사번을 기준으로 자동 매칭되어, 홈 대시보드와 [전체 지점 현황]의 "오늘 출근 현황/근태"에 출퇴근시간·휴무·대체휴무가 실제 일정 그대로 표시됩니다. 지점별로 파일이 따로 있으면 순서에 상관없이 하나씩 올리면 됩니다 — 사번 단위로 합쳐지므로 먼저 올린 다른 지점 데이터는 지워지지 않습니다. 업로드할 때마다 2개월보다 오래된 옛 일정은 자동으로 정리됩니다.</div>
+      <h3>근무일정 파일 업로드(담당자 : 배지우C)${sysInfoIcon('Shiftee 내보내기 .xlsx · 오늘 출근 현황에 반영 - Shiftee에서 내보낸 월별 근무일정 파일을 올리면 사번을 기준으로 자동 매칭되어, 홈 대시보드와 [전체 지점 현황]의 "오늘 출근 현황/근태"에 출퇴근시간·휴무·대체휴무가 실제 일정 그대로 표시됩니다. 지점별로 파일이 따로 있으면 순서에 상관없이 하나씩 올리면 됩니다 — 사번 단위로 합쳐지므로 먼저 올린 다른 지점 데이터는 지워지지 않습니다. 업로드할 때마다 2개월보다 오래된 옛 일정은 자동으로 정리됩니다.')}</h3>
       <input type="file" id="workScheduleFileInput" accept=".xlsx,.xls" onchange="handleWorkScheduleFile(event)">
       <div id="workScheduleUploadMsg" class="small-note"></div>
       ${(DB.workSchedule.uploads&&DB.workSchedule.uploads.length>0) ? (
@@ -4304,15 +4263,35 @@ function renderSystemAdmin(){
       <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="manualCleanupWorkSchedule()">지난 데이터 정리</button>
     </div>
 
-<div class="card sysadmin-span2" style="background:#fff7f9;border-color:#f0c7d4;">
-      <h3>📁 목표/실적 파일 업로드(담당자 : 배지우C) <small>("목표" 시트 + "실판매 목표대비 실적조회" 시트 포함 .xlsx)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"목표" 시트(구독목표/판매 금액 목표 표)와 "실판매 목표대비 실적조회" 시트가 들어있는 파일을 그대로 올리면, 지점별 GROSS 목표·구독 금액 목표·팀원별 누적 실적이 이번 달(${goalsPeriodLabel(currentGoalsPeriod())}) [목표 관리] 페이지 데이터로 한 번에 갱신됩니다. 오늘(${todayStr()})은 ${nowWeekIdx}주차로 인식되어, 주차별 달성율 계산용 실적 스냅샷으로 함께 기록됩니다. 지난 달로 넘어가면 지난 달 데이터는 그대로 보존되고, 이번 달 실적만 새로 올리면 됩니다.${uploadLogStatusHtml('goalsFile')}</div>
-      <input type="file" id="goalsFileInput" accept=".xlsx,.xls" onchange="handleGoalsFile(event)">
-      <div id="goalsUploadMsg" class="small-note"></div>
+<div class="card sysadmin-span2">
+      <h3>재고 조회 파일 업로드(담당자 : 이광환B)${sysInfoIcon('.xlsx / .csv · 재고장 데이터만 별도 갱신 - "재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.')}</h3>
+      <div class="small-note">${uploadLogStatusHtml('inventory').replace(/^<br>/,'')}</div>
+      <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
+      <div id="inventoryUploadMsg" class="small-note"></div>
     </div>
 
 <div class="card sysadmin-span2">
-      <h3>교육 이수율 데이터 업로드(담당자 : 배지우C)</h3>
+      <h3>소진집중 소진율 카운팅 기준선${sysInfoIcon('관리자가 원하는 시점에 저장 · 이후 재고 파일을 새로 올릴 때마다 이 기준과 비교해 소진완료/소진율을 계산 - 지금 반영되어 있는(가장 최근 업로드) 재고 데이터의 소진집중 품목별 수량을 기준선으로 저장합니다. 저장 시점 이후 새 재고 파일을 올리면, 기준선 대비 수량이 0이 되었거나 파일에서 아예 사라진(단종/철수 등) 소진집중 품목은 자동으로 "소진완료"로 표시되고, 소진 대수·소진율이 재고 조회 화면에 함께 표시됩니다.')}</h3>
+      <div class="muted" style="margin-bottom:8px;font-size:12px;">${DB.inventoryClearanceBaseline ? `현재 저장된 기준선: <b>${DB.inventoryClearanceBaseline.date}</b> 기준 · ${Object.keys(DB.inventoryClearanceBaseline.rows||{}).length}건` : '아직 저장된 기준선이 없습니다.'}</div>
+      <div class="form-row" style="align-items:flex-end;">
+        <div class="field">
+          <label>소진 카운팅 기준 일자(시작일)</label>
+          <input type="date" id="clearanceBaselineDateInput" value="${DB.inventoryClearanceBaseline ? DB.inventoryClearanceBaseline.date : ''}">
+        </div>
+        <button class="btn btn-primary" onclick="saveClearanceBaseline()">현재 상태를 기준선으로 저장</button>
+      </div>
+      <div id="clearanceBaselineMsg" class="small-note"></div>
+    </div>
+
+<div class="card sysadmin-span4">
+      <h3>카카오 플친 데이터 업로드(담당자 : 서영현D)${sysInfoIcon('"○○ 주차별 카카오 플러스 친구 추가 활동 결과" 형식(관리자/지점명/목표/총계/달성율/주차별 누적/증감)의 파일을 그대로 올리면 됩니다. 월별로 시트가 나뉜 파일(7월/8월/9월 등)을 올리면 이번 달 시트를 기준으로 지점별·주차별 누적 데이터는 물론 카카오 플친 관리 현황의 목표·전월 누적·전주 누적까지 자동으로 반영됩니다(다음 달엔 "10월" 시트가 생기면 자동으로 인식됩니다). 지점/주차(또는 날짜)/플친수 컬럼만 있는 단순한 파일도 함께 지원합니다.')}</h3>
+      <div class="small-note">${uploadLogStatusHtml('kakaoFriends').replace(/^<br>/,'')}</div>
+      <input type="file" accept=".xlsx,.xls,.csv" onchange="handleKakaoFriendsFile(event)">
+      <div id="kakaoFriendsUploadMsg" class="small-note"></div>
+    </div>
+
+<div class="card sysadmin-span4">
+      <h3>교육 이수율 데이터 업로드(담당자 : 배지우C)${sysInfoIcon('월간test는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>AI R/P는 "대상자요약" 파일(사번/이름/지점/상태/제출횟수/총점 컬럼) 그대로 올리면 됩니다 — <b>상태</b> 컬럼이 "완료"면 실행완료, 그 외("미완료" 등)면 미실행으로 매칭되고, 제출횟수·총점도 함께 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).' + (DB.eduVideoRich ? ` 현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}` : ''))}</h3>
       <div class="form-row" style="align-items:flex-start;flex-wrap:wrap;">
         <div class="field">
           <label>화상교육 이수율 <span class="muted" style="font-weight:400;">(1~4차 회차별 서식)</span></label>
@@ -4339,37 +4318,47 @@ function renderSystemAdmin(){
           <button type="button" class="btn btn-sm" style="margin-top:6px;" onclick="resetEduCompletion('aiRp')">초기화</button>
         </div>
       </div>
-      <div class="small-note">월간test는 사번/이름/이수여부(완료·이수·Y 등)/기간 컬럼이 있는 파일을 올리면 자동으로 반영됩니다.<br>AI R/P는 "대상자요약" 파일(사번/이름/지점/상태/제출횟수/총점 컬럼) 그대로 올리면 됩니다 — <b>상태</b> 컬럼이 "완료"면 실행완료, 그 외("미완료" 등)면 미실행으로 매칭되고, 제출횟수·총점도 함께 반영됩니다.<br>화상교육은 담당명/SR/채널/지점명/사번/사원명과 회차별(1~4차) 교육명·이수여부가 포함된 파일을 그대로 올리면, 파일 안의 <b>기준날짜</b>를 자동으로 읽어 반영합니다(별도 날짜 입력 불필요).${DB.eduVideoRich ? ` <b>현재 반영된 기준날짜: ${DB.eduVideoRich.refDate}</b>` : ''}</div>
     </div>
 
-<div class="card sysadmin-span2">
-      <h3>재고 조회 파일 업로드(담당자 : 이광환B) <small>(.xlsx / .csv · 재고장 데이터만 별도 갱신)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">"재고장" 시트(또는 같은 형식의 파일)를 올리면 재고 데이터만 최신 스냅샷으로 갱신됩니다. 매니저가 화면에서 직접 입력한 구분·상태·판매상태·비고·진열일자·진열소진일자는 새 파일이 올라와도 수정하기 전까지 절대 바뀌지 않고 그대로 유지됩니다.<br>파일 안에 "소진리스트" 시트가 함께 있으면, 해당 상품코드와 일치하는 재고 조회 항목의 상품명 옆에 깜빡이는 "소진집중" 알림이 자동으로 표시됩니다.${uploadLogStatusHtml('inventory')}</div>
-      <input type="file" id="inventoryFileInput" accept=".xlsx,.xls,.csv" onchange="handleInventoryFile(event)">
-      <div id="inventoryUploadMsg" class="small-note"></div>
+<div class="card">
+      <h3>스크린세이버 설정${sysInfoIcon('로그인한 화면에서 10분간 마우스·키보드 등 사용이 없으면 자동으로 스크린세이버가 표시됩니다(화면을 클릭하면 바로 해제). 자리 비움 시 화면 내용이 노출되는 것을 막기 위한 기능이며, 필요 시 꺼둘 수 있습니다.')}</h3>
+      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;">
+        <span class="toggle-switch">
+          <input type="checkbox" id="screensaverToggle" ${DB.screensaverEnabled ? 'checked' : ''} onchange="toggleScreensaverSetting(this.checked)">
+          <span class="slider"></span>
+        </span>
+        <span style="font-size:13.5px;">${DB.screensaverEnabled ? '사용 중' : '사용 안 함'}</span>
+      </label>
     </div>
 
-<div class="card sysadmin-span2">
-      <h3>소진집중 소진율 카운팅 기준선 <small>(관리자가 원하는 시점에 저장 · 이후 재고 파일을 새로 올릴 때마다 이 기준과 비교해 소진완료/소진율을 계산)</small></h3>
-      <div class="muted" style="margin-bottom:10px;">
-        지금 반영되어 있는(가장 최근 업로드) 재고 데이터의 소진집중 품목별 수량을 기준선으로 저장합니다. 저장 시점 이후 새 재고 파일을 올리면, 기준선 대비 수량이 0이 되었거나 파일에서 아예 사라진(단종/철수 등) 소진집중 품목은 자동으로 "소진완료"로 표시되고, 소진 대수·소진율이 재고 조회 화면에 함께 표시됩니다.
-        ${DB.inventoryClearanceBaseline ? `<br>현재 저장된 기준선: <b>${DB.inventoryClearanceBaseline.date}</b> 기준 · ${Object.keys(DB.inventoryClearanceBaseline.rows||{}).length}건` : '<br>아직 저장된 기준선이 없습니다.'}
-      </div>
-      <div class="form-row" style="align-items:flex-end;">
-        <div class="field">
-          <label>소진 카운팅 기준 일자(시작일)</label>
-          <input type="date" id="clearanceBaselineDateInput" value="${DB.inventoryClearanceBaseline ? DB.inventoryClearanceBaseline.date : ''}">
-        </div>
-        <button class="btn btn-primary" onclick="saveClearanceBaseline()">현재 상태를 기준선으로 저장</button>
-      </div>
-      <div id="clearanceBaselineMsg" class="small-note"></div>
+<div class="card">
+      <h3>DB 용량 최적화${sysInfoIcon('그동안 등록된 사진 첨부가 많아지면 전체 저장/불러오기 속도가 느려지거나 오류가 발생할 수 있습니다. "기존 사진 압축 실행"을 누르면 기존에 저장된 사진들을 화질 손상 없이 용량만 압축합니다(새로 올리는 사진은 자동으로 압축되어 저장됩니다).<br>2026-08부터 새로 올리는 사진은 별도 서버 저장소(Storage)에 저장되어 DB 용량에 거의 영향을 주지 않지만, 그 전에 올라온 사진/첨부파일은 여전히 DB 안에 그대로 들어있어 서버 트래픽(용량 초과 시 저장 오류의 원인)을 많이 차지합니다. "기존 사진 Storage로 이전"을 누르면 예전 사진들을 서버 저장소로 옮겨 트래픽이 크게 줄어듭니다.')}</h3>
+      <div id="dbCapacityGauge">${dbCapacityGaugeHtml()}</div>
+      <button class="btn btn-primary" style="margin-top:8px;" onclick="optimizeDbImages()">기존 사진 압축 실행</button>
+      <button class="btn btn-primary" style="margin-top:6px;" onclick="migrateDbImagesToStorage()">기존 사진 Storage로 이전(트래픽 절감)</button>
+      <div id="dbOptStatus" class="small-note" style="margin-top:6px;"></div>
+    </div>
+
+<div class="card">
+      <h3>전체 데이터 백업 다운로드${sysInfoIcon('공지사항·재고·실적·계정 등 현재 저장된 전체 데이터를 하나의 백업 파일(JSON)로 내려받습니다. 실수로 데이터가 손상되거나 손실됐을 때를 대비해 주기적으로 받아 안전한 곳(PC/USB 등)에 보관해 두는 것을 권장합니다.')}</h3>
+      <button class="btn btn-primary" onclick="downloadDbBackup()">전체 데이터 백업 다운로드</button>
+      <div id="dbBackupMsg" class="small-note" style="margin-top:6px;"></div>
+    </div>
+
+<div class="card">
+      <h3>백업 파일로 복원 <small style="color:var(--bad);">(주의 - 되돌릴 수 없음)</small>${sysInfoIcon('위에서 받아둔 백업 파일(.json)을 선택하면 현재 저장된 모든 데이터를 그 백업 시점 상태로 완전히 되돌립니다. 진행 전 확인창이 한 번 더 뜨고, 복원 직전 현재 상태도 안전을 위해 자동으로 백업 다운로드됩니다.')}</h3>
+      <input type="file" accept=".json" onchange="handleDbRestoreFile(event)">
+      <div id="dbRestoreMsg" class="small-note" style="margin-top:6px;"></div>
     </div>
 
 <div class="card sysadmin-span4">
-      <h3>카카오 플친 데이터 업로드(담당자 : 서영현D)</h3>
-      <div class="muted" style="margin-bottom:8px;font-size:12.5px;">"○○ 주차별 카카오 플러스 친구 추가 활동 결과" 형식(관리자/지점명/목표/총계/달성율/주차별 누적/증감)의 파일을 그대로 올리면 됩니다. 월별로 시트가 나뉜 파일(7월/8월/9월 등)을 올리면 이번 달 시트를 기준으로 지점별·주차별 누적 데이터는 물론 카카오 플친 관리 현황의 목표·전월 누적·전주 누적까지 자동으로 반영됩니다(다음 달엔 "10월" 시트가 생기면 자동으로 인식됩니다). 지점/주차(또는 날짜)/플친수 컬럼만 있는 단순한 파일도 함께 지원합니다.${uploadLogStatusHtml('kakaoFriends')}</div>
-      <input type="file" accept=".xlsx,.xls,.csv" onchange="handleKakaoFriendsFile(event)">
-      <div id="kakaoFriendsUploadMsg" class="small-note"></div>
+      <div class="flex-between" style="align-items:center;">
+        <h3 style="margin:0;">저장 충돌 이력 <small>(여러 매니저가 거의 동시에 저장할 때 자동 병합된 기록)</small>${sysInfoIcon('두 사람이 비슷한 시간에 각자 다른 내용을 저장하면, 서버가 자동으로 두 내용을 모두 살려 병합합니다. 최근에 이런 병합이 있었다면 펼쳐보기에 표시됩니다 - 등록한 내용이 잘 반영됐는지 궁금할 때 참고하세요.')}</h3>
+        <button class="btn btn-sm" id="conflictLogToggleBtn" onclick="toggleConflictLogVisible()">펼쳐보기 ▾</button>
+      </div>
+      <div id="conflictLogWrap" style="display:none;margin-top:10px;">
+        <div id="conflictLogList" class="muted" style="font-size:12.5px;">불러오는 중...</div>
+      </div>
     </div>
 
     </div>
