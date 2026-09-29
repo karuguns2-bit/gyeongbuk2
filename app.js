@@ -9544,16 +9544,16 @@ function renderSales(){
             { label:'경쟁사(SS)', data: salesCompData.categories.map(c=>c.ssAmtWon), backgroundColor:'#c7c7cc' }
           ]
         },
-        plugins: [barValueLabelsPlugin(v=>wonToKKRaw(v).toLocaleString('ko-KR')+'KK', 9)],
+        plugins: [barValueLabelsPlugin(v=>Math.round(v/1000000000).toLocaleString('ko-KR')+'KK', 9)],
         options:{
           indexAxis:'x', responsive:true, maintainAspectRatio:false, layout:{padding:{top:16}},
           plugins:{
             legend:{position:'top', labels:{boxWidth:12, font:{size:11}}},
-            tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${fmtKK(ctx.parsed.y)}`}}
+            tooltip:{callbacks:{label:(ctx)=>`${ctx.dataset.label}: ${Math.round(ctx.parsed.y/1000000000).toLocaleString('ko-KR')}KK`}}
           },
           scales:{
             x:{ ticks:{ font:{size:10}, maxRotation:45, minRotation:0 } },
-            y:{ ticks:{ font:{size:10}, callback:(v)=> wonToKKRaw(v).toLocaleString('ko-KR')+'KK' } }
+            y:{ ticks:{ font:{size:10}, callback:(v)=> Math.round(v/1000000000).toLocaleString('ko-KR')+'KK' } }
           }
         }
       });
