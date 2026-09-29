@@ -6690,13 +6690,19 @@ function renderGoals(){
     const cum = goalsWeeklyActualsFor(branchId, a.empId, period);
     const wk = computeWeeklyGoalBreakdown(a.target, cum, nowWeekIdx);
     const cells = wk.map(w=>{
-      const style = w.isCurrent ? 'background:#fff7e0;' : '';
+      const style = w.isCurrent ? 'background:#f7f0e0;' : '';
       const body = w.known
         ? (w.pct!=null ? `실적 ${fmtKK(w.actual)}<br><b>${w.pct}%</b> ${pctBadge(w.pct)}` : `실적 ${fmtKK(w.actual)}<br><span class="muted">목표 미설정</span>`)
         : `<span class="muted">미집계</span>`;
       return `<td style="${style}font-size:12px;line-height:1.6;">목표 ${fmtKK(w.target)}<br>${body}</td>`;
     }).join('');
-    return `<tr><td>${a.name}</td>${cells}</tr>`;
+    const totalAchieved = empAchieved(branchId, a.empId, period);
+    const totalPct = pctOf(totalAchieved, a.target);
+    const totalCell = `<td style="background:#f7eef0;font-size:12px;line-height:1.6;min-width:100px;">
+      목표 ${fmtKK(a.target)}<br>실적 ${fmtKK(totalAchieved)}<br><b>${totalPct.toFixed(1)}%</b>
+      ${progressBarRunnerHtml(totalPct, {marginTop:4})}
+    </td>`;
+    return `<tr><td>${a.name}</td>${totalCell}${cells}</tr>`;
   }).join('');
 
   // 팀원별 목표 배분 표 상단에 표시할 합계 (배분 목표/누적 실적/달성률)
@@ -6738,19 +6744,11 @@ function renderGoals(){
   // 지점 선택이 없어 사이드바에 월 선택 카드 하나만 덩그러니 남으므로 — 사이드바 없이 월 선택 카드를
   // 페이지 맨 위에 기존 방식대로(전체 폭) 배치하고 그 아래로 같은 본문을 이어붙인다.
   const goalsMainContentHtml = `
-        <div class="card ai-box" style="margin-bottom:16px;">
-          <div class="ai-title">📌 데이터 조회시 참고사항</div>
-          <div style="font-size:12.5px;line-height:1.75;">
-            <div style="margin-bottom:8px;"><b>1. GROSS 목표</b> : 평가, 판매 목표 달성 수당 등에 반영되는 목표(실제 판매 금액에서 20~30% 편차 발생됨)<br>※구독 판매 목표도 GROSS 금액으로 산정됨</div>
-            <div style="margin-bottom:8px;"><b>2.</b> MSIS에 매장에서 등록하는 매출/경쟁력은 참고 지표로 활용됨<br>※경쟁력 실제 유통 DATA 比 -1% ~ -5% 편차 발생 할 수 있음</div>
-            <div><b>3. 구독 비중</b> = 구독 판매 금액 ÷ (일시불+구독 판매 금액)</div>
-          </div>
-        </div>
-
-        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
           <div style="flex:1;min-width:340px;">
             <div class="card">
-              <h3>판매 목표 배분 <small>${isAdmin?'(본사 관리자 설정 · 목표 파일 업로드로 자동 반영)':'(관리자 설정 · 소속 지점 매니저 조회 전용)'}</small></h3>
+              <h3 style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;"><span>판매 목표 배분 <small>${isAdmin?'(본사 관리자 설정 · 목표 파일 업로드로 자동 반영)':'(관리자 설정 · 소속 지점 매니저 조회 전용)'}</small></span><button class="btn btn-sm" id="allocSectionBtn" onclick="toggleGoalsSection('allocSectionBody','allocSectionBtn')"><i class="ti ti-chevron-up" aria-hidden="true"></i> 축소</button></h3>
+              <div id="allocSectionBody">
               <div class="form-row" style="align-items:flex-start;flex-wrap:wrap;gap:24px;">
                 <div class="field">
                   <label>GROSS 목표 금액 (KK)</label>
@@ -6782,7 +6780,7 @@ function renderGoals(){
                   <div class="stat-tile-label" style="margin-bottom:2px;">합계 누적 실적</div>
                   <div class="stat-tile-num" style="font-size:17px;">${fmtKK(allocAchievedSum)}</div>
                 </div>
-                <div class="stat-tile ${allocAchievedPct>=100?'stat-tile-green':allocAchievedPct>=80?'stat-tile-amber':'stat-tile-pink'}" style="flex:2;min-width:220px;padding:10px 14px;">
+                <div class="stat-tile stat-tile-pink" style="flex:2;min-width:220px;padding:10px 14px;">
                   <div class="stat-tile-label" style="margin-bottom:2px;">합계 달성률</div>
                   <div class="stat-tile-num" style="font-size:17px;">${allocAchievedPct.toFixed(1)}% ${pctBadge(allocAchievedPct)}</div>
                   ${progressBarRunnerHtml(allocAchievedPct, {marginTop:6})}
@@ -6794,12 +6792,14 @@ function renderGoals(){
                 <tbody>${allocRows}</tbody>
               </table>
               </div>
+              </div>
             </div>
           </div>
 
           <div style="flex:1;min-width:340px;">
             <div class="card">
-              <h3>구독 목표 배분 <small>${canSetSubTarget?'(관리자/소속 지점 매니저 설정 · 구독 금액 목표는 목표 파일 업로드로 자동 반영)':'(조회 전용)'}</small></h3>
+              <h3 style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;"><span>구독 목표 배분 <small>${canSetSubTarget?'(관리자/소속 지점 매니저 설정 · 구독 금액 목표는 목표 파일 업로드로 자동 반영)':'(조회 전용)'}</small></span><button class="btn btn-sm" id="subSectionBtn" onclick="toggleGoalsSection('subSectionBody','subSectionBtn')"><i class="ti ti-chevron-up" aria-hidden="true"></i> 축소</button></h3>
+              <div id="subSectionBody">
               <div class="form-row">
                 <div class="field">
                   <label>구독 판매 건수 목표</label>
@@ -6831,7 +6831,7 @@ function renderGoals(){
                   <div class="stat-tile-label" style="margin-bottom:2px;">합계 실적</div>
                   <div class="stat-tile-num" style="font-size:17px;">${subActualQtySum}건 / ${roundKK1(subActualAmtSum)}KK</div>
                 </div>
-                <div class="stat-tile ${subActualAmtPctTotal>=100?'stat-tile-green':subActualAmtPctTotal>=80?'stat-tile-amber':'stat-tile-pink'}" style="flex:1;min-width:150px;padding:10px 14px;">
+                <div class="stat-tile stat-tile-pink" style="flex:1;min-width:150px;padding:10px 14px;">
                   <div class="stat-tile-label" style="margin-bottom:2px;">합계 금액 달성률</div>
                   <div class="stat-tile-num" style="font-size:17px;">${subAllocSumAmt>0 ? subActualAmtPctTotal.toFixed(1) : '0.0'}% ${pctBadge(subActualAmtPctTotal)}</div>
                 </div>
@@ -6844,20 +6844,25 @@ function renderGoals(){
               </div>
               <div class="muted" style="margin-top:8px;">배분 합계: 건수 <b>${subAllocSumQty}건</b> / 금액 <b>${subAllocSumAmt}KK</b> — 지점 목표 대비 잔여: 건수 <b style="color:${(g.subQtyTarget-subAllocSumQty)<0?'var(--bad)':'var(--text)'}">${g.subQtyTarget-subAllocSumQty}건</b> / 금액 <b style="color:${(g.subAmtTarget-subAllocSumAmt)<0?'var(--bad)':'var(--text)'}">${roundKK1((g.subAmtTarget||0)-subAllocSumAmt)}KK</b></div>
               <div class="small-note">※ 팀원별로 각자 이름에 맞는 구독 건수/금액 목표를 직접 입력할 수 있습니다. 실적은 &quot;구독 실적&quot; 메뉴의 최근 데이터를 이름 기준으로 매칭한 값입니다.</div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div class="card" style="margin-top:16px;">
+        <div class="card" style="margin-top:10px;">
           <h3>주차별 목표 달성 현황 <small>(1주 55% / 2주 25% / 3주 10% / 4주 10% 자동 배분 · 미달성분은 다음 주차에 비중대로 재배분)</small></h3>
           <div style="overflow-x:auto;">
           <table>
-            <thead><tr><th>이름</th><th>${goalsWeekLabel(period,1)}</th><th>${goalsWeekLabel(period,2)}</th><th>${goalsWeekLabel(period,3)}</th><th>${goalsWeekLabel(period,4)}</th></tr></thead>
+            <thead><tr><th>이름</th><th style="background:#f7eef0;">계</th><th>${goalsWeekLabel(period,1)}</th><th>${goalsWeekLabel(period,2)}</th><th>${goalsWeekLabel(period,3)}</th><th>${goalsWeekLabel(period,4)}</th></tr></thead>
             <tbody>
               <tr style="font-weight:800;border-bottom:2px solid var(--border);">
                 <td>합계</td>
+                <td style="background:#f7eef0;font-size:12px;line-height:1.6;min-width:100px;">
+                  목표 ${fmtKK(allocSum)}<br>실적 ${fmtKK(allocAchievedSum)}<br><b>${allocAchievedPct.toFixed(1)}%</b>
+                  ${progressBarRunnerHtml(allocAchievedPct, {marginTop:4})}
+                </td>
                 ${weeklyTotal.map(w=>{
-                  const bg = w.isCurrent ? 'background:#fff7e0;' : 'background:#f7f8fa;';
+                  const bg = w.isCurrent ? 'background:#f7f0e0;' : 'background:#f7f8fa;';
                   const body = w.known ? (w.pct!=null ? `실적 ${fmtKK(w.actual)}<br>${w.pct}% ${pctBadge(w.pct)}` : `실적 ${fmtKK(w.actual)}<br><span class="muted" style="font-weight:400;">목표 미설정</span>`) : `<span class="muted" style="font-weight:400;">미집계</span>`;
                   return `<td style="${bg}font-size:12px;line-height:1.6;">목표 ${fmtKK(w.target)}<br>${body}</td>`;
                 }).join('')}
@@ -6866,16 +6871,28 @@ function renderGoals(){
             </tbody>
           </table>
           </div>
-          <div class="small-note">※ 현재 ${nowWeekIdx}주차로 계산됩니다(노란색 강조). 맨 위 "합계" 행은 지점 전체(팀원 배분 목표 합산) 기준입니다. 지난 주차 실적이 목표에 못 미치면 그 미달성분이 이후 남은 주차들에 원래 비중 그대로 다시 나뉘어 더해집니다. "미집계"는 아직 그 주차의 실적 파일이 올라오지 않았다는 뜻입니다.</div>
+          <div class="small-note">※ 현재 ${nowWeekIdx}주차로 계산됩니다(강조 배경). "계" 열은 팀원별 배분 목표 대비 누적 전체 달성률입니다. 맨 위 "합계" 행은 지점 전체(팀원 배분 목표 합산) 기준입니다. 지난 주차 실적이 목표에 못 미치면 그 미달성분이 이후 남은 주차들에 원래 비중 그대로 다시 나뉘어 더해집니다. "미집계"는 아직 그 주차의 실적 파일이 올라오지 않았다는 뜻입니다.</div>
         </div>`;
 
   return `
+    <div class="goals-plain">
     <div class="page-title">목표 관리(MSIS기준)</div>
     <div class="page-desc">${branch.name} · ${goalsPeriodLabel(period)}${isCurrentPeriod?'':' <span class="badge warn">이번달 아님</span>'}</div>
     ${branchSelectorHtml}
     ${periodSelectorHtml}
     ${goalsMainContentHtml}
+    </div>
   `;
+}
+function toggleGoalsSection(bodyId, btnId){
+  const body = document.getElementById(bodyId);
+  const btn = document.getElementById(btnId);
+  if(!body) return;
+  const collapsed = body.style.display === 'none';
+  body.style.display = collapsed ? 'block' : 'none';
+  if(btn) btn.innerHTML = collapsed
+    ? '<i class="ti ti-chevron-up" aria-hidden="true"></i> 축소'
+    : '<i class="ti ti-chevron-down" aria-hidden="true"></i> 펼치기';
 }
 // 구독 실적은 "목표/실적 파일 업로드"에 포함된 "구독 수기 실적 관리" 시트를 기준으로 반영된다
 // (DB.goalsSubActuals, 기간·지점·사번별로 최신 값 하나만 저장 — applyGoalsFileUpload 참고).
@@ -8390,14 +8407,26 @@ function barValueLabelsPlugin(formatter){
 }
 // 신장률(%) 값들을 가로 막대 차트로 — Chart.js가 자동으로 보기 좋은 눈금(0, ±20%, ±40%...)을
 // 잡아주므로, 극단적인 값 하나 때문에 축 전체가 왜곡되어 읽기 어려워지는 문제가 줄어든다.
-function moYoyBarConfig(labels, values, highlightIdx, unit, redOnly){
+function moYoyBarConfig(labels, values, highlightIdx, unit, redOnly, vertical){
   unit = unit || '%';
+  const colors = values.map((v,i)=> redOnly
+    ? (i===highlightIdx ? '#A50034' : '#e8b0ba')
+    : (i===highlightIdx ? '#A50034' : (v>=0 ? '#a9d3b3' : '#e8b4b4')));
+  if(vertical){
+    return {
+      type:'bar',
+      data:{ labels, datasets:[{ data: values.map(v=>v==null?null:Math.round(v*10)/10), backgroundColor: colors }] },
+      plugins: [barValueLabelsPlugin(v=>(v>=0?'+':'')+v+unit)],
+      options:{ indexAxis:'x', responsive:true, maintainAspectRatio:false,
+        layout:{ padding:{ top:16 } },
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:(c)=> (c.parsed.y>=0?'+':'')+c.parsed.y+unit}} },
+        scales:{ x:{ grid:{display:false}, ticks:{ font:{size:10}, maxRotation:45, minRotation:0 } },
+          y:{ grid:{color:'#eee'}, ticks:{ callback:(v)=> (v>=0?'+':'')+v+unit } } } }
+    };
+  }
   return {
     type:'bar',
-    data:{ labels, datasets:[{ data: values.map(v=>v==null?null:Math.round(v*10)/10),
-      backgroundColor: values.map((v,i)=> redOnly
-        ? (i===highlightIdx ? '#A50034' : '#e8b0ba')
-        : (i===highlightIdx ? '#A50034' : (v>=0 ? '#a9d3b3' : '#e8b4b4'))) }] },
+    data:{ labels, datasets:[{ data: values.map(v=>v==null?null:Math.round(v*10)/10), backgroundColor: colors }] },
     plugins: [barValueLabelsPlugin(v=>(v>=0?'+':'')+v+unit)],
     options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
       layout:{ padding:{ left:8, right:8 } },
@@ -8562,27 +8591,28 @@ function renderMetricsOverview(){
       </div>`;
 
     // 신장률 비교 — 선택 대상 vs 평균(들)을 값 그대로 막대로 보여준다(Chart.js가 알아서 보기 좋은 눈금을 잡아줌)
-    let compareHtml = '';
+    // 아래 두 순위 차트와 동일한 고정 높이 카드로 만들어, 한 줄(그리드)에 나란히 배치할 수 있게 한다.
+    const chartBoxHeight = 220;
+    let compareCardHtml = '';
+    let compareLabels = null, compareValues = null;
     if(selBranch){
-      const labels = ['경북팀 전체 평균', ...(managerAgg?[`${selManager} 관리자 평균`]:[]), scopeLabel];
-      const values = [teamAgg.g_tp_yoy, ...(managerAgg?[managerAgg.g_tp_yoy]:[]), agg.g_tp_yoy];
-      compareHtml = `<div class="card" style="margin-top:10px;">
-        <h3><i class="ti ti-ruler-2" aria-hidden="true"></i> 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
-        <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
-      </div>`;
-      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1, '%', true));
+      compareLabels = ['경북팀 평균', ...(managerAgg?[`${selManager} 평균`]:[]), scopeLabel];
+      compareValues = [teamAgg.g_tp_yoy, ...(managerAgg?[managerAgg.g_tp_yoy]:[]), agg.g_tp_yoy];
     } else if(selManager){
-      const labels = ['경북팀 전체 평균', scopeLabel];
-      const values = [teamAgg.g_tp_yoy, agg.g_tp_yoy];
-      compareHtml = `<div class="card" style="margin-top:10px;">
-        <h3><i class="ti ti-ruler-2" aria-hidden="true"></i> 총판 신장률 비교 <small>전년 동기 대비, 단위 %</small></h3>
-        <div style="position:relative;height:${labels.length*46+20}px;"><canvas id="moCompareChart"></canvas></div>
+      compareLabels = ['경북팀 평균', scopeLabel];
+      compareValues = [teamAgg.g_tp_yoy, agg.g_tp_yoy];
+    }
+    if(compareLabels){
+      compareCardHtml = `<div class="card">
+        <h3><i class="ti ti-ruler-2" aria-hidden="true"></i> 총판 신장률 비교 <small>전년 동기 대비, %</small></h3>
+        <div style="position:relative;height:${chartBoxHeight}px;"><canvas id="moCompareChart"></canvas></div>
       </div>`;
-      moRenderChart('moCompareChart', moYoyBarConfig(labels, values, labels.length-1, '%', true));
+      moRenderChart('moCompareChart', moYoyBarConfig(compareLabels, compareValues, compareLabels.length-1, '%', true, true));
     }
 
     // 순위 차트: 관리자 선택/지점 선택에 따라 "관리자별" 또는 "소속 지점별" 신장률·달성률 순위를 각각 막대 차트로
-    // ※ 지점별 한눈에 보기 그리드는 상단 필터 카드로 옮겼으므로, 여기서는 두 순위 차트를 나란히(2열) 배치한다.
+    // ※ 지점별 한눈에 보기 그리드는 상단 필터 카드로 옮겼으므로, 여기서는 신장률 비교(있는 경우) + 두 순위
+    // 차트를 세로 막대 + 동일한 고정 높이 카드로 한 줄(그리드)에 배치해 스크롤 구간을 최소화한다.
     const yoyRankScope = selManager ? branchListRaw : managerListRaw;
     const yoyRankSortedByYoy = yoyRankScope.slice().sort((a,b)=>{
       const av = selManager? a.m.g_tp_yoy : a.agg.g_tp_yoy, bv = selManager? b.m.g_tp_yoy : b.agg.g_tp_yoy;
@@ -8591,13 +8621,13 @@ function renderMetricsOverview(){
     const yoyRankLabels = yoyRankSortedByYoy.map(x=>x.label);
     const yoyRankValues = yoyRankSortedByYoy.map(x=> selManager ? x.m.g_tp_yoy : x.agg.g_tp_yoy);
     const yoyHighlightIdx = yoyRankSortedByYoy.findIndex(x=>x.key===(selBranch||selManager));
-    const yoyRankTitle = selManager ? `${selManager} 소속 지점 총판 신장률 순위` : '관리자별 총판 신장률 순위';
+    const yoyRankTitle = selManager ? `${selManager} 소속 신장률 순위` : '관리자별 신장률 순위';
 
     const rateRankScope = selManager ? branchRankList : managerRankList;
     const rateRankLabels = rateRankScope.map(x=>x.label);
     const rateRankValues = rateRankScope.map(x=> selManager ? x.m.g_tp_rate : x.agg.g_tp_rate);
     const rateHighlightIdx = rateRankScope.findIndex(x=>x.key===(selBranch||selManager));
-    const rateRankTitle = selManager ? `${selManager} 소속 지점 총판 달성률 순위` : '관리자별 총판 달성률 순위';
+    const rateRankTitle = selManager ? `${selManager} 소속 달성률 순위` : '관리자별 달성률 순위';
 
     bodyHtml = `
       <div class="card" style="border-left:4px solid var(--primary);">
@@ -8607,23 +8637,19 @@ function renderMetricsOverview(){
         ${moChipsHtml(chips)}
         ${kpiCards}
       </div>
-      ${compareHtml}
-      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-top:10px;">
-        <div style="flex:1;min-width:340px;">
-          <div class="card">
-            <h3><i class="ti ti-trending-up" aria-hidden="true"></i> ${yoyRankTitle} <small>전년 동기 대비, 단위 %</small></h3>
-            <div style="position:relative;height:${Math.max(160, yoyRankLabels.length*36)}px;"><canvas id="moYoyRankChart"></canvas></div>
-          </div>
+      <div class="mo-chart-row" style="display:grid;grid-template-columns:repeat(${compareCardHtml?3:2},1fr);gap:10px;margin-top:10px;">
+        ${compareCardHtml}
+        <div class="card">
+          <h3><i class="ti ti-trending-up" aria-hidden="true"></i> ${yoyRankTitle} <small>전년 동기 대비, %</small></h3>
+          <div style="position:relative;height:${chartBoxHeight}px;"><canvas id="moYoyRankChart"></canvas></div>
         </div>
-        <div style="flex:1;min-width:340px;">
-          <div class="card">
-            <h3><i class="ti ti-target-arrow" aria-hidden="true"></i> ${rateRankTitle} <small>단위 %</small></h3>
-            <div style="position:relative;height:${Math.max(160, rateRankLabels.length*36)}px;"><canvas id="moRateRankChart"></canvas></div>
-          </div>
+        <div class="card">
+          <h3><i class="ti ti-target-arrow" aria-hidden="true"></i> ${rateRankTitle} <small>%</small></h3>
+          <div style="position:relative;height:${chartBoxHeight}px;"><canvas id="moRateRankChart"></canvas></div>
         </div>
       </div>`;
-    moRenderChart('moYoyRankChart', moYoyBarConfig(yoyRankLabels, yoyRankValues, yoyHighlightIdx, '%', true));
-    moRenderChart('moRateRankChart', moYoyBarConfig(rateRankLabels, rateRankValues, rateHighlightIdx, '%', true));
+    moRenderChart('moYoyRankChart', moYoyBarConfig(yoyRankLabels, yoyRankValues, yoyHighlightIdx, '%', true, true));
+    moRenderChart('moRateRankChart', moYoyBarConfig(rateRankLabels, rateRankValues, rateHighlightIdx, '%', true, true));
   } else if(tab==='gross'){
     const scopeRows = selBranch ? rowsForAgg : branchesInScope;
     const gTpCurRankMap = {}; branchListRaw.slice().sort((a,b)=>(b.m.g_tp_cur||0)-(a.m.g_tp_cur||0)).forEach((x,i)=>{ gTpCurRankMap[x.key]=i+1; });
