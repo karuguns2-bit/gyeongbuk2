@@ -1453,7 +1453,6 @@ function defaultUiPrefs(){
     fontSize: 'normal',       // 'small' | 'normal' | 'large'
     density: 'comfortable',   // 'comfortable' | 'compact'
     hiddenHomeWidgets: [],    // HOME_WIDGETS 중 숨긴 위젯 key 목록
-    homeWidgetOrder: [],      // HOME_WIDGETS key 순서(비어있으면 기본 순서)
     homeStatusWidgetCollapsed: false, // 홈 화면 우하단 시계/접속인원/알림 팝업창 접어두기 여부
     pinnedNav: [],            // 즐겨찾기로 고정한 탭 key 목록
     recentSearches: [],       // 최근 검색어(최신순)
@@ -3030,11 +3029,11 @@ function renderHomeBranchBadges(){
   // 우측 랭킹 패널: 종목별 1/2/3위 지점을 보여줘서 경쟁을 독려한다. "이번달" / "연간누적" 두 모드 지원.
   const rankMode = (state.branchBadgeRankMode==='year') ? 'year' : 'month';
   const rankYear = period.slice(0,4);
-  const medalMarks = ['🥇','🥈','🥉'];
+  const medalIcons = ['ti-circle-number-1','ti-circle-number-2','ti-circle-number-3'];
   const rankRowsHtml = BRANCH_BADGE_CATEGORIES.map(cat=>{
     const ranked = branchBadgeRankingByMode(cat, rankMode, period, rankYear).slice(0,3);
     const listHtml = ranked.length>0
-      ? ranked.map((r,idx)=>`<span class="bbadge-rank-entry"><span class="bbadge-rank-medal">${medalMarks[idx]}</span> ${escapeHtml(branchName(r.branchId))} <span class="bbadge-rank-val">${escapeHtml(cat.fmt(r.value))}</span></span>`).join('<span class="bbadge-rank-sep">·</span>')
+      ? ranked.map((r,idx)=>`<span class="bbadge-rank-entry"><span class="bbadge-rank-medal"><i class="ti ${medalIcons[idx]}" aria-hidden="true"></i></span> ${escapeHtml(branchName(r.branchId))} <span class="bbadge-rank-val">${escapeHtml(cat.fmt(r.value))}</span></span>`).join('<span class="bbadge-rank-sep">·</span>')
       : `<span class="bbadge-rank-empty">아직 데이터가 없습니다</span>`;
     return `
       <div class="bbadge-rank-row">
@@ -3054,7 +3053,7 @@ function renderHomeBranchBadges(){
   // 기존 규칙 설명(bbadge-rule-info)과 헷갈리지 않도록 별도로 눈에 띄게(금색 테두리) 표시한다.
   const eventBannerHtml = `
     <div class="bbadge-event-banner">
-      <div class="bbadge-event-title">🎯 배지모아 판촉비 타자! <span class="bbadge-event-period">(산정기간: 9월~11월)</span></div>
+      <div class="bbadge-event-title"><i class="ti ti-target-arrow" aria-hidden="true"></i> 배지모아 판촉비 타자! <span class="bbadge-event-period">(산정기간: 9월~11월)</span></div>
       <div class="bbadge-event-items">
         <div class="bbadge-event-item">
           <div class="bbadge-event-label">그랜드 슬램 최다보유 1위 지점</div>
@@ -3081,9 +3080,9 @@ function renderHomeBranchBadges(){
   return `
     <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:10px 12px;">
       <style>
-        .bbadge-item{ text-align:center; width:58px; flex:0 0 auto; }
+        .bbadge-item{ text-align:center; width:48px; flex:0 0 auto; }
         .bbadge-flatcard{
-          position:relative; width:40px; height:40px; margin:6px auto 0; border-radius:10px;
+          position:relative; width:34px; height:34px; margin:6px auto 0; border-radius:9px;
           background:#fff; border:1.5px solid var(--border); display:flex; align-items:center; justify-content:center;
           transition:transform .2s ease, border-color .2s ease;
         }
@@ -3091,21 +3090,19 @@ function renderHomeBranchBadges(){
         .bbadge-flatcard.won{ border-color:var(--primary); }
         .bbadge-flatcard.locked{ background:#fafafa; }
         .bbadge-flaticon{ display:flex; }
-        .bbadge-flaticon i{ font-size:19px; color:#c7c8cc; }
+        .bbadge-flaticon i{ font-size:16px; color:#c7c8cc; }
         .bbadge-flatcard.won .bbadge-flaticon i{ color:var(--primary); }
         .bbadge-stars{ position:absolute; top:-9px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:9px; letter-spacing:-1px; z-index:5; }
-        .bbadge-branch{ font-size:9px; font-weight:700; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-sub); }
+        .bbadge-branch{ font-size:8.5px; font-weight:700; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-sub); }
         .bbadge-item.bbadge-won .bbadge-branch{ color:var(--text); }
-        .bbadge-title-label{ font-size:8px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:9px; }
-        .bbadge-total{ font-size:8px; font-weight:700; color:var(--primary); white-space:nowrap; }
+        .bbadge-title-label{ font-size:7.5px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:9px; }
+        .bbadge-total{ font-size:7.5px; font-weight:700; color:var(--primary); white-space:nowrap; }
         .bbadge-outer{ display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; }
         .bbadge-leftcol{ flex:0 1 auto; min-width:280px; }
         .bbadge-medals{
-          display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:4px 8px;
-          overflow-x:auto; overflow-y:visible; padding:4px 2px 6px; scrollbar-width:thin;
+          display:flex; flex-wrap:wrap; justify-content:flex-start; gap:4px 3px;
+          overflow:visible; padding:4px 2px 2px;
         }
-        .bbadge-medals::-webkit-scrollbar{ height:6px; }
-        .bbadge-medals::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
         .bbadge-rankpanel{ flex:1 1 220px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:10px; padding:8px 10px; display:flex; flex-direction:column; }
         .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; flex-wrap:wrap; gap:6px; flex-shrink:0; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
@@ -3121,17 +3118,19 @@ function renderHomeBranchBadges(){
         .bbadge-rank-list{ font-size:11.5px; line-height:1.6; }
         .bbadge-rank-entry{ white-space:nowrap; font-weight:600; }
         .bbadge-rank-medal{ margin-right:1px; }
+        .bbadge-rank-medal i.ti{ font-size:13px; color:#9a9ba1; vertical-align:-2px; }
         .bbadge-rank-val{ font-weight:700; color:var(--primary); }
         .bbadge-rank-sep{ margin:0 5px; color:var(--border); }
         .bbadge-rank-empty{ color:#b7b8bf; font-size:9.5px; }
         .bbadge-rule-info{ font-size:9px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:4px 8px; line-height:1.35; margin-bottom:6px; }
-        .bbadge-event-banner{ background:#fff8e6; border:1.5px solid #f0b429; border-radius:8px; padding:6px 8px; margin-bottom:6px; }
-        .bbadge-event-title{ font-size:12px; font-weight:700; color:#4a1b0c; margin-bottom:4px; }
-        .bbadge-event-period{ font-size:10px; font-weight:500; color:#633806; }
+        .bbadge-event-banner{ background:#fff; border:1px solid var(--border); border-radius:8px; padding:6px 8px; margin-bottom:6px; }
+        .bbadge-event-title{ font-size:12px; font-weight:700; color:var(--text); margin-bottom:4px; display:flex; align-items:center; gap:5px; }
+        .bbadge-event-title i.ti{ font-size:13px; color:var(--primary); }
+        .bbadge-event-period{ font-size:10px; font-weight:500; color:var(--text-sub); }
         .bbadge-event-items{ display:flex; gap:8px; }
-        .bbadge-event-item{ flex:1; min-width:0; background:#fffaf0; border:1px solid #f0b429; border-radius:6px; padding:5px 4px; text-align:center; }
-        .bbadge-event-label{ font-size:9.5px; font-weight:600; color:#633806; line-height:1.25; }
-        .bbadge-event-amt{ font-size:14px; font-weight:700; color:#a32d2d; }
+        .bbadge-event-item{ flex:1; min-width:0; background:#fff; border:1px solid var(--border); border-radius:6px; padding:5px 4px; text-align:center; }
+        .bbadge-event-label{ font-size:9.5px; font-weight:600; color:var(--text-sub); line-height:1.25; }
+        .bbadge-event-amt{ font-size:14px; font-weight:700; color:var(--primary); }
       </style>
       <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:5px;">🏅 ${goalsPeriodLabel(period)} 이달의 지점 배지</div>
       <div class="bbadge-rule-info">매달 종목별 1위 지점에 배지, <b style="color:var(--primary);">3개월 연속 1위</b> 시 별(⭐) 추가, <b style="color:var(--primary);">${BRANCH_BADGE_CATEGORIES.length}개 중 ${BRANCH_GRANDSLAM_MIN}개 이상 종목 동시 1위</b> 시 그랜드슬램! (배지에 마우스를 올리면 획득 조건과 세부 기록을 볼 수 있어요)</div>
@@ -3513,8 +3512,10 @@ function renderHomeManagerCompetitivenessBanner(){
       <div class="mo-kpi-row" style="display:flex;gap:8px;flex-wrap:wrap;">${cards}</div>
     </div>`;
 }
-// 홈 대시보드 - 개인화 가능한 위젯 목록(교육 안내/근무 일정/AI 분석 피드백). 순서는
-// state.uiPrefs.homeWidgetOrder에 저장되고, 켜고 끄기는 hiddenHomeWidgets에 저장된다.
+// 홈 대시보드 - 개인화 가능한 위젯 목록(교육 안내/근무 일정/AI 분석 피드백). 순서는 항상
+// 고정(HOME_WIDGET_DEFS 정의 순서)이고, 켜고 끄기만 hiddenHomeWidgets에 저장된다.
+// (2026.09: 드래그로 순서를 바꾸는 기능이 카드 폭 계산과 충돌해 레이아웃이 깨져 보이는
+// 문제가 있어 제거하고, 순서를 고정값으로 되돌렸다 - 근무일정/AI피드백 50/50 배치 유지 목적.)
 // (공지사항 미확인 안내는 안전상 항상 노출 - 개인화 대상에서 제외)
 const HOME_WIDGET_DEFS = [
   { key:'eduReminder', label:'교육 안내' },
@@ -3523,12 +3524,7 @@ const HOME_WIDGET_DEFS = [
   { key:'clearanceRec', label:'소진 추천' }
 ];
 function homeWidgetOrderedKeys(){
-  const p = state.uiPrefs || defaultUiPrefs();
-  const known = HOME_WIDGET_DEFS.map(w=>w.key);
-  const saved = (p.homeWidgetOrder && p.homeWidgetOrder.length) ? p.homeWidgetOrder : known;
-  const merged = saved.filter(k=>known.includes(k));
-  known.forEach(k=>{ if(!merged.includes(k)) merged.push(k); });
-  return merged;
+  return HOME_WIDGET_DEFS.map(w=>w.key);
 }
 function renderHomeWidgetSection(htmlByKey){
   const p = state.uiPrefs || defaultUiPrefs();
@@ -3536,45 +3532,9 @@ function renderHomeWidgetSection(htmlByKey){
   const keys = homeWidgetOrderedKeys().filter(k=> htmlByKey[k] && !hidden.has(k));
   if(keys.length===0) return '';
   return `<div id="homeWidgetList">` + keys.map(k=>`
-    <div class="home-widget-item" draggable="true" data-widget-key="${k}"
-      ondragstart="homeWidgetDragStart(event)" ondragover="homeWidgetDragOver(event)"
-      ondrop="homeWidgetDrop(event)" ondragend="homeWidgetDragEnd(event)">
-      <div class="home-widget-handle" title="드래그해서 순서 바꾸기">⠿⠿</div>
+    <div class="home-widget-item" data-widget-key="${k}">
       <div class="home-widget-body">${htmlByKey[k]}</div>
     </div>`).join('') + `</div>`;
-}
-// 드래그하는 동안은 DOM만 직접 옮기고(성능/스크롤 위치 보존), 실제로 놓았을 때(drop)만
-// 새 순서를 uiPrefs에 저장한다 - 다른 드래그 기능들과 동일한 패턴.
-function homeWidgetDragStart(e){
-  const item = e.target.closest('.home-widget-item');
-  if(!item) return;
-  e.dataTransfer.effectAllowed = 'move';
-  try{ e.dataTransfer.setData('text/plain', item.dataset.widgetKey); }catch(err){ /* 일부 브라우저 무시 */ }
-  item.classList.add('dragging');
-}
-function homeWidgetDragOver(e){
-  e.preventDefault();
-  const list = document.getElementById('homeWidgetList');
-  const dragging = list ? list.querySelector('.home-widget-item.dragging') : null;
-  const item = e.target.closest('.home-widget-item');
-  if(!list || !dragging || !item || item===dragging) return;
-  const rect = item.getBoundingClientRect();
-  const before = (e.clientY - rect.top) < rect.height/2;
-  list.insertBefore(dragging, before ? item : item.nextSibling);
-}
-function homeWidgetDrop(e){
-  e.preventDefault();
-  const list = document.getElementById('homeWidgetList');
-  if(!list || !state.uiPrefs) return;
-  const visibleOrder = [...list.querySelectorAll('.home-widget-item')].map(el=>el.dataset.widgetKey);
-  const known = HOME_WIDGET_DEFS.map(w=>w.key);
-  const hiddenTail = known.filter(k=>!visibleOrder.includes(k));
-  state.uiPrefs.homeWidgetOrder = [...visibleOrder, ...hiddenTail];
-  saveUiPrefs();
-}
-function homeWidgetDragEnd(e){
-  const item = e.target.closest('.home-widget-item');
-  if(item) item.classList.remove('dragging');
 }
 
 /* ---------- ⚙ 화면 설정 패널 (다크모드/글자크기/밀도/홈 위젯 켜고끄기) ---------- */
@@ -3632,7 +3592,6 @@ function uiSettingsModalHtml(){
               <input type="checkbox" ${hidden.has(w.key)?'':'checked'} onchange="toggleHomeWidgetVisible('${w.key}', this.checked)">
               ${w.label}
             </label>`).join('')}
-          <div class="muted" style="font-size:11.5px;">홈 화면에서 위젯 왼쪽의 ⠿⠿ 표시를 드래그하면 순서도 바꿀 수 있어요.</div>
         </div>
         ${appLockSetupSectionHtml()}
       </div>
