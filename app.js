@@ -6743,11 +6743,14 @@ function renderGoals(){
   // 관리자는 좌측에 월/지점 선택 사이드바 + 우측에 본문(2단 구성)으로 배치하지만, 지점 매니저는
   // 지점 선택이 없어 사이드바에 월 선택 카드 하나만 덩그러니 남으므로 — 사이드바 없이 월 선택 카드를
   // 페이지 맨 위에 기존 방식대로(전체 폭) 배치하고 그 아래로 같은 본문을 이어붙인다.
-  const goalsRegisterCollapsed = !!state.goalsRegisterCollapsed;
+  // 등록/축소 상태는 지점+해당 월(g) 자체에 저장해 DB에 영구 반영한다 — state(임시 메모리)에
+  // 두면 새로고침·재접속 시 초기화되어 버리므로, "이번 달 한 번 등록하면 수정하기 누르기 전까지
+  // 계속 축소 유지"라는 요청을 만족하려면 반드시 DB로 저장되는 값이어야 한다.
+  const goalsRegisterCollapsed = !!g.registerCollapsed;
   const goalsRegisterButtonsHtml = canManageAllocations ? `
     <div style="display:flex;gap:6px;flex-shrink:0;">
       <button class="btn btn-primary btn-sm" onclick="goalsRegisterAll('${branchId}')"><i class="ti ti-check" aria-hidden="true"></i> 등록하기</button>
-      <button class="btn btn-sm" onclick="setGoalsRegisterCollapsed(false)"><i class="ti ti-edit" aria-hidden="true"></i> 수정하기</button>
+      <button class="btn btn-sm" onclick="setGoalsRegisterCollapsed('${branchId}', false)"><i class="ti ti-edit" aria-hidden="true"></i> 수정하기</button>
     </div>` : '';
   const goalsRegisterSummaryHtml = goalsRegisterCollapsed ? `
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
@@ -6902,10 +6905,14 @@ function renderGoals(){
   `;
 }
 // "판매/구독 목표 등록하기" 카드는 등록하기(저장 + 자동 축소)/수정하기(펼침) 두 버튼으로 조작한다.
-// 저장 버튼을 눌러도 renderTab('goals')로 전체가 다시 그려지므로, 펼침/축소 상태를 DOM이 아니라
-// state.goalsRegisterCollapsed에 저장해 재렌더링 후에도 축소된 상태가 그대로 유지되게 한다.
-function setGoalsRegisterCollapsed(collapsed){
-  state.goalsRegisterCollapsed = collapsed;
+// 축소 여부는 state(임시 메모리)가 아니라 해당 지점·해당 월의 goals 레코드(g.registerCollapsed)에
+// 저장한다 — DB에 실제로 반영되는 값이라야 새로고침/재접속 후에도 "이번 달 한 번 등록하면
+// 수정하기를 누르기 전까지 계속 축소 유지"가 그대로 지켜진다.
+function setGoalsRegisterCollapsed(branchId, collapsed){
+  const period = state.goalsPeriod || currentGoalsPeriod();
+  const g = getGoals(branchId, period);
+  g.registerCollapsed = collapsed;
+  saveDB();
   renderTab('goals');
 }
 function goalsRegisterAll(branchId){
@@ -6920,8 +6927,8 @@ function goalsRegisterAll(branchId){
   const amtInput = document.getElementById('subAmtTargetInput');
   if(qtyInput) g.subQtyTarget = Number(qtyInput.value)||0;
   if(amtInput) g.subAmtTarget = Math.round((Number(amtInput.value)||0)*10)/10;
+  g.registerCollapsed = true;
   saveDB();
-  state.goalsRegisterCollapsed = true;
   renderTab('goals');
 }
 // 구독 실적은 "목표/실적 파일 업로드"에 포함된 "구독 수기 실적 관리" 시트를 기준으로 반영된다
@@ -9157,12 +9164,14 @@ function renderSubB2bSales(){
   const byBranch = {};
   scoped.forEach(r=>{ byBranch[r.branchId] = byBranch[r.branchId] || {qty:0, amt:0}; byBranch[r.branchId].qty+=r.qty; byBranch[r.branchId].amt+=r.amountWon; });
   const byBranchEntries = Object.entries(byBranch).map(([bid,v])=>({label:branchName(bid), qty:v.qty, amt:v.amt})).sort((a,b)=>b.amt-a.amt);
-  const byBranchChartHeight = Math.max(140, byBranchEntries.length*36+20);
+  // 지점별/월별 합계 차트는 항목 개수가 서로 달라도(지점 9개 vs 월 5개 등) 두 카드의 높이가
+  // 항상 똑같이 맞춰지도록 고정 높이를 쓴다 — 항목이 적으면 막대만 두꺼워지고, 많아지면
+  // 막대가 얇아질 뿐 카드 크기 자체는 흔들리지 않는다.
+  const b2bChartHeight = 300;
 
   const byMonth = {};
   scoped.forEach(r=>{ const mk = subB2bMonthKey(r.saleDate); byMonth[mk] = byMonth[mk] || {qty:0, amt:0}; byMonth[mk].qty+=r.qty; byMonth[mk].amt+=r.amountWon; });
   const byMonthEntries = Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).map(([mk,v])=>({label:mk, qty:v.qty, amt:v.amt}));
-  const byMonthChartHeight = Math.max(140, byMonthEntries.length*36+20);
 
   const rows = sorted.map(r=>{
     const canEdit = canEditSubB2bSale(r);
@@ -9210,17 +9219,17 @@ function renderSubB2bSales(){
       <div>전체 <b>${fmtNum(totalQty)}건</b> · 합계 금액 <b>${fmtWon(totalAmt)}</b></div>
     </div>
 
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;margin-bottom:10px;">
-      <div style="flex:1;min-width:340px;">
-        <div class="card">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-bottom:10px;">
+      <div style="flex:1;min-width:340px;display:flex;">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;">
           <h3>지점별 합계</h3>
-          <div style="position:relative;height:${byBranchChartHeight}px;"><canvas id="b2bByBranchChart"></canvas></div>
+          <div style="position:relative;height:${b2bChartHeight}px;"><canvas id="b2bByBranchChart"></canvas></div>
         </div>
       </div>
-      <div style="flex:1;min-width:340px;">
-        <div class="card">
+      <div style="flex:1;min-width:340px;display:flex;">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;">
           <h3>월별 합계</h3>
-          <div style="position:relative;height:${byMonthChartHeight}px;"><canvas id="b2bByMonthChart"></canvas></div>
+          <div style="position:relative;height:${b2bChartHeight}px;"><canvas id="b2bByMonthChart"></canvas></div>
         </div>
       </div>
     </div>
