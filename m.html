@@ -308,23 +308,23 @@
   #app{display:none;min-height:100vh;}
   #app.active{display:flex;}
   .sidebar{
-    width:236px;background:#ffffff;color:#3a3a40;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
-    height:100vh;overflow-y:auto;border-right:1px solid #eee;
+    width:236px;background:#ffe3ec;color:#3a3a40;flex-shrink:0;padding:20px 0;display:flex;flex-direction:column;
+    height:100vh;overflow-y:auto;border-right:1px solid #f7c9d8;
   }
   /* 메뉴가 30개 가까이 되면서 사이드바 높이가 화면보다 길어져 본문과 함께 통째로
      끌려 내려가던 문제 - 사이드바를 독립 스크롤 영역으로 분리해 항상 메뉴에
      바로 접근할 수 있게 한다. (2026.08 / 2026.09: LG OnAir 톤 - 흰색 사이드바로 리스킨) */
   .sidebar::-webkit-scrollbar{width:6px;}
   .sidebar::-webkit-scrollbar-track{background:transparent;}
-  .sidebar::-webkit-scrollbar-thumb{background:#e5e5ea;border-radius:10px;}
-  .sidebar .brand{padding:0 20px 18px;font-weight:700;font-size:14px;line-height:1.4;border-bottom:1px solid #eee;margin-bottom:10px;text-align:center;color:#1a1a1a;}
+  .sidebar::-webkit-scrollbar-thumb{background:#f3b8cc;border-radius:10px;}
+  .sidebar .brand{padding:0 20px 18px;font-weight:700;font-size:14px;line-height:1.4;border-bottom:1px solid #f7c9d8;margin-bottom:10px;text-align:center;color:#1a1a1a;}
   .sidebar .brand span{color:var(--primary);}
   .nav-item{
     position:relative;
-    margin:2px 10px;padding:10px 34px 10px 12px;border-radius:8px;font-size:13.5px;color:#5a5a60;cursor:pointer;
+    margin:2px 10px;padding:10px 34px 10px 12px;border-radius:8px;font-size:13.5px;color:#5a3a44;cursor:pointer;
     transition:background .15s ease,color .15s ease;
   }
-  .nav-item:hover{background:#fdf0f3;color:var(--primary);}
+  .nav-item:hover{background:#ffffff;color:var(--primary);}
   .nav-item.active{background:var(--primary);color:#fff;font-weight:600;box-shadow:0 2px 8px rgba(165,0,52,.25);}
   .nav-item i.ti{margin-right:7px;font-size:14.5px;vertical-align:-2px;width:15px;text-align:center;display:inline-block;}
   /* 게시형 메뉴에 새 글이 올라오면 표시되는 작은 New 뱃지 (2026.08) */
@@ -344,20 +344,20 @@
   .nav-item.active .nav-pin-star{color:rgba(255,255,255,.8);}
   .nav-item.active .nav-pin-star.pinned{color:#ffe066;}
   .nav-pin-item{font-weight:500;}
-  .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#a3a3aa;text-transform:uppercase;border-top:1px solid #f0f0f3;margin-top:8px;}
+  .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:#a15068;text-transform:uppercase;border-top:1px solid #f7c9d8;margin-top:8px;}
   .nav-item.sub{padding:8px 34px 8px 20px;font-size:13px;}
   .nav-item.sub.sub2{padding:7px 34px 7px 28px;font-size:12px;}
-  .nav-subgroup-label{padding:8px 20px 2px 30px;font-size:10.5px;letter-spacing:.02em;color:#999;}
-  .nav-sub-date{font-size:10px;color:#999;margin-top:2px;font-weight:400;}
+  .nav-subgroup-label{padding:8px 20px 2px 30px;font-size:10.5px;letter-spacing:.02em;color:#a15068;}
+  .nav-sub-date{font-size:10px;color:#a15068;margin-top:2px;font-weight:400;}
   .inv-filter-row .field label{font-size:13.5px;font-weight:700;color:var(--text);margin-bottom:5px;}
   .inv-filter-row select,.inv-filter-row input{font-size:15.5px;padding:11px 14px;border-radius:8px;border:1.5px solid var(--border);min-height:22px;}
   .inv-filter-row select:focus,.inv-filter-row input:focus{border-color:var(--primary);outline:none;}
-  .sidebar .user-box{margin-top:auto;padding:16px 20px;border-top:1px solid #eee;font-size:12.5px;color:#999;}
+  .sidebar .user-box{margin-top:auto;padding:16px 20px;border-top:1px solid #f7c9d8;font-size:12.5px;color:#a15068;}
   .sidebar .user-box b{color:#1a1a1a;display:block;font-size:13.5px;margin-bottom:2px;}
   .sidebar .logout-btn{
-    margin-top:10px;width:100%;padding:8px;background:#f5f5f7;color:#5a5a60;border:1px solid #eee;border-radius:6px;font-size:12.5px;
+    margin-top:10px;width:100%;padding:8px;background:#ffffff;color:#5a3a44;border:1px solid #f7c9d8;border-radius:6px;font-size:12.5px;
   }
-  .sidebar .logout-btn:hover{background:#fdf0f3;color:var(--primary);}
+  .sidebar .logout-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary);}
 
   .main{flex:1;padding:24px 32px;overflow-y:auto;height:100vh;}
   .main::-webkit-scrollbar,.table-scroll::-webkit-scrollbar{width:8px;height:8px;}
@@ -415,6 +415,12 @@
   .stat-tile-green{background:#e7f9ee;color:#1a9c56;}
   .stat-tile-amber{background:#fff6e0;color:#b9821a;}
   .stat-tile-num,.stat-tile-label,.stat-tile-sub{color:inherit;}
+  .home-minibar-row{display:flex;align-items:flex-end;gap:8px;height:120px;padding-top:6px;overflow-x:auto;}
+  .home-minibar-col{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;flex:1 1 0;min-width:36px;max-width:64px;height:100%;}
+  .home-minibar-val{font-size:11px;font-weight:700;color:var(--text,#333);margin-bottom:3px;white-space:nowrap;}
+  .home-minibar-track{width:100%;max-width:28px;flex:1;display:flex;align-items:flex-end;background:var(--bg-soft,#f7f7f9);border-radius:6px 6px 0 0;overflow:hidden;}
+  .home-minibar{width:100%;border-radius:6px 6px 0 0;transition:height .3s ease;}
+  .home-minibar-label{font-size:11px;color:var(--muted,#888);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60px;text-align:center;}
   .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
   .badge.good{background:#e7f8ee;color:var(--good);}
   .badge.warn{background:#fff6e0;color:var(--warn);}

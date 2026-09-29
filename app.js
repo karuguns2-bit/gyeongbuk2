@@ -3810,6 +3810,65 @@ function renderClearanceRecommendationWidget(){
         </div>`).join('')}
     </div>`;
 }
+// 홈 대시보드 "목표 달성 현황(지점별)" 미니 막대그래프 - 참고 이미지(LG OnAir)의 관리지표 위젯을
+// 실제 목표관리 데이터(branchTarget/branchAchieved)로 재구현한 것. 지점별 달성률을 막대로
+// 보여주고, 100% 이상은 초록, 미만은 레드 톤으로 구분한다. 라벨은 길어도 줄바꿈되지 않고
+// 말줄임 처리된다.
+function renderHomeGoalsBarWidget(period){
+  const rows = (DB.branches||[]).map(b=>{
+    const tgt = branchTarget(b.id, period);
+    const ach = branchAchieved(b.id, period);
+    const pct = pctOf(ach, tgt);
+    return { name:b.name, pct };
+  }).filter(r=>r.pct>0);
+  if(rows.length===0){
+    return `<div class="card"><h3 style="margin:0 0 10px;">목표 달성 현황 <small>(지점별)</small></h3><div class="muted">표시할 목표 데이터가 없습니다.</div></div>`;
+  }
+  rows.sort((a,b)=>b.pct-a.pct);
+  const maxPct = Math.max(100, ...rows.map(r=>r.pct));
+  const bars = rows.map(r=>{
+    const h = Math.max(4, Math.min(100, (r.pct/maxPct)*100));
+    const color = r.pct>=100 ? 'var(--good)' : 'var(--primary)';
+    return `<div class="home-minibar-col" title="${escapeHtml(r.name)} ${r.pct.toFixed(1)}%">
+      <div class="home-minibar-val">${r.pct.toFixed(0)}%</div>
+      <div class="home-minibar-track"><div class="home-minibar" style="height:${h}%;background:${color};"></div></div>
+      <div class="home-minibar-label">${escapeHtml(r.name)}</div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="card">
+      <h3 style="margin:0 0 10px;">목표 달성 현황 <small>(지점별 · ${goalsPeriodLabel(period)})</small></h3>
+      <div class="home-minibar-row">${bars}</div>
+    </div>`;
+}
+// 홈 대시보드 "구독 실적" 미니 막대그래프 - [구독 판매 실적] 업로드 자료(DB.subSalesUpload)가
+// 있는 최근 달(최대 3개월)의 실판 수량 합계를 막대로 보여준다. 자료가 없으면 안내 문구만 표시.
+function renderHomeSubTrendWidget(){
+  const periods = Object.keys((DB.subSalesUpload && DB.subSalesUpload.byPeriod) || {}).sort();
+  const last3 = periods.slice(-3);
+  if(last3.length===0){
+    return `<div class="card"><h3 style="margin:0 0 10px;">구독 실적</h3><div class="muted">아직 업로드된 [구독 판매 실적] 자료가 없습니다.</div></div>`;
+  }
+  const sums = last3.map(p=>{
+    const entry = DB.subSalesUpload.byPeriod[p];
+    const total = Object.values(entry.byKey||{}).reduce((s,r)=>s+(Number(r.sp_qty)||0),0);
+    return { period:p, total };
+  });
+  const maxV = Math.max(1, ...sums.map(s=>s.total));
+  const bars = sums.map(s=>{
+    const h = Math.max(4, (s.total/maxV)*100);
+    return `<div class="home-minibar-col" title="${s.period} ${s.total.toLocaleString('ko-KR')}건">
+      <div class="home-minibar-val">${s.total.toLocaleString('ko-KR')}</div>
+      <div class="home-minibar-track"><div class="home-minibar" style="height:${h}%;background:var(--primary);"></div></div>
+      <div class="home-minibar-label">${Number(s.period.slice(5,7))}월</div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="card">
+      <h3 style="margin:0 0 10px;">구독 실적 <small>(최근 ${sums.length}개월 · 실판 수량 합계)</small></h3>
+      <div class="home-minibar-row">${bars}</div>
+    </div>`;
+}
 function renderHome(){
   // 지점별 이달의 배지: 달이 넘어간 첫 조회 시점에만 실제로 갱신되고(내부에서 기간을 확인),
   // 평소에는 아무 것도 하지 않는다(migrateDB()의 __migrateBefore/After 비교 방식과 동일한 패턴).
@@ -3907,6 +3966,10 @@ function renderHome(){
       ${renderHomeNoticeTicker()}
     </div>
     ${state.noticeFormOpen ? renderNoticeForm() : ''}
+    <div class="grid grid-2" style="margin-bottom:16px;">
+      ${renderHomeGoalsBarWidget(homePeriod)}
+      ${renderHomeSubTrendWidget()}
+    </div>
     <div style="margin-bottom:16px;">${renderHomeBranchBadges()}</div>
     ${renderHomeGoalsManagerBanner()}
     ${renderHomeManagerCompetitivenessBanner()}
