@@ -4844,7 +4844,7 @@ function renderHomeNoticeTicker(){
   }
   return `
     <style>
-      .nb-ticker{ flex:1 1 260px; min-width:200px; display:flex; align-items:center; gap:8px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:20px; padding:6px 8px 6px 12px; overflow:hidden; box-sizing:border-box; }
+      .nb-ticker{ flex:1 1 260px; min-width:200px; display:flex; align-items:center; gap:8px; background:var(--primary-light,#ffe3ec); border:1px solid var(--primary); border-radius:20px; padding:6px 8px 6px 12px; overflow:hidden; box-sizing:border-box; }
       .nb-ticker-label{ flex-shrink:0; font-size:13px; }
       .nb-ticker-wrap{ flex:1 1 auto; overflow:hidden; white-space:nowrap; position:relative; height:18px; }
       .nb-ticker-track{ display:inline-flex; align-items:center; white-space:nowrap; position:absolute; left:0; top:0; }
