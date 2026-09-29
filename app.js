@@ -14135,6 +14135,59 @@ function buildPolicyQuizQuestionFromForm(text, options, answers){
 // 한 번에 입력받아 저장한다(기존엔 "이번 주 설정" 카드와 "새 문제" 카드가 따로 떨어져 있어
 // 관리자가 두 번 저장해야 했다). 주차 메타(라벨/시작일/마감일)는 문제를 추가할 때마다 함께
 // 저장되므로, 처음 한 번만 제대로 입력해두면 이후 문제를 추가할 때는 그대로 유지된다.
+// 2026.09 개편2: 한 번에 여러 문제를 등록할 수 있도록 "문제 작성" 팝업 안에서
+// 문제 입력 블록을 동적으로 추가/삭제할 수 있게 한다(페이지 재렌더 없이 순수 DOM 조작으로
+// 처리해 팝업이 닫히지 않는다). idx는 각 블록의 표시 순서(1부터) 용도일 뿐 저장 키가 아니다.
+function pqQuestionRowHtml(idx){
+  return `<div class="pq-question-row" style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px;">
+      <div class="flex-between" style="margin-bottom:6px;">
+        <b class="muted pq-row-label" style="font-size:12.5px;">문제 ${idx}</b>
+        <span class="muted" style="cursor:pointer;font-size:13px;" onclick="removePolicyQuizDraftRow(this)">삭제</span>
+      </div>
+      <div class="form-row">
+        <div class="field" style="flex:1;min-width:260px;"><label>문제</label><textarea class="pq-q-text" rows="2" style="width:100%;" placeholder="객관식 예: 판촉 기간은?  /  빈칸채우기 예: 판촉 기간은 8/01~___ 이다."></textarea></div>
+        <div class="field" style="flex:1;min-width:220px;">
+          <label>보기 (객관식인 경우만 입력, 2~4개)</label>
+          <input class="pq-q-opt1" placeholder="보기 1" style="width:100%;margin-bottom:4px;">
+          <input class="pq-q-opt2" placeholder="보기 2" style="width:100%;margin-bottom:4px;">
+          <input class="pq-q-opt3" placeholder="보기 3" style="width:100%;margin-bottom:4px;">
+          <input class="pq-q-opt4" placeholder="보기 4" style="width:100%;">
+        </div>
+        <div class="field" style="flex:1;min-width:200px;"><label>정답 (객관식: 보기 중 하나와 동일한 텍스트 1개 / 빈칸채우기: 쉼표로 구분, 여러 개 가능)</label><input class="pq-q-answers" style="width:100%;" placeholder="예: 8/03, 8/3, 8월3일"></div>
+      </div>
+    </div>`;
+}
+function renumberPolicyQuizDraftRows(){
+  const container = document.getElementById('pqQuestionRows');
+  if(!container) return;
+  Array.from(container.querySelectorAll('.pq-question-row')).forEach((row,i)=>{
+    const label = row.querySelector('.pq-row-label');
+    if(label) label.textContent = '문제 ' + (i+1);
+  });
+}
+function addPolicyQuizDraftRow(){
+  const container = document.getElementById('pqQuestionRows');
+  if(!container) return;
+  const wrap = document.createElement('div');
+  wrap.innerHTML = pqQuestionRowHtml(container.querySelectorAll('.pq-question-row').length + 1).trim();
+  container.appendChild(wrap.firstChild);
+}
+function removePolicyQuizDraftRow(el){
+  const container = document.getElementById('pqQuestionRows');
+  if(!container) return;
+  if(container.querySelectorAll('.pq-question-row').length<=1){ alert('최소 1개의 문제는 있어야 합니다.'); return; }
+  const row = el.closest('.pq-question-row');
+  if(row) row.remove();
+  renumberPolicyQuizDraftRows();
+}
+function readPolicyQuizDraftRow(row){
+  const text = (row.querySelector('.pq-q-text')||{}).value || '';
+  const options = ['.pq-q-opt1','.pq-q-opt2','.pq-q-opt3','.pq-q-opt4']
+    .map(sel=>{ const el = row.querySelector(sel); return el ? el.value.trim() : ''; })
+    .filter(v=>v);
+  const answers = parseQuizAnswersInput((row.querySelector('.pq-q-answers')||{}).value || '');
+  return buildPolicyQuizQuestionFromForm(text.trim(), options, answers);
+}
 function addPolicyQuizQuestion(){
   if(SESSION.role!=='admin') return;
   const week = currentPolicyQuizWeek();
@@ -14142,14 +14195,21 @@ function addPolicyQuizQuestion(){
   const startDate = (document.getElementById('pqWeekStartInput')||{}).value || '';
   const deadline = (document.getElementById('pqWeekDeadlineInput')||{}).value || '';
   if(startDate && deadline && startDate > deadline){ alert('응시 시작일은 마감일보다 늦을 수 없습니다.'); return; }
-  const text = document.getElementById('pqNewText').value.trim();
-  const options = readQuizOptionInputs('pqNewOpt');
-  const answers = parseQuizAnswersInput(document.getElementById('pqNewAnswers').value);
-  const q = buildPolicyQuizQuestionFromForm(text, options, answers);
-  if(!q) return;
+  const container = document.getElementById('pqQuestionRows');
+  const rowEls = container ? Array.from(container.querySelectorAll('.pq-question-row')) : [];
+  if(rowEls.length===0){ alert('문제를 최소 1개 이상 입력해 주세요.'); return; }
+  const questions = [];
+  for(const row of rowEls){
+    const q = readPolicyQuizDraftRow(row);
+    if(!q) return; // 검증 실패 시 alert는 readPolicyQuizDraftRow 내부(buildPolicyQuizQuestionFromForm)에서 처리됨
+    questions.push(q);
+  }
   if(!DB.policyQuizWeekMeta) DB.policyQuizWeekMeta = {};
   DB.policyQuizWeekMeta[week] = { label: label.trim() || null, startDate: startDate || null, deadline: deadline || null };
-  currentPolicyQuizBank().push(Object.assign({ id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7) }, q));
+  const bank = currentPolicyQuizBank();
+  questions.forEach(q=>{
+    bank.push(Object.assign({ id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7) }, q));
+  });
   touchTabContent('policyQuiz');
   saveDB();
   renderTab('policyQuiz');
@@ -14212,6 +14272,7 @@ function renderPolicyQuiz(){
 
   let adminSection = '';
   let questionBankSection = '';
+  let pqWriteSectionHtml = '';
   if(isAdmin){
     const rows = stats.results.map(r=>`
       <tr>
@@ -14280,37 +14341,33 @@ function renderPolicyQuiz(){
         <div class="field" style="min-width:160px;"><label>응시 시작일 (비워두면 언제든 응시 가능)</label><input id="pqWeekStartInput" type="date" value="${weekMeta.startDate||''}" style="width:100%;"></div>
         <div class="field" style="min-width:160px;"><label>응시 마감일 (비워두면 마감 없음)</label><input id="pqWeekDeadlineInput" type="date" value="${weekMeta.deadline||''}" style="width:100%;"></div>
       </div>
-      <div class="form-row">
-        <div class="field" style="flex:1;min-width:260px;"><label>문제</label><textarea id="pqNewText" rows="2" style="width:100%;" placeholder="객관식 예: 판촉 기간은?  /  빈칸채우기 예: 판촉 기간은 8/01~___ 이다."></textarea></div>
-        <div class="field" style="flex:1;min-width:220px;">
-          <label>보기 (객관식인 경우만 입력, 2~4개)</label>
-          <input id="pqNewOpt1" placeholder="보기 1" style="width:100%;margin-bottom:4px;">
-          <input id="pqNewOpt2" placeholder="보기 2" style="width:100%;margin-bottom:4px;">
-          <input id="pqNewOpt3" placeholder="보기 3" style="width:100%;margin-bottom:4px;">
-          <input id="pqNewOpt4" placeholder="보기 4" style="width:100%;">
-        </div>
-        <div class="field" style="flex:1;min-width:200px;"><label>정답 (객관식: 보기 중 하나와 동일한 텍스트 1개 / 빈칸채우기: 쉼표로 구분, 여러 개 가능)</label><input id="pqNewAnswers" style="width:100%;" placeholder="예: 8/03, 8/3, 8월3일"></div>
-      </div>
-      <div class="small-note muted" style="margin-top:6px;">보기를 2개 이상 입력하면 객관식 문제로, 보기를 비워두고 문제에 ___ 를 포함하면 빈칸채우기 문제로 등록됩니다.</div>
+      <div id="pqQuestionRows">${pqQuestionRowHtml(1)}</div>
+      <button class="btn btn-sm" onclick="addPolicyQuizDraftRow()" type="button"><i class="ti ti-plus" aria-hidden="true"></i> 문제 추가</button>
+      <div class="small-note muted" style="margin-top:6px;">보기를 2개 이상 입력하면 객관식 문제로, 보기를 비워두고 문제에 ___ 를 포함하면 빈칸채우기 문제로 등록됩니다. "문제 추가"로 여러 문제를 한 번에 작성한 뒤 한꺼번에 등록할 수 있습니다.</div>
       <button class="btn btn-primary" onclick="addPolicyQuizQuestion()" style="margin-top:8px;">등록</button>`;
+
+    pqWriteSectionHtml = `
+      <div style="margin-bottom:14px;">
+        ${statusNoteHtml}
+        ${boardWriteButtonHtml('policyQuizWrite','문제 작성하기')}
+      </div>
+      ${boardWriteModalHtml('policyQuizWrite','문제 작성',pqWriteModalBody)}`;
 
     questionBankSection = `
       <div class="card" style="margin-bottom:16px;">
         <h3>${policyQuizWeekLabel(currentWeek)} 문제 은행 관리 (관리자 전용) — 총 ${bank.length}문제, 응시 시 무작위 ${Math.min(5,bank.length)}문제 출제</h3>
-        ${statusNoteHtml}
-        ${boardWriteButtonHtml('policyQuizWrite','문제 작성하기')}
         <table style="margin-top:12px;">
           <thead><tr><th>#</th><th>문제</th><th>정답</th><th></th></tr></thead>
           <tbody>${bankRows}</tbody>
         </table>
-      </div>
-      ${boardWriteModalHtml('policyQuizWrite','문제 작성',pqWriteModalBody)}`;
+      </div>`;
   }
 
   if(SESSION.role!=='staff'){
     return `
       <div class="page-title">금주 주말 정책 숙지도 점검</div>
       <div class="page-desc">주말 판촉/정책 자료를 바탕으로 한 객관식/빈칸채우기 숙지도 점검입니다. (응시는 개별 판매사원 계정으로만 가능합니다.) 주차를 선택하면 해당 주차의 점검 현황을 볼 수 있고, 별도로 선택하지 않으면 가장 최근에 등록된 주차 현황이 표시됩니다.</div>
+      ${pqWriteSectionHtml}
       ${weekSelectorHtml}
       ${summaryHtml}
       ${adminSection}
