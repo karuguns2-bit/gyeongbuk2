@@ -2385,8 +2385,8 @@ function progressBarRunnerHtml(pct, opts){
   const runnerLeft = Math.max(4, Math.min(width, 95));
   return `
     <div class="progress-bar-wrap" style="margin-top:${marginTop}px;">
-      <span class="progress-runner" style="left:${runnerLeft}%;">🏃</span>
-      <span class="progress-finish">🏁</span>
+      <span class="progress-runner" style="left:${runnerLeft}%;"><i class="ti ti-run" aria-hidden="true"></i></span>
+      <span class="progress-finish"><i class="ti ti-flag" aria-hidden="true"></i></span>
       <div class="progress-bar" style="background:${trackBg};"><div style="width:${width}%"></div></div>
     </div>`;
 }
@@ -8356,7 +8356,7 @@ function moPeriodSelectorHtml(){
   const period = moEffectivePeriod();
   const latest = moLatestPeriod();
   return `<div class="card" style="margin-bottom:16px;">
-    <div class="small-note" style="margin-bottom:8px;">🗓️ 조회할 달을 선택하세요. 매달 새 실적 파일을 올려도 이전 달 자료는 그대로 보관되어 언제든 다시 볼 수 있습니다.</div>
+    <div class="small-note" style="margin-bottom:8px;"><i class="ti ti-calendar" aria-hidden="true"></i> 조회할 달을 선택하세요. 매달 새 실적 파일을 올려도 이전 달 자료는 그대로 보관되어 언제든 다시 볼 수 있습니다.</div>
     <div>${periods.slice().reverse().map(p=>`<span class="branch-pill ${p===period?'active':''}" onclick="setMoPeriod('${p}')">${goalsPeriodLabel(p)}${p===latest?' (최신)':''}</span>`).join('')}</div>
   </div>`;
 }
@@ -15054,10 +15054,32 @@ function renderEduCompletionAll(){
     </tr>`;
   }).join('') || `<tr><td colspan="${6+videoSessions.length}" class="muted">대상자가 없습니다.</td></tr>`;
 
-  const uploadHtml = isAdmin ? `
-    <div class="card" style="margin-bottom:16px;">
-      <div class="small-note">📋 화상교육/월간test/AI R/P 이수 현황 파일 업로드는 <b>[시스템 관리]</b> 메뉴로 이동했습니다.</div>
-    </div>` : '';
+  // 2026.09: 항목별 완료율을 막대그래프로 보여주되, 화상교육은 여러 차수(1차/2차...)로
+  // 나뉘어 있어 막대 하나로는 어느 차수가 부진한지 알 수 없다는 피드백을 반영해 - 화상교육
+  // 막대 바로 아래에 차수별 교육명+이수율을 작은 목록으로 함께 보여준다(차수 데이터가 없으면
+  // 자동으로 숨김).
+  const sessionBreakdown = videoSessions.map(s=>{
+    const done = records.filter(r=> r.videoSessionStatus[s.no]==='이수' || r.videoSessionStatus[s.no]==='완료').length;
+    return { no:s.no, title:s.title, done };
+  });
+  function eduRateBarHtml(label, done, denom, breakdownHtml){
+    const pct = denom>0 ? Math.round(done/denom*100) : 0;
+    return `
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;"><span>${escapeHtml(label)}</span><span style="font-weight:700;">${done}/${denom}</span></div>
+        <div style="background:#f1eeee;border-radius:999px;height:8px;overflow:hidden;${breakdownHtml?'margin-bottom:6px;':''}"><div style="background:var(--primary);width:${pct}%;height:100%;"></div></div>
+        ${breakdownHtml||''}
+      </div>`;
+  }
+  const summaryBarsHtml = `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start;margin-top:10px;">
+      ${eduRateBarHtml('화상교육', videoDoneCount, total, sessionBreakdown.length>0 ? `
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          ${sessionBreakdown.map(s=>`<div style="display:flex;justify-content:space-between;font-size:10.5px;${s.done<total?'color:var(--primary);':'color:var(--text-sub);'}"><span>${s.no}차 · ${escapeHtml(s.title)}</span><span>${s.done}/${total}</span></div>`).join('')}
+        </div>` : '')}
+      ${eduRateBarHtml('월간test', testDoneCount, total)}
+      ${eduRateBarHtml('AI R/P', aiDoneCount, total)}
+    </div>`;
 
   // 화상교육/월간test/AI R/P 중 이번 달 자료가 아직 하나라도 안 올라온 게 있으면 자동으로
   // 경고 배너를 띄운다 — 관리자뿐 아니라 이 화면을 보는 모든 직원이 "지금 보이는 게 지난달
@@ -15069,18 +15091,16 @@ function renderEduCompletionAll(){
   ].filter(Boolean).join('');
 
   return `
+    <div class="eduVideo-plain">
     <div class="page-title">교육 이수율 확인</div>
     <div class="page-desc">혼매경북팀(경북2담당) 소속 인원 기준으로 화상교육·월간test·AI R/P 이수 현황을 한 화면에서 한눈에 확인할 수 있습니다.${richVideo ? ` (화상교육 기준날짜: <b>${richVideo.refDate}</b>)` : ''}</div>
     ${eduStaleBanners}
-    ${renderCollectionNotice('eduAiRp', 'eduVideo')}
     ${branchPills}
-    <div class="card ai-box" style="margin-bottom:16px;">
-      <div class="ai-title">📊 이수 현황 요약</div>
-      <div>전체 <b>${total}명</b> 중 3개 항목 모두 완료 <b>${allDoneCount}명</b> — 종합 이수율 <b>${overallRate.toFixed(1)}%</b></div>
-      <div style="margin-top:6px;">화상교육 <b>${videoDoneCount}/${total}</b> · 월간test <b>${testDoneCount}/${total}</b> · AI R/P <b>${aiDoneCount}/${total}</b></div>
-      ${records.filter(r=>!r.allDone).length>0 ? `<div style="margin-top:6px;">미완료 항목이 있는 인원: ${records.filter(r=>!r.allDone).map(r=>`${r.name}(${r.incompleteLabels.join(',')})`).join(', ')}</div>` : ''}
+    <div class="card ai-box" style="margin-bottom:10px;">
+      <div class="ai-title"><i class="ti ti-chart-donut" aria-hidden="true"></i> 이수 현황 요약 · 전체 ${total}명 중 3개 항목 모두 완료 ${allDoneCount}명 (${overallRate.toFixed(1)}%)</div>
+      ${summaryBarsHtml}
+      ${records.filter(r=>!r.allDone).length>0 ? `<div style="margin-top:10px;font-size:12px;color:var(--text-sub);">미완료: ${records.filter(r=>!r.allDone).map(r=>`${r.name}(${r.incompleteLabels.join(',')})`).join(', ')}</div>` : ''}
     </div>
-    ${uploadHtml}
     <div class="card">
       <div class="table-scroll">
       <table>
@@ -15088,6 +15108,7 @@ function renderEduCompletionAll(){
         <tbody>${rows}</tbody>
       </table>
       </div>
+    </div>
     </div>
   `;
 }

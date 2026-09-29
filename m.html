@@ -519,6 +519,12 @@
   .eduSchedule-plain .card{padding:10px 12px;}
   .eduSchedule-plain .edu-cal-layout{gap:10px;}
   .eduSchedule-plain .badge.good,.eduSchedule-plain .badge.warn,.eduSchedule-plain .badge.bad{background:#f2f2f4;color:var(--text);}
+  /* 2026.09: 교육 이수율 확인 페이지 - 파스텔 배경 제거하고 흰 바탕+검은 글씨로 통일, 여백 촘촘하게 */
+  .eduVideo-plain .card{padding:10px 12px;}
+  .eduVideo-plain .ai-box{background:#fff;border:1px solid var(--border);}
+  .eduVideo-plain .ai-box .ai-title{color:var(--text);}
+  .eduVideo-plain .badge.good{background:#f2f2f4;color:var(--text);}
+  .eduVideo-plain .badge.bad{background:#fdecec;color:var(--primary);}
   .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
   .badge.good{background:#e7f8ee;color:var(--good);}
   .badge.warn{background:#fff6e0;color:var(--warn);}
@@ -1040,11 +1046,11 @@
 </div>
 <div id="mobileBackdrop" onclick="closeMobileDrawer()"></div>
 <div id="mobileBottomNav">
-  <button type="button" class="mbn-item" data-mtab="home" onclick="mobileGoTab('home', this)"><span class="mbn-ico">&#127968;</span>홈</button>
-  <button type="button" class="mbn-item" data-mtab="goals" onclick="mobileGoTab('goals', this)"><span class="mbn-ico">&#127919;</span>목표관리</button>
-  <button type="button" class="mbn-item" data-mtab="inventory" onclick="mobileGoTab('inventory', this)"><span class="mbn-ico">&#128230;</span>재고조회</button>
-  <button type="button" class="mbn-item" data-mtab="notices" onclick="mobileGoTab('notices', this)"><span class="mbn-ico">&#128226;</span>공지사항</button>
-  <button type="button" class="mbn-item" onclick="toggleMobileDrawer()"><span class="mbn-ico">&#9776;</span>전체메뉴</button>
+  <button type="button" class="mbn-item" data-mtab="home" onclick="mobileGoTab('home', this)"><span class="mbn-ico"><i class="ti ti-home" aria-hidden="true"></i></span>홈</button>
+  <button type="button" class="mbn-item" data-mtab="goals" onclick="mobileGoTab('goals', this)"><span class="mbn-ico"><i class="ti ti-target-arrow" aria-hidden="true"></i></span>목표관리</button>
+  <button type="button" class="mbn-item" data-mtab="inventory" onclick="mobileGoTab('inventory', this)"><span class="mbn-ico"><i class="ti ti-package" aria-hidden="true"></i></span>재고조회</button>
+  <button type="button" class="mbn-item" data-mtab="notices" onclick="mobileGoTab('notices', this)"><span class="mbn-ico"><i class="ti ti-speakerphone" aria-hidden="true"></i></span>공지사항</button>
+  <button type="button" class="mbn-item" onclick="toggleMobileDrawer()"><span class="mbn-ico"><i class="ti ti-menu-2" aria-hidden="true"></i></span>전체메뉴</button>
 </div>
   <div class="sidebar">
     <div class="brand">혼매경북팀 <span>(경북2담당)</span><br>업무 지원 시스템</div>
