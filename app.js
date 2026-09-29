@@ -16294,7 +16294,7 @@ function renderProspects(){
     </div>` : '';
 
   const rows = paging.items.map(p=>{
-    const canManage = p.empId===SESSION.empId;
+    const canManage = p.empId===SESSION.empId || isAdmin;
     const repCellsHtml = isAdmin ? `
       <td class="muted">${escapeHtml((DB.users.find(u=>u.empId===p.empId)||{}).name || p.empId)}</td>
       <td class="muted">${escapeHtml(branchName(p.branchId))}</td>` : '';
@@ -16341,15 +16341,17 @@ function renderProspects(){
       <td class="nowrap-cell">${p.purchaseType ? `<span class="badge ${p.purchaseType==='구독'?'warn':''}">${p.purchaseType}</span>` : '-'}</td>
       <td class="nowrap-cell">${p.expectedAmountWon!=null ? fmtWon(p.expectedAmountWon) : '-'}</td>
       <td class="nowrap-cell">
-        <span class="badge ${p.happyCall==='실행'?'good':'bad'}">${p.happyCall}</span>
-        ${canManage ? `<button class="btn btn-sm" style="margin-left:4px;" onclick="updateProspectField('${p.id}','happyCall','${p.happyCall==='실행'?'미실행':'실행'}')">${p.happyCall==='실행'?'미실행으로 변경':'실행으로 변경'}</button>` : ''}
+        ${canManage ? `
+        <select style="width:100%;background:#f2f2f4;color:var(--text);border-color:var(--border);" onchange="updateProspectField('${p.id}','happyCall',this.value)">
+          ${PROSPECT_HAPPY_CALL_OPTIONS.map(o=>`<option value="${o}" ${p.happyCall===o?'selected':''}>${o}</option>`).join('')}
+        </select>` : `<span class="badge ${p.happyCall==='실행'?'good':'bad'}">${p.happyCall}</span>`}
       </td>
       <td>
-        <span class="badge ${p.saleStatus==='미구매'?'bad':(p.saleStatus?'good':'warn')}">${p.saleStatus||'미선택'}</span>
         ${canManage ? `
-        <div style="margin-top:4px;display:flex;gap:3px;">
-          ${PROSPECT_SALE_STATUS_OPTIONS.map(o=>`<button class="btn btn-sm" style="padding:2px 7px;font-size:11px;${p.saleStatus===o?'opacity:.4;pointer-events:none;':''}" onclick="updateProspectField('${p.id}','saleStatus','${o}')">${o}</button>`).join('')}
-        </div>` : ''}
+        <select style="width:100%;background:#f2f2f4;color:var(--text);border-color:var(--border);" onchange="updateProspectField('${p.id}','saleStatus',this.value)">
+          <option value="" ${!p.saleStatus?'selected':''}>미선택</option>
+          ${PROSPECT_SALE_STATUS_OPTIONS.map(o=>`<option value="${o}" ${p.saleStatus===o?'selected':''}>${o}</option>`).join('')}
+        </select>` : `<span class="badge ${p.saleStatus==='미구매'?'bad':(p.saleStatus?'good':'warn')}">${p.saleStatus||'미선택'}</span>`}
       </td>
       <td class="muted nowrap-cell" style="font-size:12px;">${fmtDateTime(p.createdAt)}</td>
       <td class="act-col" style="white-space:nowrap;">
@@ -16482,7 +16484,7 @@ function addProspect(){
   renderTab('prospects');
 }
 function updateProspectField(id, field, val){
-  const p = DB.prospects.find(x=>x.id===id && x.empId===SESSION.empId);
+  const p = DB.prospects.find(x=>x.id===id && (x.empId===SESSION.empId || canSwitchBranch()));
   if(!p) return;
   p[field] = val;
   saveDB();
@@ -16497,7 +16499,7 @@ function cancelEditProspect(){
   renderTab('prospects');
 }
 function saveEditProspect(id){
-  const p = DB.prospects.find(x=>x.id===id && x.empId===SESSION.empId);
+  const p = DB.prospects.find(x=>x.id===id && (x.empId===SESSION.empId || canSwitchBranch()));
   if(!p) return;
   const customerName = document.getElementById('pgeName_'+id).value.trim();
   const phone = document.getElementById('pgePhone_'+id).value.trim();
@@ -16523,7 +16525,7 @@ function saveEditProspect(id){
 }
 function deleteProspect(id){
   if(!confirm('삭제하시겠습니까?')) return;
-  DB.prospects = DB.prospects.filter(x=> !(x.id===id && x.empId===SESSION.empId));
+  DB.prospects = DB.prospects.filter(x=> !(x.id===id && (x.empId===SESSION.empId || canSwitchBranch())));
   saveDB();
   renderTab('prospects');
 }
