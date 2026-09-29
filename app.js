@@ -9826,7 +9826,6 @@ function incGradeTableHtml(records, branchNameForDelete){
     </div>`;
 }
 function renderIncentiveOverview(){
-  const noticeHtml = renderCollectionNotice('incentiveOverviewNotice', 'incentiveOverview');
   const moEntry = moDataFor();
   if(!moEntry.rows || moEntry.rows.length===0){
     return `
@@ -9834,7 +9833,6 @@ function renderIncentiveOverview(){
     <div class="page-title">지점별 인센티브(참고용)</div>
     <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트 기준 지점별 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다.</div>
     ${moPeriodSelectorHtml()}
-    ${noticeHtml}
     <div class="card"><div class="muted">아직 업로드된 자료가 없습니다.${SESSION.role==='admin'?` [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다. <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>
     </div>`;
   }
@@ -9846,8 +9844,7 @@ function renderIncentiveOverview(){
     <div class="inc-plain">
     <div class="page-title">지점별 인센티브(참고용)</div>
     <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트("◆ 지점별 인센티브" 표) 기준 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다. 기준일자 <b>${moEntry.asOfDate}</b>(D-1, 전일)</div>
-    ${moPeriodSelectorHtml()}
-    ${noticeHtml}`;
+    ${moPeriodSelectorHtml()}`;
 
   if(!canBrowseAll){
     // ---- 매니저(staff) 화면: 본인 지점 상세 + 전체(타 지점 포함) 합계 비교만 제공 ----
