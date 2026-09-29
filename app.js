@@ -14572,7 +14572,7 @@ function eduTargetChipsHtml(key){
   return [...sel].map(empId=>{
     const u = DB.users.find(x=>x.empId===empId);
     const label = u ? `${u.name}(${branchName(u.branchId)})` : empId;
-    return `<span class="badge" style="background:#eef2ff;color:#3b4ba0;margin:2px 4px 2px 0;cursor:pointer;" onclick="toggleEduTargetPerson('${key}','${empId}',false)" title="클릭하면 제외">${escapeHtml(label)} ×</span>`;
+    return `<span class="badge" style="background:#f2f2f4;color:var(--text);margin:2px 4px 2px 0;cursor:pointer;" onclick="toggleEduTargetPerson('${key}','${empId}',false)" title="클릭하면 제외">${escapeHtml(label)} ×</span>`;
   }).join('');
 }
 function eduTargetOptionRowsHtml(key, query){
@@ -14729,7 +14729,7 @@ function eduScheduleCalendarHtml(cat){
     // 이름과 대상 인원을 한 번에 미리 볼 수 있도록 칸 전체의 title에 여러 줄로 담아 둔다.
     const dayTooltip = dayEvents.map(s=>`[${eduCategoryShortLabel(s.cat)}] ${s.title} - 대상: ${eduEventTargetPreview(s)}`).join('\n');
     cells.push(`
-      <div class="edu-cal-daycell" ${cnt>0?`onclick="toggleEduCalFilterDate('${cat}','${dateStr}')"`:''} title="${escapeHtml(dayTooltip)}" style="cursor:${cnt>0?'pointer':'default'};${isSel?'background:var(--primary);':(isToday?'background:#fdecec;':'')}">
+      <div class="edu-cal-daycell" ${cnt>0?`onclick="toggleEduCalFilterDate('${cat}','${dateStr}')"`:''} title="${escapeHtml(dayTooltip)}" style="cursor:${cnt>0?'pointer':'default'};${isSel?'background:var(--primary);':(isToday?'background:#f2f2f4;':'')}">
         <div class="edu-cal-daynum" style="${isSel?'color:#fff;font-weight:700;':(isToday?'color:var(--primary);font-weight:700;':'')}">${d}</div>
         ${eventsHtml}
       </div>`);
@@ -14744,7 +14744,7 @@ function eduScheduleCalendarHtml(cat){
       </div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;">${weekDayHeaders}</div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">${cells.join('')}</div>
-      ${filterDate ? `<div class="small-note" style="margin-top:10px;">📌 <b>${filterDate}</b> 일정만 보는 중 · <span style="color:var(--primary);cursor:pointer;text-decoration:underline;" onclick="toggleEduCalFilterDate('${cat}','${filterDate}')">전체 보기</span></div>` : `<div class="small-note" style="margin-top:10px;">날짜를 클릭하면 해당 날짜 일정만 볼 수 있습니다.</div>`}
+      ${filterDate ? `<div class="small-note" style="margin-top:10px;"><i class="ti ti-bookmark" aria-hidden="true"></i> <b>${filterDate}</b> 일정만 보는 중 · <span style="color:var(--primary);cursor:pointer;text-decoration:underline;" onclick="toggleEduCalFilterDate('${cat}','${filterDate}')">전체 보기</span></div>` : `<div class="small-note" style="margin-top:10px;">날짜를 클릭하면 해당 날짜 일정만 볼 수 있습니다.</div>`}
     </div>`;
 }
 const EDU_SCHEDULE_CAT_SELECT_OPTIONS = [
@@ -14814,9 +14814,7 @@ function renderEduSchedule(){
   }).join('') || `<tr><td colspan="8" class="muted">${calFilterDate ? escapeHtml(calFilterDate)+'에 등록된 일정이 없습니다.' : '등록된 일정이 없습니다.'}</td></tr>`;
 
   const addKey = `add_all`;
-  const formHtml = isAdmin ? `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>일정 등록</h3>
+  const formHtml = isAdmin ? boardWriteButtonHtml('eduScheduleWrite', '새 일정 등록') + boardWriteModalHtml('eduScheduleWrite', '일정 등록', `
       <div class="form-row">
         <div class="field">
           <label>구분</label>
@@ -14862,10 +14860,10 @@ function renderEduSchedule(){
           ${eduTargetPickerHtml(addKey)}
         </div>
         <button class="btn btn-primary" onclick="addEduSchedule()">등록</button>
-      </div>
-    </div>` : '';
+      </div>`) : '';
 
   return `
+    <div class="eduSchedule-plain">
     <div class="page-title">교육 일정 안내</div>
     <div class="page-desc">본부(평택)교육 · 사내교육 · 기타교육 일정을 한 곳에서 함께 등록·조회합니다. 대상자로 지정된 경우 참석일 기준 알람일(D-N) 전부터 로그인 시 안내됩니다 (대상자 미지정 시 대상 지점 전체, 기본 D-2).</div>
     <div class="edu-cal-layout">
@@ -14883,6 +14881,7 @@ function renderEduSchedule(){
       <div class="edu-cal-side">
         ${eduScheduleCalendarHtml('all')}
       </div>
+    </div>
     </div>
   `;
 }

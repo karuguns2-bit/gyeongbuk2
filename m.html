@@ -515,6 +515,10 @@
   .prospect-plain .ai-box{background:#fff;border:1px solid var(--border);}
   .prospect-plain .ai-box .ai-title{color:var(--text);}
   .prospect-plain .badge.good,.prospect-plain .badge.warn,.prospect-plain .badge.bad{background:#f2f2f4;color:var(--text);}
+  /* 2026.09: 교육 일정 안내 페이지 - 파스텔 배경 제거하고 흰 바탕+검은 글씨로 통일, 여백 촘촘하게 */
+  .eduSchedule-plain .card{padding:10px 12px;}
+  .eduSchedule-plain .edu-cal-layout{gap:10px;}
+  .eduSchedule-plain .badge.good,.eduSchedule-plain .badge.warn,.eduSchedule-plain .badge.bad{background:#f2f2f4;color:var(--text);}
   .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
   .badge.good{background:#e7f8ee;color:var(--good);}
   .badge.warn{background:#fff6e0;color:var(--warn);}
@@ -558,7 +562,7 @@
   }
   .edu-cal-daycell{min-height:64px;border-radius:8px;padding:4px 3px;display:flex;flex-direction:column;align-items:center;box-sizing:border-box;}
   .edu-cal-daynum{font-size:12px;margin-bottom:2px;}
-  .edu-cal-event{width:100%;font-size:10px;line-height:1.35;padding:1px 4px;border-radius:4px;background:#fdecec;color:var(--primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;box-sizing:border-box;}
+  .edu-cal-event{width:100%;font-size:10px;line-height:1.35;padding:1px 4px;border-radius:4px;background:#f2f2f4;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px;box-sizing:border-box;}
   .edu-cal-more{font-size:9.5px;color:var(--text-sub);}
   @media(max-width:640px){
     .edu-cal-daycell{min-height:50px;padding:3px 2px;}
