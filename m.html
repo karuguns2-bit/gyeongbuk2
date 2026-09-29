@@ -494,6 +494,17 @@
   .inc-plain .inc-kv-total span:last-child{color:var(--primary);}
   .inc-plain .stats5{grid-template-columns:repeat(2,1fr) !important;}
   .inc-plain .mo-branch-card{border-color:var(--border);}
+  /* 2026.09: 공지사항/각종자료/정보보고/이슈제품 판매 성공 사례/우수 활동 사례 공유 5개
+     게시판 공통 - 파스텔 배경 제거하고 흰 바탕+검은 글씨로 통일, 여백도 촘촘하게. */
+  .board-plain .card{padding:10px 12px;}
+  .board-plain h3{margin:0 0 6px;font-size:14px;}
+  .board-plain .ai-box{background:#fff;border:1px solid var(--border);}
+  .board-plain .ai-box .ai-title{color:var(--text);}
+  .board-plain .badge.good,.board-plain .badge.warn,.board-plain .badge.bad{background:#f2f2f4;color:var(--text);}
+  .board-plain .notice-banner{background:#fff;border:1px solid var(--border);color:var(--text);}
+  .board-plain .like-btn-active{background:#fff0f3 !important;border-color:var(--primary) !important;color:var(--primary) !important;}
+  .board-modal-overlay{position:fixed;inset:0;background:rgba(20,20,26,.45);z-index:300;align-items:center;justify-content:center;}
+  .board-modal-box{background:#fff;border-radius:14px;padding:18px 20px;width:min(92vw,520px);max-height:86vh;overflow-y:auto;box-shadow:0 12px 44px rgba(0,0,0,.28);}
   .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
   .badge.good{background:#e7f8ee;color:var(--good);}
   .badge.warn{background:#fff6e0;color:var(--warn);}

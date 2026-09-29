@@ -5302,6 +5302,35 @@ function saveNotice(){
   renderTab('home');
 }
 
+// 게시판 공통 "새 글 등록" 팝업 모달 헬퍼 — 공지사항/각종자료/정보보고/이슈제품 판매 성공 사례/
+// 우수 활동 사례 공유 5개 게시판이 모두 같은 방식으로 쓴다. 항상 펼쳐져 있던 작성 폼을 팝업으로
+// 옮기고, "새 글 등록하기" 버튼을 누를 때만 열리게 한다. 폼 안의 등록 버튼(예: submitNotice)이
+// 성공하면 renderTab()으로 페이지 전체가 다시 그려지면서 모달 마크업도 새로(닫힌 상태로) 생성되므로
+// 별도로 닫는 코드가 필요 없다 — 입력값 검증 실패 시에는 renderTab이 호출되지 않아 모달이 열린
+// 채로 남아 에러 메시지를 보여줄 수 있다.
+function boardWriteModalHtml(modalId, title, bodyHtml){
+  return `
+    <div id="modal_${modalId}" class="board-modal-overlay" style="display:none;" onclick="if(event.target===this) closeBoardModal('${modalId}')">
+      <div class="board-modal-box" onclick="event.stopPropagation()">
+        <div class="flex-between" style="margin-bottom:10px;">
+          <div style="font-weight:800;font-size:15px;">${escapeHtml(title)}</div>
+          <span class="muted" style="cursor:pointer;font-size:20px;line-height:1;" onclick="closeBoardModal('${modalId}')">×</span>
+        </div>
+        ${bodyHtml}
+      </div>
+    </div>`;
+}
+function boardWriteButtonHtml(modalId, label){
+  return `<button class="btn btn-primary" style="margin-bottom:10px;" onclick="openBoardModal('${modalId}')"><i class="ti ti-plus" aria-hidden="true"></i> ${escapeHtml(label||'새 글 등록하기')}</button>`;
+}
+function openBoardModal(modalId){
+  const m = document.getElementById('modal_'+modalId);
+  if(m) m.style.display = 'flex';
+}
+function closeBoardModal(modalId){
+  const m = document.getElementById('modal_'+modalId);
+  if(m) m.style.display = 'none';
+}
 /* =========================================================================
    6a2. 공지사항 게시판 (운영 관리 하위 — 목록/작성/수정/삭제, 사진 첨부)
    DB.notices를 홈 배너와 함께 공유한다. 관리자만 작성/수정/삭제 가능.
@@ -5317,9 +5346,7 @@ function renderNoticesBoard(){
     '제목·내용·작성자로 검색'
   );
 
-  const createFormHtml = isAdmin ? `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>새 공지 작성</h3>
+  const createFormHtml = isAdmin ? boardWriteButtonHtml('noticeWrite', '새 글 등록하기') + boardWriteModalHtml('noticeWrite', '새 공지 작성', `
       <div class="form-row">
         <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="nbTitle" style="width:100%" placeholder="공지 제목"></div>
       </div>
@@ -5333,9 +5360,8 @@ function renderNoticesBoard(){
         </div>
       </div>
       <div class="small-note">※ 사진, PDF, 워드/엑셀 등 어떤 파일이든 첨부할 수 있습니다. 대용량 파일은 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
-      <button class="btn btn-primary" style="margin-top:8px;" onclick="submitNoticeBoard()">등록</button>
-      <div id="nbMsg" class="small-note"></div>
-    </div>` : '';
+      <button class="btn btn-primary" style="margin-top:8px;" onclick="submitNoticeBoard()">등록하기</button>
+      <div id="nbMsg" class="small-note"></div>`) : '';
 
   const listHtml = notices.map(n=>{
     if(editId === n.id){
@@ -5373,7 +5399,7 @@ function renderNoticesBoard(){
     const expanded = isPostExpanded(n.id);
     // 관리자 화면에서만 "매니저별 읽음 현황"을 보여준다 — 매니저(staff) 계정에게는 노출하지 않는다.
     const readSummary = isAdmin ? noticeReadSummary(n.id) : null;
-    const readBadgeHtml = readSummary ? `<span class="badge ${readSummary.total>0 && readSummary.readCount===readSummary.total ? 'good' : 'warn'}" title="매니저 읽음 현황" style="white-space:nowrap;">👁 읽음 ${readSummary.readCount}/${readSummary.total}</span>` : '';
+    const readBadgeHtml = readSummary ? `<span class="badge ${readSummary.total>0 && readSummary.readCount===readSummary.total ? 'good' : 'warn'}" title="매니저 읽음 현황" style="white-space:nowrap;"><i class="ti ti-eye" aria-hidden="true"></i> 읽음 ${readSummary.readCount}/${readSummary.total}</span>` : '';
     const readBreakdownHtml = readSummary ? `
         <div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5e7eb;font-size:12px;">
           <div style="margin-bottom:6px;"><b>읽음 (${readSummary.readCount}/${readSummary.total})</b> ${readSummary.readList.map(u=>`<span class="badge good" style="margin:2px 4px 0 0;">${escapeHtml(u.name)}</span>`).join('') || '<span class="muted">없음</span>'}</div>
@@ -5382,19 +5408,19 @@ function renderNoticesBoard(){
     // 매니저(staff) 화면에서는 반대로 "본인이 이 공지를 읽었는지"를 행 우측에 표시한다.
     const isStaffViewer = SESSION.role==='staff';
     const myUnread = isStaffViewer && !isNoticeReadBy(n.id, SESSION.empId);
-    const myUnreadBadgeHtml = myUnread ? `<span class="badge bad" title="아직 확인하지 않았습니다" style="white-space:nowrap;">⚠ 미확인</span>` : '';
+    const myUnreadBadgeHtml = myUnread ? `<span class="badge bad" title="아직 확인하지 않았습니다" style="white-space:nowrap;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> 미확인</span>` : '';
     return `
-      <div class="card" style="margin-bottom:12px;">
+      <div class="card" style="margin-bottom:10px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="toggleNoticeExpand('${n.id}')">
           <div class="nb-title">${escapeHtml(n.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${readBadgeHtml}
             ${myUnreadBadgeHtml}
-            ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;"><i class="ti ti-paperclip" aria-hidden="true"></i></span>` : ''}
             <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
           </div>
         </div>
-        ${myUnread ? `<div class="small-note" style="color:var(--bad);font-weight:700;margin-top:4px;">⚠ 아직 조회하지 않은 공지입니다. 꼭 공지를 확인하세요!</div>` : ''}
+        ${myUnread ? `<div class="small-note" style="color:var(--bad);font-weight:700;margin-top:4px;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> 아직 조회하지 않은 공지입니다. 꼭 공지를 확인하세요!</div>` : ''}
         ${expanded ? `
         <div class="nb-content" style="margin:10px 0 0;">${richContentHtml(n.content)}</div>
         ${photosHtml ? `<div class="attach-gallery">${photosHtml}</div>` : ''}
@@ -5408,12 +5434,14 @@ function renderNoticesBoard(){
   }).join('');
 
   return `
+    <div class="board-plain">
     <div class="page-title">공지사항</div>
     <div class="page-desc">전체 팀에 공지할 내용을 게시판 형태로 관리합니다. 등록한 공지는 홈 화면 공지사항 배너에도 함께 표시됩니다.</div>
     ${createFormHtml}
     ${allNotices.length>0 ? noticeBarHtml : ''}
     ${listHtml || `<div class="card muted">${allNotices.length===0 ? '등록된 공지사항이 없습니다.' : '검색 결과가 없습니다.'}</div>`}
     ${noticePagerHtml}
+    </div>
   `;
 }
 function startEditNoticeBoard(id){
@@ -5536,9 +5564,7 @@ function renderMaterialsBoard(){
     '제목·내용·작성자로 검색'
   );
 
-  const createFormHtml = isAdmin ? `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>새 자료 작성</h3>
+  const createFormHtml = isAdmin ? boardWriteButtonHtml('materialWrite', '새 글 등록하기') + boardWriteModalHtml('materialWrite', '새 자료 작성', `
       <div class="form-row">
         <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="mtTitle" style="width:100%" placeholder="자료 제목"></div>
       </div>
@@ -5552,9 +5578,8 @@ function renderMaterialsBoard(){
         </div>
       </div>
       <div class="small-note">※ 사진, PDF, 워드/엑셀 등 어떤 파일이든 첨부할 수 있습니다. 대용량 파일은 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
-      <button class="btn btn-primary" style="margin-top:8px;" onclick="submitMaterial()">등록</button>
-      <div id="mtMsg" class="small-note"></div>
-    </div>` : '';
+      <button class="btn btn-primary" style="margin-top:8px;" onclick="submitMaterial()">등록하기</button>
+      <div id="mtMsg" class="small-note"></div>`) : '';
 
   const listHtml = materials.map(n=>{
     if(editId === n.id && isAdmin){
@@ -5592,7 +5617,7 @@ function renderMaterialsBoard(){
     const expanded = isPostExpanded(n.id);
     // 관리자 화면에서만 "매니저별 읽음 현황"을 보여준다 — 매니저(staff) 계정에게는 노출하지 않는다.
     const readSummary = isAdmin ? materialReadSummary(n.id) : null;
-    const readBadgeHtml = readSummary ? `<span class="badge ${readSummary.total>0 && readSummary.readCount===readSummary.total ? 'good' : 'warn'}" title="매니저 읽음 현황" style="white-space:nowrap;">👁 읽음 ${readSummary.readCount}/${readSummary.total}</span>` : '';
+    const readBadgeHtml = readSummary ? `<span class="badge ${readSummary.total>0 && readSummary.readCount===readSummary.total ? 'good' : 'warn'}" title="매니저 읽음 현황" style="white-space:nowrap;"><i class="ti ti-eye" aria-hidden="true"></i> 읽음 ${readSummary.readCount}/${readSummary.total}</span>` : '';
     const readBreakdownHtml = readSummary ? `
         <div style="margin-top:12px;padding-top:10px;border-top:1px dashed #e5e7eb;font-size:12px;">
           <div style="margin-bottom:6px;"><b>읽음 (${readSummary.readCount}/${readSummary.total})</b> ${readSummary.readList.map(u=>`<span class="badge good" style="margin:2px 4px 0 0;">${escapeHtml(u.name)}</span>`).join('') || '<span class="muted">없음</span>'}</div>
@@ -5601,19 +5626,19 @@ function renderMaterialsBoard(){
     // 매니저(staff) 화면에서는 반대로 "본인이 이 자료를 읽었는지"를 행 우측에 표시한다.
     const isStaffViewer = SESSION.role==='staff';
     const myUnread = isStaffViewer && !isMaterialReadBy(n.id, SESSION.empId);
-    const myUnreadBadgeHtml = myUnread ? `<span class="badge bad" title="아직 확인하지 않았습니다" style="white-space:nowrap;">⚠ 미확인</span>` : '';
+    const myUnreadBadgeHtml = myUnread ? `<span class="badge bad" title="아직 확인하지 않았습니다" style="white-space:nowrap;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> 미확인</span>` : '';
     return `
-      <div class="card" style="margin-bottom:12px;">
+      <div class="card" style="margin-bottom:10px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="toggleMaterialExpand('${n.id}')">
           <div class="nb-title">${escapeHtml(n.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             ${readBadgeHtml}
             ${myUnreadBadgeHtml}
-            ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;"><i class="ti ti-paperclip" aria-hidden="true"></i></span>` : ''}
             <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
           </div>
         </div>
-        ${myUnread ? `<div class="small-note" style="color:var(--bad);font-weight:700;margin-top:4px;">⚠ 아직 조회하지 않은 자료입니다. 꼭 확인하세요!</div>` : ''}
+        ${myUnread ? `<div class="small-note" style="color:var(--bad);font-weight:700;margin-top:4px;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> 아직 조회하지 않은 자료입니다. 꼭 확인하세요!</div>` : ''}
         ${expanded ? `
         <div class="nb-content" style="margin:10px 0 0;">${richContentHtml(n.content)}</div>
         ${photosHtml ? `<div class="attach-gallery">${photosHtml}</div>` : ''}
@@ -5627,12 +5652,14 @@ function renderMaterialsBoard(){
   }).join('');
 
   return `
+    <div class="board-plain">
     <div class="page-title">각종 자료</div>
     <div class="page-desc">서식·안내문·참고자료 등을 게시판 형태로 관리합니다.</div>
     ${createFormHtml}
     ${allMaterials.length>0 ? materialBarHtml : ''}
     ${listHtml || `<div class="card muted">${allMaterials.length===0 ? '등록된 자료가 없습니다.' : '검색 결과가 없습니다.'}</div>`}
     ${materialPagerHtml}
+    </div>
   `;
 }
 function startEditMaterial(id){
@@ -5727,9 +5754,7 @@ function renderInfoReports(){
     '제목·내용·작성자로 검색'
   );
 
-  const createFormHtml = `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>정보보고 작성</h3>
+  const createFormHtml = boardWriteButtonHtml('infoReportWrite', '새 글 등록하기') + boardWriteModalHtml('infoReportWrite', '정보보고 작성', `
       <div class="form-row">
         <div class="field" style="flex:1;min-width:240px;"><label>제목</label><input id="irTitle" style="width:100%" placeholder="정보보고 제목"></div>
       </div>
@@ -5743,9 +5768,8 @@ function renderInfoReports(){
         </div>
       </div>
       <div class="small-note">※ 사진, PDF, 워드/엑셀 등 어떤 파일이든 첨부할 수 있습니다. 대용량 파일은 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
-      <button class="btn btn-primary" style="margin-top:8px;" onclick="submitInfoReport()">등록</button>
-      <div id="irMsg" class="small-note"></div>
-    </div>`;
+      <button class="btn btn-primary" style="margin-top:8px;" onclick="submitInfoReport()">등록하기</button>
+      <div id="irMsg" class="small-note"></div>`);
 
   const listHtml = reports.map(r=>{
     const canManage = canEditInfoReport(r);
@@ -5786,11 +5810,11 @@ function renderInfoReports(){
     const likedBy = r.likedBy || [];
     const iLiked = likedBy.includes(SESSION.empId);
     return `
-      <div class="card" style="margin-bottom:12px;">
+      <div class="card" style="margin-bottom:10px;">
         <div class="flex-between" style="cursor:pointer;align-items:center;" onclick="togglePostExpand('${r.id}','infoReports')">
           <div class="nb-title">${escapeHtml(r.title)}</div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-            ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            ${hasAttachment ? `<span title="첨부파일 있음" style="font-size:13px;"><i class="ti ti-paperclip" aria-hidden="true"></i></span>` : ''}
             <span class="muted" style="font-size:11px;">${expanded ? '▲' : '▼'}</span>
           </div>
         </div>
@@ -5798,7 +5822,7 @@ function renderInfoReports(){
         <div class="nb-content" style="margin:10px 0 0;">${richContentHtml(r.content)}</div>
         ${filesHtml ? `<div class="attach-gallery">${filesHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
-          <button class="btn btn-sm ${iLiked?'like-btn-active':''}" onclick="event.stopPropagation();toggleInfoReportLike('${r.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedBy.length>0?` ${likedBy.length}`:''}</button>
+          <button class="btn btn-sm ${iLiked?'like-btn-active':''}" onclick="event.stopPropagation();toggleInfoReportLike('${r.id}')" title="이 게시글이 좋으면 추천해 주세요"><i class="ti ti-thumb-up" aria-hidden="true"></i> 추천${likedBy.length>0?` ${likedBy.length}`:''}</button>
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="nb-meta">${escapeHtml(r.authorName)} · ${escapeHtml(branchName(r.branchId))} · ${dtStr}</div>
             ${canManage ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditInfoReport('${r.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteInfoReport('${r.id}')">삭제</button></div>` : ''}
@@ -5809,17 +5833,14 @@ function renderInfoReports(){
   }).join('');
 
   return `
+    <div class="board-plain">
     <div class="page-title">정보보고</div>
     <div class="page-desc">현장에서 파악한 정보나 이슈를 자유롭게 공유하는 게시판입니다. 매니저 누구나 작성할 수 있고, 본인이 작성한 글은 직접 수정·삭제할 수 있습니다.</div>
-
-    <div class="card" style="margin-bottom:16px;border:1.5px solid #f5b100;background:#fffbf0;">
-      <div style="font-weight:700;">🏆 우수 정보 보고자는 월별 시상 예정입니다.</div>
-    </div>
-
     ${createFormHtml}
     ${allReports.length>0 ? irBarHtml : ''}
     ${listHtml || `<div class="card muted">${allReports.length===0 ? '등록된 정보보고가 없습니다.' : '검색 결과가 없습니다.'}</div>`}
     ${irPagerHtml}
+    </div>
   `;
 }
 function startEditInfoReport(id){
@@ -13084,7 +13105,7 @@ function renderBestPractice(){
             ` : `<div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>`}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-            ${hasAttachmentBp ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            ${hasAttachmentBp ? `<span title="첨부파일 있음" style="font-size:13px;"><i class="ti ti-paperclip" aria-hidden="true"></i></span>` : ''}
             <span class="muted" style="font-size:11px;">${expandedBp ? '▲' : '▼'}</span>
           </div>
         </div>
@@ -13093,7 +13114,7 @@ function renderBestPractice(){
         ${p.activityResult ? `<div style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
         ${attachmentsHtml ? `<div class="attach-gallery">${attachmentsHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
-          <button class="btn btn-sm ${iLikedBp?'like-btn-active':''}" onclick="event.stopPropagation();toggleBestPracticeLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedByBp.length>0?` ${likedByBp.length}`:''}</button>
+          <button class="btn btn-sm ${iLikedBp?'like-btn-active':''}" onclick="event.stopPropagation();toggleBestPracticeLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요"><i class="ti ti-thumb-up" aria-hidden="true"></i> 추천${likedByBp.length>0?` ${likedByBp.length}`:''}</button>
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="muted" style="font-size:11.5px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
             ${canEdit ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditBestPractice('${p.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteBestPractice('${p.id}')">삭제</button></div>` : ''}
@@ -13103,15 +13124,7 @@ function renderBestPractice(){
       </div>`;
   }).join('') || `<div class="muted">${allSorted.length===0 ? '등록된 활동 사례가 없습니다.' : '검색 결과가 없습니다.'}</div>`;
 
-  return `
-    <div class="page-title">우수 활동 사례 공유</div>
-    <div class="notice-banner" style="margin-bottom:16px;">
-      <div style="font-weight:800;font-size:16px;">🏆 월별 최우수 사례 선정 시 판촉비 지원</div>
-    </div>
-    <div class="page-desc">지점의 우수 활동 사례를 자유롭게 공유해 주세요.</div>
-
-    <div class="card" style="margin-bottom:16px;">
-      <h3>새 사례 등록</h3>
+  const newEntryFormHtml = boardWriteButtonHtml('bestPracticeWrite', '새 글 등록하기') + boardWriteModalHtml('bestPracticeWrite', '새 사례 등록', `
       <div class="form-row">
         <div class="field">
           <label>지점명</label>
@@ -13151,13 +13164,23 @@ function renderBestPractice(){
           <label>첨부파일 (사진/PPT/엑셀 등 여러 개 선택 가능)</label>
           <input id="bpFiles" type="file" multiple>
         </div>
-        <button class="btn btn-primary" onclick="submitBestPractice()">등록</button>
-      </div>
+        <button class="btn btn-primary" onclick="submitBestPractice()">등록하기</button>
+      </div>`);
+
+  return `
+    <div class="board-plain">
+    <div class="page-title">우수 활동 사례 공유</div>
+    <div class="notice-banner" style="margin-bottom:10px;">
+      <div style="font-weight:800;font-size:16px;"><i class="ti ti-trophy" aria-hidden="true"></i> 월별 최우수 사례 선정 시 판촉비 지원</div>
     </div>
+    <div class="page-desc">지점의 우수 활동 사례를 자유롭게 공유해 주세요.</div>
+
+    ${newEntryFormHtml}
 
     ${allSorted.length>0 ? bpBarHtml : ''}
     ${posts}
     ${bpPagerHtml}
+    </div>
   `;
 }
 function submitBestPractice(){
@@ -13487,8 +13510,8 @@ function issueCaseFeedbackLines(agg){
 function issueCaseFeedbackHtml(agg, contextLabel){
   const lines = issueCaseFeedbackLines(agg);
   return `
-      <div class="ai-box" style="margin-top:14px;">
-        <div class="ai-title">💡 상담 참고 포인트${contextLabel?` <small style="font-weight:400;">(${contextLabel})</small>`:''}</div>
+      <div class="ai-box" style="margin-top:10px;">
+        <div class="ai-title"><i class="ti ti-bulb" aria-hidden="true"></i> 상담 참고 포인트${contextLabel?` <small style="font-weight:400;">(${contextLabel})</small>`:''}</div>
         ${lines.map(l=>`<div class="ai-item">${l}</div>`).join('')}
       </div>`;
 }
@@ -13497,8 +13520,8 @@ function renderIssueCaseDashboard(){
   const byProduct = issueCaseAggregate();
   const products = Object.values(byProduct).sort((a,b)=>b.count-a.count);
   if(products.length===0){
-    return `<div class="card" style="margin-bottom:16px;">
-      <h3>📊 이슈제품 성공사례 분석</h3>
+    return `<div class="card" style="margin-bottom:10px;">
+      <h3><i class="ti ti-chart-bar" aria-hidden="true"></i> 이슈제품 성공사례 분석</h3>
       <div class="muted">사례 등록 시 제품명·성공 유형·핵심 소구 포인트·고객 반응을 함께 입력하면 이곳에 제품별로 자동 누적 집계됩니다.</div>
     </div>`;
   }
@@ -13519,7 +13542,7 @@ function renderIssueCaseDashboard(){
     const successEntries = Object.entries(successTally).sort((a,b)=>b[1]-a[1]);
     const tagEntriesAll = Object.entries(tagTally).sort((a,b)=>b[1]-a[1]).slice(0,20);
     bodyHtml = `
-      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;">
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
         <div style="flex:1;min-width:260px;">
           <div class="stat-sub" style="margin-bottom:6px;">제품별 등록 건수</div>
           <div style="position:relative;height:${Math.max(140, products.length*30)}px;"><canvas id="icProductChart"></canvas></div>
@@ -13530,32 +13553,32 @@ function renderIssueCaseDashboard(){
         </div>
       </div>
       ${issueCaseFeedbackHtml({ count: cases.length, successTypes: successTally, tags: tagTally, sentiments: sentimentTally, reactions: allReactions, typeExamples: issueCaseTypeExamples(cases, 2) }, '전체 제품')}
-      <div style="margin-top:14px;">
+      <div style="margin-top:10px;">
         <div class="stat-sub" style="margin-bottom:6px;">전체 핵심 키워드 <small>자주 언급된 순</small></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          ${tagEntriesAll.map(([t,c])=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}
+          ${tagEntriesAll.map(([t,c])=>`<span class="badge" style="background:#f2f2f4;color:var(--text);">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}
         </div>
       </div>`;
     moRenderChart('icProductChart', icCountBarConfig(products.map(p=>p.product), products.map(p=>p.count)));
-    if(successEntries.length>0) moRenderChart('icSuccessTypeChart', icCountBarConfig(successEntries.map(e=>e[0]), successEntries.map(e=>e[1]), '#4a7fd6'));
+    if(successEntries.length>0) moRenderChart('icSuccessTypeChart', icCountBarConfig(successEntries.map(e=>e[0]), successEntries.map(e=>e[1])));
   } else {
     const b = byProduct[selProduct];
     const successEntries = Object.entries(b.successTypes).sort((a,c)=>c[1]-a[1]);
     const tagEntries = Object.entries(b.tags).sort((a,c)=>c[1]-a[1]).slice(0,15);
     bodyHtml = `
-      <div style="margin-top:12px;">
+      <div style="margin-top:10px;">
         <div class="stat-sub" style="margin-bottom:6px;">성공 유형 <small>${escapeHtml(selProduct)} · 총 ${b.count}건</small></div>
         ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(120, successEntries.length*30)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
       </div>
       ${issueCaseFeedbackHtml({ count: b.count, successTypes: b.successTypes, tags: b.tags, sentiments: b.sentiments, reactions: b.reactions, typeExamples: issueCaseTypeExamples(cases.filter(p=>(p.productName||'(제품 미입력)')===selProduct), 2) }, escapeHtml(selProduct))}
-      <div style="margin-top:14px;">
+      <div style="margin-top:10px;">
         <div class="stat-sub" style="margin-bottom:6px;">핵심 키워드 <small>자주 언급된 순</small></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">${tagEntries.map(([t,c])=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">${tagEntries.map(([t,c])=>`<span class="badge" style="background:#f2f2f4;color:var(--text);">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}</div>
       </div>`;
-    if(successEntries.length>0) moRenderChart('icSuccessTypeChart', icCountBarConfig(successEntries.map(e=>e[0]), successEntries.map(e=>e[1]), '#4a7fd6'));
+    if(successEntries.length>0) moRenderChart('icSuccessTypeChart', icCountBarConfig(successEntries.map(e=>e[0]), successEntries.map(e=>e[1])));
   }
-  return `<div class="card" style="margin-bottom:16px;">
-    <h3>📊 이슈제품 성공사례 분석 <small>등록된 사례 ${cases.length}건 · 제품 ${products.length}종 누적</small></h3>
+  return `<div class="card" style="margin-bottom:10px;">
+    <h3><i class="ti ti-chart-bar" aria-hidden="true"></i> 이슈제품 성공사례 분석 <small>등록된 사례 ${cases.length}건 · 제품 ${products.length}종 누적</small></h3>
     <div style="margin-top:10px;">${productPills}</div>
     ${bodyHtml}
   </div>`;
@@ -13647,7 +13670,7 @@ function renderIssueCase(){
             ` : `<div><b>${bpBranchDisplayName(p.branchId)}</b> · ${p.managerName || '-'} · ${p.activityDate}</div>`}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
-            ${hasAttachmentIc ? `<span title="첨부파일 있음" style="font-size:13px;">📎</span>` : ''}
+            ${hasAttachmentIc ? `<span title="첨부파일 있음" style="font-size:13px;"><i class="ti ti-paperclip" aria-hidden="true"></i></span>` : ''}
             <span class="muted" style="font-size:11px;">${expandedIc ? '▲' : '▼'}</span>
           </div>
         </div>
@@ -13655,16 +13678,16 @@ function renderIssueCase(){
         <div style="line-height:1.7;margin:10px 0 0;font-size:13.5px;">${richContentHtml(p.content)}</div>
         ${p.activityResult ? `<div style="background:#f7f8fa;border:1px solid #edeef1;border-radius:10px;padding:10px 14px;margin-top:10px;font-size:13px;"><b style="color:var(--primary);">활동 결과</b> · ${escapeHtml(p.activityResult)}</div>` : ''}
         ${(p.productName || p.successType || p.sellingPoint) ? `
-        <div class="muted" style="font-size:10.5px;margin-top:10px;">🤖 아래 항목은 작성하신 내용을 바탕으로 자동 분석되었습니다</div>
+        <div class="muted" style="font-size:10.5px;margin-top:10px;"><i class="ti ti-robot" aria-hidden="true"></i> 아래 항목은 작성하신 내용을 바탕으로 자동 분석되었습니다</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">
-          ${p.productName ? `<span class="badge" style="background:#eef1f4;color:#333;">📦 ${escapeHtml(p.productName)}</span>` : ''}
-          ${p.successType ? `<span class="badge" style="background:#eef1f4;color:#333;">${escapeHtml(p.successType)}</span>` : ''}
-          ${issueCaseSplitTags(p.sellingPoint).map(t=>`<span class="badge" style="background:#fdecec;color:#a50034;">#${escapeHtml(t)}</span>`).join('')}
+          ${p.productName ? `<span class="badge" style="background:#f2f2f4;color:var(--text);"><i class="ti ti-package" aria-hidden="true"></i> ${escapeHtml(p.productName)}</span>` : ''}
+          ${p.successType ? `<span class="badge" style="background:#f2f2f4;color:var(--text);">${escapeHtml(p.successType)}</span>` : ''}
+          ${issueCaseSplitTags(p.sellingPoint).map(t=>`<span class="badge" style="background:#f2f2f4;color:var(--text);">#${escapeHtml(t)}</span>`).join('')}
         </div>
         ` : ''}
         ${attachmentsHtml ? `<div class="attach-gallery">${attachmentsHtml}</div>` : ''}
         <div class="flex-between" style="margin-top:14px;padding-top:10px;border-top:1px solid #f1f2f4;align-items:center;">
-          <button class="btn btn-sm ${iLikedIc?'like-btn-active':''}" onclick="event.stopPropagation();toggleIssueCaseLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요">👍 추천${likedByIc.length>0?` ${likedByIc.length}`:''}</button>
+          <button class="btn btn-sm ${iLikedIc?'like-btn-active':''}" onclick="event.stopPropagation();toggleIssueCaseLike('${p.id}')" title="이 게시글이 좋으면 추천해 주세요"><i class="ti ti-thumb-up" aria-hidden="true"></i> 추천${likedByIc.length>0?` ${likedByIc.length}`:''}</button>
           <div style="display:flex;align-items:center;gap:8px;">
             <div class="muted" style="font-size:11.5px;">작성자 ${p.authorName} · ${p.createdAt.slice(0,16).replace('T',' ')}</div>
             ${canEdit ? `<div style="white-space:nowrap;"><button class="btn btn-sm" onclick="event.stopPropagation();startEditIssueCase('${p.id}')">수정</button> <button class="btn btn-sm" onclick="event.stopPropagation();deleteIssueCase('${p.id}')">삭제</button></div>` : ''}
@@ -13676,9 +13699,7 @@ function renderIssueCase(){
 
   // 우수 활동 사례 공유 게시판과 동일하게, 로그인한 누구나(관리자/매니저 모두) 새 사례를
   // 작성할 수 있다 — 본인이 작성한 글은 나중에 본인이 수정/삭제할 수 있다(canEditIssueCase 참고).
-  const newEntryFormHtml = `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>새 사례 등록</h3>
+  const newEntryFormHtml = boardWriteButtonHtml('issueCaseWrite', '새 글 등록하기') + boardWriteModalHtml('issueCaseWrite', '새 사례 등록', `
       <div class="form-row">
         <div class="field">
           <label>지점명</label>
@@ -13721,14 +13742,14 @@ function renderIssueCase(){
           <label>첨부파일 (사진/PPT/엑셀 등 여러 개 선택 가능)</label>
           <input id="icFiles" type="file" multiple>
         </div>
-        <button class="btn btn-primary" onclick="submitIssueCase()">등록</button>
-      </div>
-    </div>`;
+        <button class="btn btn-primary" onclick="submitIssueCase()">등록하기</button>
+      </div>`);
 
   return `
+    <div class="board-plain">
     <div class="page-title">이슈제품 판매 성공 사례</div>
-    <div class="notice-banner" style="margin-bottom:16px;">
-      <div style="font-weight:800;font-size:16px;">💡 이슈제품 판매 노하우/성공사례 등을 공유해주세요</div>
+    <div class="notice-banner" style="margin-bottom:10px;">
+      <div style="font-weight:800;font-size:16px;"><i class="ti ti-bulb" aria-hidden="true"></i> 이슈제품 판매 노하우/성공사례 등을 공유해주세요</div>
     </div>
     <div class="page-desc">이슈제품을 성공적으로 판매한 사례를 자유롭게 공유해 주세요. (본인이 작성한 글은 직접 수정/삭제할 수 있습니다)</div>
 
@@ -13739,6 +13760,7 @@ function renderIssueCase(){
     ${allSorted.length>0 ? icBarHtml : ''}
     ${posts}
     ${icPagerHtml}
+    </div>
   `;
 }
 function updateIcManagerOptions(){
