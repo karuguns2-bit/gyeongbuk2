@@ -13244,7 +13244,7 @@ function renderBestPractice(){
     <div class="board-plain">
     <div class="page-title">우수 활동 사례 공유</div>
     <div class="notice-banner" style="margin-bottom:10px;">
-      <div style="font-weight:800;font-size:16px;"><i class="ti ti-trophy" aria-hidden="true"></i> 월별 최우수 사례 선정 시 판촉비 지원</div>
+      <div style="font-weight:800;font-size:16px;"><i class="ti ti-trophy" aria-hidden="true"></i> 우리 지점만의 우수 활동 등을 공유해주세요</div>
     </div>
     <div class="page-desc">지점의 우수 활동 사례를 자유롭게 공유해 주세요.</div>
 
@@ -13583,7 +13583,7 @@ function issueCaseFeedbackLines(agg){
 function issueCaseFeedbackHtml(agg, contextLabel){
   const lines = issueCaseFeedbackLines(agg);
   return `
-      <div class="ai-box" style="margin-top:10px;">
+      <div class="ai-box">
         <div class="ai-title"><i class="ti ti-bulb" aria-hidden="true"></i> 상담 참고 포인트${contextLabel?` <small style="font-weight:400;">(${contextLabel})</small>`:''}</div>
         ${lines.map(l=>`<div class="ai-item">${l}</div>`).join('')}
       </div>`;
@@ -13614,22 +13614,30 @@ function renderIssueCaseDashboard(){
     });
     const successEntries = Object.entries(successTally).sort((a,b)=>b[1]-a[1]);
     const tagEntriesAll = Object.entries(tagTally).sort((a,b)=>b[1]-a[1]).slice(0,20);
+    // 2026.09: "그래프는 좌측, 상담 참고 포인트는 우측" 요청 반영 - 좌측 컬럼에 그래프 2개와
+    // 핵심 키워드를 세로로 묶고, 우측 컬럼에 상담 참고 포인트(ai-box)를 배치해 그래프를 보면서
+    // 바로 옆에서 해석/제안을 함께 읽을 수 있게 한다(기존엔 그래프 아래에 순서대로 나열되어
+    // 한참 스크롤해야 상담 포인트가 보였음).
     bodyHtml = `
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
-        <div style="flex:1;min-width:260px;">
-          <div class="stat-sub" style="margin-bottom:6px;">제품별 등록 건수</div>
-          <div style="position:relative;height:${Math.max(140, products.length*30)}px;"><canvas id="icProductChart"></canvas></div>
+      <div style="display:flex;gap:14px;align-items:flex-start;margin-top:10px;flex-wrap:wrap;">
+        <div style="flex:1.2;min-width:280px;display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <div class="stat-sub" style="margin-bottom:6px;">제품별 등록 건수</div>
+            <div style="position:relative;height:${Math.max(120, products.length*26)}px;"><canvas id="icProductChart"></canvas></div>
+          </div>
+          <div>
+            <div class="stat-sub" style="margin-bottom:6px;">전체 성공 유형 분포</div>
+            ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(120, successEntries.length*26)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
+          </div>
+          <div>
+            <div class="stat-sub" style="margin-bottom:6px;">전체 핵심 키워드 <small>자주 언급된 순</small></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              ${tagEntriesAll.map(([t,c])=>`<span class="badge" style="background:#f2f2f4;color:var(--text);">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}
+            </div>
+          </div>
         </div>
-        <div style="flex:1;min-width:260px;">
-          <div class="stat-sub" style="margin-bottom:6px;">전체 성공 유형 분포</div>
-          ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(140, successEntries.length*30)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
-        </div>
-      </div>
-      ${issueCaseFeedbackHtml({ count: cases.length, successTypes: successTally, tags: tagTally, sentiments: sentimentTally, reactions: allReactions, typeExamples: issueCaseTypeExamples(cases, 2) }, '전체 제품')}
-      <div style="margin-top:10px;">
-        <div class="stat-sub" style="margin-bottom:6px;">전체 핵심 키워드 <small>자주 언급된 순</small></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          ${tagEntriesAll.map(([t,c])=>`<span class="badge" style="background:#f2f2f4;color:var(--text);">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}
+        <div style="flex:1;min-width:260px;border-left:1px solid var(--border);padding-left:14px;">
+          ${issueCaseFeedbackHtml({ count: cases.length, successTypes: successTally, tags: tagTally, sentiments: sentimentTally, reactions: allReactions, typeExamples: issueCaseTypeExamples(cases, 2) }, '전체 제품')}
         </div>
       </div>`;
     moRenderChart('icProductChart', icCountBarConfig(products.map(p=>p.product), products.map(p=>p.count)));
@@ -13639,14 +13647,20 @@ function renderIssueCaseDashboard(){
     const successEntries = Object.entries(b.successTypes).sort((a,c)=>c[1]-a[1]);
     const tagEntries = Object.entries(b.tags).sort((a,c)=>c[1]-a[1]).slice(0,15);
     bodyHtml = `
-      <div style="margin-top:10px;">
-        <div class="stat-sub" style="margin-bottom:6px;">성공 유형 <small>${escapeHtml(selProduct)} · 총 ${b.count}건</small></div>
-        ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(120, successEntries.length*30)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
-      </div>
-      ${issueCaseFeedbackHtml({ count: b.count, successTypes: b.successTypes, tags: b.tags, sentiments: b.sentiments, reactions: b.reactions, typeExamples: issueCaseTypeExamples(cases.filter(p=>(p.productName||'(제품 미입력)')===selProduct), 2) }, escapeHtml(selProduct))}
-      <div style="margin-top:10px;">
-        <div class="stat-sub" style="margin-bottom:6px;">핵심 키워드 <small>자주 언급된 순</small></div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">${tagEntries.map(([t,c])=>`<span class="badge" style="background:#f2f2f4;color:var(--text);">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}</div>
+      <div style="display:flex;gap:14px;align-items:flex-start;margin-top:10px;flex-wrap:wrap;">
+        <div style="flex:1.2;min-width:280px;display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <div class="stat-sub" style="margin-bottom:6px;">성공 유형 <small>${escapeHtml(selProduct)} · 총 ${b.count}건</small></div>
+            ${successEntries.length>0 ? `<div style="position:relative;height:${Math.max(120, successEntries.length*26)}px;"><canvas id="icSuccessTypeChart"></canvas></div>` : '<div class="muted">데이터 없음</div>'}
+          </div>
+          <div>
+            <div class="stat-sub" style="margin-bottom:6px;">핵심 키워드 <small>자주 언급된 순</small></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">${tagEntries.map(([t,c])=>`<span class="badge" style="background:#f2f2f4;color:var(--text);">#${escapeHtml(t)} ${c}</span>`).join('') || '<span class="muted">데이터 없음</span>'}</div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:260px;border-left:1px solid var(--border);padding-left:14px;">
+          ${issueCaseFeedbackHtml({ count: b.count, successTypes: b.successTypes, tags: b.tags, sentiments: b.sentiments, reactions: b.reactions, typeExamples: issueCaseTypeExamples(cases.filter(p=>(p.productName||'(제품 미입력)')===selProduct), 2) }, escapeHtml(selProduct))}
+        </div>
       </div>`;
     if(successEntries.length>0) moRenderChart('icSuccessTypeChart', icCountBarConfig(successEntries.map(e=>e[0]), successEntries.map(e=>e[1])));
   }
