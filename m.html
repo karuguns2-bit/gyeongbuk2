@@ -386,11 +386,16 @@
   .grid-2{grid-template-columns:repeat(2,1fr);}
   .grid-4{grid-template-columns:repeat(4,1fr);}
   @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4{grid-template-columns:repeat(2,1fr);}}
-  .sysadmin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;align-items:start;}
+  .sysadmin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:stretch;}
   .sysadmin-grid .sysadmin-span2{grid-column:span 2;}
-  .sysadmin-grid .sysadmin-span4{grid-column:1/-1;}
-  .sysadmin-grid .card{padding:14px 16px;}
-  .sysadmin-grid .card h3{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:14px;margin-bottom:10px;}
+  .sysadmin-grid .card{padding:12px 14px;display:flex;flex-direction:column;}
+  .sysadmin-grid .card h3{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:13px;margin-bottom:8px;}
+  .sysadmin-grid .card:not(.sysadmin-span2) .form-row{flex-direction:column;align-items:stretch;gap:6px;margin-bottom:8px;}
+  .sysadmin-grid .card:not(.sysadmin-span2) .form-row .field,
+  .sysadmin-grid .card:not(.sysadmin-span2) .form-row input,
+  .sysadmin-grid .card:not(.sysadmin-span2) .form-row select{width:100%;}
+  .sysadmin-grid .small-note{margin-top:4px;font-size:11px;}
+  .sysadmin-grid .muted{font-size:11px;}
   @media(max-width:1000px){.sysadmin-grid{grid-template-columns:repeat(2,1fr);}}
   @media(max-width:640px){.sysadmin-grid{grid-template-columns:1fr;}.sysadmin-grid .sysadmin-span2{grid-column:1/-1;}}
   .sysadmin-info{
