@@ -10141,9 +10141,9 @@ function invSaleStatusBadgeClass(saleStatus){
   return saleStatus==='판매불가' ? 'bad' : 'good';
 }
 const INV_BADGE_STYLE = {
-  good: 'background:#e7f8ee;color:var(--good);border-color:var(--good);',
-  warn: 'background:#fff6e0;color:var(--warn);border-color:var(--warn);',
-  bad: 'background:#fdecec;color:var(--bad);border-color:var(--bad);'
+  good: 'background:#f2f2f4;color:var(--text);border-color:var(--border);',
+  warn: 'background:#f2f2f4;color:var(--text);border-color:var(--border);',
+  bad: 'background:#f2f2f4;color:var(--text);border-color:var(--border);'
 };
 function invStatusSelectStyle(status){ return INV_BADGE_STYLE[invStatusBadgeClass(status)]; }
 function invSaleStatusSelectStyle(saleStatus){ return INV_BADGE_STYLE[invSaleStatusBadgeClass(saleStatus)]; }
@@ -10161,6 +10161,18 @@ function toggleInvClearanceFilter(){
   if(!state.invFilter) state.invFilter = invFilterDefaults();
   state.invFilter.clearanceOnly = !state.invFilter.clearanceOnly;
   state.invFilter.page = 1;
+  renderTab('inventory');
+}
+// 재고 조회 필터 편의성 개선(2026.09): 구분/구분(상태)/제품 상태 3개 다중선택 섹션을 접이식으로
+// 바꿔 세로 길이를 줄인다 - 화면 새로고침이 아닌 UI 세션 상태이므로 DB에 저장하지 않는다.
+function toggleInvFilterSection(name){
+  if(!state.invFilterOpen) state.invFilterOpen = {};
+  state.invFilterOpen[name] = !state.invFilterOpen[name];
+  renderTab('inventory');
+}
+// "초기화" 버튼 - 매장/유형/검색/소진집중/다중선택 3종을 한 번에 기본값으로 되돌린다.
+function resetInvFilters(){
+  state.invFilter = invFilterDefaults();
   renderTab('inventory');
 }
 function invFilterPills(field, options){
@@ -10323,8 +10335,8 @@ function renderInventory(){
     const isClearance = isClearanceRow(r);
     return `<tr>
       <td>${r.store}</td>
-      <td>${tag==='행사'?'<span class="badge warn">행사</span>':tag==='핸디'?'<span class="badge" style="background:#e5ecff;color:#3355cc;">핸디</span>':'<span class="badge">진열</span>'}</td>
-      <td class="wrap" title="${escapeHtml(r.product||'')}">${r.product}${isClearance ? `<span class="inv-clearance-badge" title="소진리스트 대상 품목입니다">🔥 소진집중</span>` : ''}</td>
+      <td>${tag==='행사'?'<span class="badge" style="background:#f2f2f4;color:var(--text);">행사</span>':tag==='핸디'?'<span class="badge" style="background:#f2f2f4;color:var(--text);">핸디</span>':'<span class="badge" style="background:#f2f2f4;color:var(--text);">진열</span>'}</td>
+      <td class="wrap" title="${escapeHtml(r.product||'')}">${r.product}${isClearance ? `<span class="inv-clearance-badge" title="소진리스트 대상 품목입니다"><i class="ti ti-flame-filled" aria-hidden="true"></i> 소진집중</span>` : ''}</td>
       <td class="wrap muted" title="${escapeHtml(r.cat2||'')}">${r.cat2}</td>
       <td class="wrap muted" title="${escapeHtml(r.model||'')}">${r.model}</td>
       <td class="muted">${r.code!=null?r.code:'-'}</td>
@@ -10346,48 +10358,55 @@ function renderInventory(){
     </tr>`;
   }).join('') || `<tr><td colspan="11" class="muted">조건에 맞는 재고가 없습니다.${f.q && f.q.trim() ? ' 이 화면은 행사(행)/진열(진)/핸디(핸) 태그가 붙은 재고만 표시합니다 - 검색하신 상품/코드가 실제로 있어도 이 태그가 없으면 보이지 않습니다.' : ''}</td></tr>`;
 
+  const activeFilterCount = (f.store!=='ALL'?1:0) + (f.tag&&f.tag!=='ALL'?1:0) + (f.q&&f.q.trim()?1:0) + (f.clearanceOnly?1:0) + (f.cat1List.length?1:0) + (f.statusList.length?1:0) + (f.saleStatusList.length?1:0);
+
   return `
+    <div class="inv-plain">
     <div class="page-title">재고 조회</div>
     <div class="page-desc">전 지점 공유 · 관리자와 지점 매니저 모두 전 지점 재고를 동일하게 조회 가능 · 행사(행)/진열(진) 재고만 표시 · 통합 보드.xlsx &quot;재고장&quot; 시트 기준(관리자가 새 파일을 업로드해도 아래 구분/구분(상태)/제품 상태/진열일자는 직접 수정 전까지 값이 유지됩니다).</div>
 
-    <div class="card" style="margin-bottom:16px;padding:18px 20px;">
+    <div class="card" style="margin-bottom:12px;padding:14px 16px;">
       <div class="grid grid-4 stat-grid-4" style="gap:10px;">
-        <div class="card stat-tile stat-tile-blue" style="padding:14px 16px;">
+        <div class="card stat-tile" style="padding:12px 14px;">
           <div class="stat-tile-label">검색 결과</div>
           <div class="stat-tile-num">${rows.length.toLocaleString('ko-KR')}건</div>
           <div class="stat-tile-sub">현재 필터 기준</div>
         </div>
-        <div class="card stat-tile stat-tile-purple" style="padding:14px 16px;">
+        <div class="card stat-tile" style="padding:12px 14px;">
           <div class="stat-tile-label">합계 수량</div>
           <div class="stat-tile-num">${fmtNum(totalQty)}</div>
           <div class="stat-tile-sub">검색 결과 기준</div>
         </div>
-        <div class="card stat-tile stat-tile-pink" style="padding:14px 16px;">
+        <div class="card stat-tile" style="padding:12px 14px;">
           <div class="stat-tile-label">합계 재고금액</div>
-          <div class="stat-tile-num" style="font-size:20px;">${totalAmt>0?fmtWon(totalAmt):'-'}</div>
+          <div class="stat-tile-num" style="font-size:20px;color:var(--primary);">${totalAmt>0?fmtWon(totalAmt):'-'}</div>
           <div class="stat-tile-sub">검색 결과 기준</div>
         </div>
-        <div class="card stat-tile stat-tile-amber" style="padding:14px 16px;">
+        <div class="card stat-tile" style="padding:12px 14px;">
           <div class="stat-tile-label">전체 행사/진열/핸디 재고</div>
           <div class="stat-tile-num">${taggedInventory.length.toLocaleString('ko-KR')}건</div>
-          <div class="stat-tile-sub">${clearanceCountInView>0 ? `🔥 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건 (검색 결과 내)` : '전체 매장 합산'}</div>
+          <div class="stat-tile-sub">${clearanceCountInView>0 ? `<i class="ti ti-flame-filled" aria-hidden="true"></i> 소진집중 ${clearanceCountInView.toLocaleString('ko-KR')}건 (검색 결과 내)` : '전체 매장 합산'}</div>
         </div>
       </div>
       ${clearanceStats ? `
-      <div style="margin-top:12px;padding:12px 16px;border-radius:14px;background:#e7f9ee;">
+      <div style="margin-top:10px;padding:10px 14px;border-radius:12px;border:1px solid var(--border);">
         <div class="flex-between" style="align-items:baseline;flex-wrap:wrap;gap:6px;">
-          <div style="font-size:13px;font-weight:700;color:#1a9c56;">🔥 소진 진행 현황 <span style="font-weight:400;opacity:.8;">· 기준일(시작일) ${clearanceStats.date}</span></div>
-          <div style="font-size:13px;font-weight:800;color:#1a9c56;">소진완료 ${clearanceStats.depleted}대 / ${clearanceStats.total}건 (${clearanceStats.pct}%)</div>
+          <div style="font-size:13px;font-weight:700;"><i class="ti ti-flame-filled" aria-hidden="true" style="color:var(--primary);"></i> 소진 진행 현황 <span class="muted" style="font-weight:400;">· 기준일(시작일) ${clearanceStats.date}</span></div>
+          <div style="font-size:13px;font-weight:800;color:var(--primary);">소진완료 ${clearanceStats.depleted}대 / ${clearanceStats.total}건 (${clearanceStats.pct}%)</div>
         </div>
-        <div style="margin-top:8px;background:#c9ecd6;border-radius:8px;height:8px;overflow:hidden;">
-          <div style="width:${Math.min(100,clearanceStats.pct)}%;background:#1a9c56;height:100%;border-radius:8px;"></div>
+        <div style="margin-top:6px;background:#f2f2f4;border-radius:8px;height:8px;overflow:hidden;">
+          <div style="width:${Math.min(100,clearanceStats.pct)}%;background:var(--primary);height:100%;border-radius:8px;"></div>
         </div>
       </div>` : ''}
     </div>
 
     <div class="inv-layout">
       <div class="inv-sidebar">
-        <div class="card inv-filter-card" style="margin-bottom:16px;">
+        <div class="card inv-filter-card" style="margin-bottom:0;">
+          <div class="flex-between" style="margin-bottom:10px;">
+            <div style="font-size:13px;font-weight:700;"><i class="ti ti-filter" aria-hidden="true"></i> 필터${activeFilterCount>0 ? ` <span class="badge" style="background:var(--primary);color:#fff;border-radius:999px;">${activeFilterCount}</span>` : ''}</div>
+            ${activeFilterCount>0 ? `<span style="color:var(--primary);font-size:12px;cursor:pointer;" onclick="resetInvFilters()"><i class="ti ti-refresh" aria-hidden="true"></i> 초기화</span>` : ''}
+          </div>
           ${filterPresetBarHtml('inventory')}
           ${SESSION.role==='admin' ? `
           <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:14px;touch-action:manipulation;">
@@ -10397,15 +10416,15 @@ function renderInventory(){
             </span>
             <span style="font-size:13px;">타영업팀 재고 함께보기 ${DB.inventoryShowAllTeams ? (otherTeamInventoryLoading ? '(불러오는 중...)' : `(전체 팀 표시 중 · 타영업팀 ${otherTeamInvCount}건)`) : '(혼매경북팀만 표시 중)'}</span>
           </label>
-          ${(DB.inventoryShowAllTeams && !otherTeamInventoryLoading && otherTeamInvCount===0) ? `<div class="muted" style="font-size:11px;margin:-8px 0 14px;">⚠ 별도 저장된 타영업팀 재고가 없어 켜도 변화가 없습니다. 재고 파일에 &quot;팀명&quot; 컬럼이 포함되어 있으면 다음 업로드부터 자동으로 구분돼 저장됩니다.</div>` : ''}` : ''}
-          <div class="field" style="margin-bottom:12px;">
+          ${(DB.inventoryShowAllTeams && !otherTeamInventoryLoading && otherTeamInvCount===0) ? `<div class="muted" style="font-size:11px;margin:-8px 0 14px;"><i class="ti ti-alert-triangle" aria-hidden="true"></i> 별도 저장된 타영업팀 재고가 없어 켜도 변화가 없습니다. 재고 파일에 &quot;팀명&quot; 컬럼이 포함되어 있으면 다음 업로드부터 자동으로 구분돼 저장됩니다.</div>` : ''}` : ''}
+          <div class="field" style="margin-bottom:10px;">
             <label>매장</label>
             <select onchange="setInvFilter('store', this.value)">
               <option value="ALL" ${f.store==='ALL'?'selected':''}>전체 매장</option>
               ${stores.map(s=>`<option value="${s}" ${f.store===s?'selected':''}>${s}</option>`).join('')}
             </select>
           </div>
-          <div class="field" style="margin-bottom:12px;">
+          <div class="field" style="margin-bottom:10px;">
             <label>유형</label>
             <select onchange="setInvFilter('tag', this.value)">
               <option value="ALL" ${f.tag==='ALL'||!f.tag?'selected':''}>전체(행사+진열+핸디)</option>
@@ -10414,26 +10433,35 @@ function renderInventory(){
               <option value="핸디" ${f.tag==='핸디'?'selected':''}>핸디</option>
             </select>
           </div>
-          <div class="field" style="margin-bottom:12px;position:relative;">
+          <div class="field" style="margin-bottom:10px;position:relative;">
             <label>검색 (제품명/모델명/코드)</label>
-            <input id="invSearchInput" value="${f.q||''}" placeholder="예: 스타일러, MW23GD, 2087685" onkeyup="if(event.key==='Enter') setInvFilter('q', this.value)" onchange="setInvFilter('q', this.value)" oninput="handleInvSearchInput(this.value)" onblur="setTimeout(()=>closeModelHint('invSearchSuggestHint'),150)" autocomplete="off">
+            <input id="invSearchInput" value="${f.q||''}" placeholder="예: 스타일러, MW23GD, 2087685" onkeyup="if(event.key==='Enter') setInvFilter('q', this.value)" onchange="setInvFilter('q', this.value)" oninput="handleInvSearchInputLive(this.value)" onblur="setTimeout(()=>closeModelHint('invSearchSuggestHint'),150)" autocomplete="off">
             <div id="invSearchSuggestHint" style="position:absolute;top:100%;left:0;z-index:40;"></div>
           </div>
           <div class="field" style="margin-bottom:0;">
             <label>소진집중</label>
-            <span class="branch-pill ${f.clearanceOnly?'active':''}" style="cursor:pointer;white-space:nowrap;" onclick="toggleInvClearanceFilter()">🔥 소진집중만 보기${clearanceTotalCount>0 ? ` (${clearanceTotalCount})` : ''}</span>
+            <span class="branch-pill ${f.clearanceOnly?'active':''}" style="cursor:pointer;white-space:nowrap;" onclick="toggleInvClearanceFilter()"><i class="ti ti-flame-filled" aria-hidden="true"></i> 소진집중만 보기${clearanceTotalCount>0 ? ` (${clearanceTotalCount})` : ''}</span>
           </div>
           <div class="inv-filter-section">
-            <label class="muted">구분 (다중 선택)</label>
-            <div class="inv-filter-pill-scroll">${invFilterPills('cat1', cat1s)}</div>
+            <div class="inv-filter-section-head" onclick="toggleInvFilterSection('cat1')">
+              <label class="muted">구분 (다중 선택)${f.cat1List.length ? ` <span class="badge" style="background:var(--primary);color:#fff;border-radius:999px;">${f.cat1List.length}</span>` : ''}</label>
+              <i class="ti ${state.invFilterOpen && state.invFilterOpen.cat1 ? 'ti-chevron-up' : 'ti-chevron-down'}" aria-hidden="true"></i>
+            </div>
+            ${(state.invFilterOpen && state.invFilterOpen.cat1) ? `<div class="inv-filter-pill-scroll">${invFilterPills('cat1', cat1s)}</div>` : ''}
           </div>
           <div class="inv-filter-section">
-            <label class="muted">구분(상태) (다중 선택)</label>
-            <div>${invFilterPills('status', INV_STATUS_OPTIONS)}</div>
+            <div class="inv-filter-section-head" onclick="toggleInvFilterSection('status')">
+              <label class="muted">구분(상태) (다중 선택)${f.statusList.length ? ` <span class="badge" style="background:var(--primary);color:#fff;border-radius:999px;">${f.statusList.length}</span>` : ''}</label>
+              <i class="ti ${state.invFilterOpen && state.invFilterOpen.status ? 'ti-chevron-up' : 'ti-chevron-down'}" aria-hidden="true"></i>
+            </div>
+            ${(state.invFilterOpen && state.invFilterOpen.status) ? `<div>${invFilterPills('status', INV_STATUS_OPTIONS)}</div>` : ''}
           </div>
           <div class="inv-filter-section">
-            <label class="muted">제품 상태 (다중 선택)</label>
-            <div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>
+            <div class="inv-filter-section-head" onclick="toggleInvFilterSection('saleStatus')">
+              <label class="muted">제품 상태 (다중 선택)${f.saleStatusList.length ? ` <span class="badge" style="background:var(--primary);color:#fff;border-radius:999px;">${f.saleStatusList.length}</span>` : ''}</label>
+              <i class="ti ${state.invFilterOpen && state.invFilterOpen.saleStatus ? 'ti-chevron-up' : 'ti-chevron-down'}" aria-hidden="true"></i>
+            </div>
+            ${(state.invFilterOpen && state.invFilterOpen.saleStatus) ? `<div>${invFilterPills('saleStatus', INV_SALE_STATUS_OPTIONS)}</div>` : ''}
           </div>
         </div>
       </div>
@@ -10452,13 +10480,14 @@ function renderInventory(){
               <tbody>${tableRows}</tbody>
             </table>
           </div>
-          <div class="flex-between" style="margin-top:12px;">
+          <div class="flex-between" style="margin-top:10px;">
             <button class="btn btn-sm" onclick="setInvPage(-1)" ${f.page<=1?'disabled':''}>◀ 이전</button>
             <span class="muted">${f.page} / ${totalPages} 페이지</span>
             <button class="btn btn-sm" onclick="setInvPage(1)" ${f.page>=totalPages?'disabled':''}>다음 ▶</button>
           </div>
         </div>
       </div>
+    </div>
     </div>
   `;
 }
@@ -10520,6 +10549,27 @@ function handleInvSearchInput(value){
 function applyInvSearchSuggestion(model){
   closeModelHint('invSearchSuggestHint');
   setInvFilter('q', model);
+}
+// 재고 조회 필터 편의성 개선(2026.09): 검색창에 입력하는 즉시(Enter/포커스아웃 없이) 표에
+// 반영되도록 350ms 디바운스 후 자동 적용한다. 자동추천 팝오버는 기존과 동일하게 계속 뜬다.
+// 다시 그리기(renderTab) 때문에 입력 포커스가 풀리는 문제를 막기 위해, 반영 후 입력창에
+// 포커스를 되돌리고 커서를 맨 끝으로 옮겨둔다.
+let invSearchDebounceTimer = null;
+function handleInvSearchInputLive(value){
+  handleInvSearchInput(value);
+  clearTimeout(invSearchDebounceTimer);
+  invSearchDebounceTimer = setTimeout(()=>{
+    if(!state.invFilter) state.invFilter = invFilterDefaults();
+    state.invFilter.q = value;
+    state.invFilter.page = 1;
+    renderTab('inventory');
+    const el = document.getElementById('invSearchInput');
+    if(el){
+      el.focus();
+      const pos = el.value.length;
+      try{ el.setSelectionRange(pos, pos); }catch(e){}
+    }
+  }, 350);
 }
 
 /* =========================================================================
