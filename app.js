@@ -2276,7 +2276,7 @@ function renderTab(tab){
   if(tab!=='suggestions') state.suggestionSubmitted = false;
   if(tab!=='mistakeNote') state.lastMistakeFeedback = null;
   if(tab!=='policyQuiz'){ state.policyQuizStep = null; state.policyQuizQuestions = null; state.policyQuizResult = null; state.policyQuizViewWeek = null; }
-  if(tab!=='kakaoFriends'){ state.kakaoContestEditing = false; state.kfEditKey = null; }
+  if(tab!=='kakaoFriends'){ state.kakaoContestEditing = false; }
   if(tab!=='policyQuiz') state.policyQuizEditingId = null;
   if(tab!=='goals') state.goalsPeriod = null;
   if(!['eduHq','eduInhouse','eduEtc'].includes(tab)) state.eduScheduleEditId = null;
@@ -15463,8 +15463,6 @@ function dismissEduReminders(){
 function canEditKakaoFriends(branchId){
   return SESSION.role==='admin' || (!!SESSION.branchId && SESSION.branchId===branchId);
 }
-function kfRowKey(branchId, date){ return branchId + '|' + date; }
-function kfRowDomId(branchId, date){ return (branchId + '_' + date).replace(/[^a-zA-Z0-9]/g,'_'); }
 // ---- 원본 데이터: 지점별로 "해당 날짜까지의 누적 플친수"를 하루 단위로 저장.
 // 주차별/월별/전체누적 현황은 모두 이 일별 누적값에서 자동으로 계산된다(직접 따로 입력할 필요 없음).
 function kakaoFriendsRawByBranch(){
@@ -15508,79 +15506,6 @@ function kakaoFriendsLatestCumulative(branchId){
   const raw = kakaoFriendsRawByBranch();
   const list = raw[branchId];
   return list && list.length ? list[list.length-1].count : 0;
-}
-// ---- 전체지점 합계 추이(주차별) — 월별로 데이터가 계속 쌓여도 그래프/표에 자동 반영됨.
-// 지점마다 값이 입력된 주차가 다를 수 있으므로, 각 지점은 "그 주 이전 가장 최근 값"을 이월(carry-forward)해서 합산한다.
-function kakaoFriendsTotalByWeek(){
-  const byBranch = kakaoFriendsByBranch();
-  const allWeeks = Array.from(new Set(Object.values(byBranch).flat().map(r=>r.weekStart))).sort();
-  return allWeeks.map(week=>{
-    let total = 0, branchesCounted = 0;
-    Object.values(byBranch).forEach(list=>{
-      let val = null;
-      for(const r of list){ if(r.weekStart<=week) val = r.count; else break; }
-      if(val!=null){ total += val; branchesCounted++; }
-    });
-    return { week, total, branchesCounted };
-  });
-}
-function kakaoFriendsTotalTrend(){
-  const totals = kakaoFriendsTotalByWeek();
-  return totals.map((t,i)=>{
-    const prev = i>0 ? totals[i-1] : null;
-    const diff = prev ? t.total - prev.total : null;
-    const rate = prev ? (prev.total>0 ? (diff/prev.total*100) : (t.total>0?100:0)) : null;
-    return { ...t, diff, rate };
-  });
-}
-// 지점별 증감율 추이 — 매니저가 본인 지점만 따로 골라서 볼 수 있도록 지점 단위로 동일한 형태의 추이를 계산한다.
-function kakaoFriendsBranchTrend(branchId){
-  const byBranch = kakaoFriendsByBranch();
-  const list = byBranch[branchId] || [];
-  return list.map((r,i)=>{
-    const prev = i>0 ? list[i-1] : null;
-    const diff = prev ? r.count - prev.count : null;
-    const rate = prev ? (prev.count>0 ? (diff/prev.count*100) : (r.count>0?100:0)) : null;
-    return { week: r.weekStart, total: r.count, diff, rate };
-  });
-}
-// 조회할 지점을 고른다 — 처음 진입 시에는 매니저/사원은 본인 지점, 관리자는 첫 지점이 기본 선택되지만,
-// 드롭다운으로 다른 지점을 선택하면(state.kfTrendBranchId) 매니저도 다른 모든 지점의 추이를 조회할 수 있다.
-function defaultKakaoTrendBranchId(){
-  if(state.kfTrendBranchId) return state.kfTrendBranchId;
-  if(SESSION.role!=='admin' && SESSION.branchId) return SESSION.branchId;
-  return DB.branches[0] && DB.branches[0].id;
-}
-function setKakaoTrendBranch(branchId){
-  state.kfTrendBranchId = branchId;
-  renderTab('kakaoFriends');
-}
-function startEditKakaoFriendsRow(branchId, date){
-  if(!canEditKakaoFriends(branchId)){ alert('본인 지점의 데이터만 수정할 수 있습니다.'); return; }
-  state.kfEditKey = kfRowKey(branchId, date);
-  renderTab('kakaoFriends');
-}
-function cancelEditKakaoFriendsRow(){
-  state.kfEditKey = null;
-  renderTab('kakaoFriends');
-}
-function saveEditKakaoFriendsRow(branchId, date){
-  if(!canEditKakaoFriends(branchId)){ alert('본인 지점의 데이터만 수정할 수 있습니다.'); return; }
-  const domId = kfRowDomId(branchId, date);
-  const val = Number(document.getElementById('kfeCount_'+domId).value);
-  if(!Number.isFinite(val) || val<0){ alert('플친수를 올바르게 입력해 주세요.'); return; }
-  const r = (DB.kakaoFriends||[]).find(x=>x.branchId===branchId && (x.date||x.weekStart)===date);
-  if(r) r.count = val;
-  state.kfEditKey = null;
-  saveDB();
-  renderTab('kakaoFriends');
-}
-function deleteKakaoFriendsRow(branchId, date){
-  if(!canEditKakaoFriends(branchId)){ alert('본인 지점의 데이터만 삭제할 수 있습니다.'); return; }
-  if(!confirm('이 날짜의 데이터를 삭제하시겠습니까?')) return;
-  DB.kakaoFriends = (DB.kakaoFriends||[]).filter(r=>!(r.branchId===branchId && (r.date||r.weekStart)===date));
-  saveDB();
-  renderTab('kakaoFriends');
 }
 function kakaoFriendsLatestChange(){
   const byBranch = kakaoFriendsByBranch();
@@ -15894,7 +15819,7 @@ function renderKakaoContestBanner(){
       <td>${branchName(p.branchId)}</td>
       <td>${fmtNum(p.target)}명</td>
       <td>${fmtNum(p.latest)}명</td>
-      <td>${p.remaining==null ? '<span class="muted">목표 미입력</span>' : (p.remaining>0 ? fmtNum(p.remaining)+'명' : '<span class="badge good">목표 달성</span>')}</td>
+      <td>${p.remaining==null ? '<span class="muted">목표 미입력</span>' : (p.remaining>0 ? fmtNum(p.remaining)+'명' : '<span class="badge" style="background:#f2f2f4;color:var(--text);">목표 달성</span>')}</td>
       <td>${p.momDiff==null ? '<span class="muted">-</span>' : `<span style="color:${p.momDiff>=0?'var(--primary)':'var(--bad)'};font-weight:700;">${p.momDiff>=0?'+':''}${fmtNum(p.momDiff)}명</span>`}</td>
       <td style="min-width:120px;">${p.pct==null ? '<span class="muted">-</span>' : `<div class="progress-bar"><div style="width:${p.pct}%"></div></div>`}</td>
       <td>${p.pct==null ? '' : p.pct.toFixed(1)+'%'}</td>
@@ -15920,10 +15845,10 @@ function renderKakaoContestBanner(){
       <button class="btn btn-primary" style="margin-top:12px;" onclick="updateKakaoContestInfo()">저장</button>
     </div>` : '';
   return `
-    <div class="card" style="margin-bottom:16px;border:1.5px solid #f5b100;background:#fffbf0;">
+    <div class="card" style="margin-bottom:10px;">
       <div class="flex-between" style="margin-bottom:2px;">
-        <div class="ai-title" style="margin:0;">📢 컨테스트 운영 안내</div>
-        <div style="display:flex;align-items:center;gap:8px;"><span class="badge warn">${info.period}</span>${editToggleHtml}</div>
+        <div class="ai-title" style="margin:0;"><i class="ti ti-speakerphone" aria-hidden="true"></i> 컨테스트 운영 안내</div>
+        <div style="display:flex;align-items:center;gap:8px;"><span class="badge" style="background:#f2f2f4;color:var(--text);">${info.period}</span>${editToggleHtml}</div>
       </div>
       <div style="font-weight:700;font-size:15px;margin:4px 0 2px;">${info.title}</div>
       <div class="muted" style="margin-bottom:10px;">${info.subtitle} · ${info.note}</div>
@@ -15962,18 +15887,18 @@ function renderKakaoFriendsBanner(){
   const changes = kakaoFriendsLatestChange();
   if(changes.length===0){
     return `
-    <div class="card ai-box" style="margin-bottom:16px;">
-      <div class="ai-title">📈 주차별 증감율 우수/저조 지점</div>
+    <div class="card ai-box" style="margin-bottom:10px;">
+      <div class="ai-title"><i class="ti ti-trending-up" aria-hidden="true"></i> 주차별 증감율 우수/저조 지점</div>
       <div class="muted">지점별로 2주 이상의 플친 데이터가 쌓이면 자동으로 표시됩니다. (상시 업데이트)</div>
     </div>`;
   }
   const best = [...changes].sort((a,b)=>b.rate-a.rate)[0];
   const worst = [...changes].sort((a,b)=>a.rate-b.rate)[0];
   return `
-    <div class="card ai-box" style="margin-bottom:16px;">
-      <div class="flex-between" style="margin-bottom:4px;"><div class="ai-title" style="margin:0;">📈 주차별 증감율 우수/저조 지점</div><span class="muted" style="font-size:11px;">상시 업데이트 · 최신 주차 기준</span></div>
-      <div style="margin-bottom:6px;">🏆 우수 지점: <b>${branchName(best.branchId)}</b> — ${best.diff>=0?'+':''}${fmtNum(best.diff)}명 (<span style="color:${best.rate>=0?'var(--primary)':'var(--bad)'}">${best.rate>=0?'+':''}${best.rate.toFixed(1)}%</span>) <span class="muted" style="font-size:11px;">(${best.prevWeek} → ${best.latestWeek})</span></div>
-      <div>⚠ 저조 지점: <b>${branchName(worst.branchId)}</b> — ${worst.diff>=0?'+':''}${fmtNum(worst.diff)}명 (<span style="color:${worst.rate>=0?'var(--primary)':'var(--bad)'}">${worst.rate>=0?'+':''}${worst.rate.toFixed(1)}%</span>) <span class="muted" style="font-size:11px;">(${worst.prevWeek} → ${worst.latestWeek})</span></div>
+    <div class="card ai-box" style="margin-bottom:10px;">
+      <div class="flex-between" style="margin-bottom:4px;"><div class="ai-title" style="margin:0;"><i class="ti ti-trending-up" aria-hidden="true"></i> 주차별 증감율 우수/저조 지점</div><span class="muted" style="font-size:11px;">상시 업데이트 · 최신 주차 기준</span></div>
+      <div style="margin-bottom:6px;"><i class="ti ti-arrow-up-right" aria-hidden="true" style="color:var(--primary);"></i> 우수 지점: <b>${branchName(best.branchId)}</b> — ${best.diff>=0?'+':''}${fmtNum(best.diff)}명 (<span style="color:${best.rate>=0?'var(--primary)':'var(--bad)'}">${best.rate>=0?'+':''}${best.rate.toFixed(1)}%</span>) <span class="muted" style="font-size:11px;">(${best.prevWeek} → ${best.latestWeek})</span></div>
+      <div><i class="ti ti-arrow-down-right" aria-hidden="true"></i> 저조 지점: <b>${branchName(worst.branchId)}</b> — ${worst.diff>=0?'+':''}${fmtNum(worst.diff)}명 (<span style="color:${worst.rate>=0?'var(--primary)':'var(--bad)'}">${worst.rate>=0?'+':''}${worst.rate.toFixed(1)}%</span>) <span class="muted" style="font-size:11px;">(${worst.prevWeek} → ${worst.latestWeek})</span></div>
     </div>`;
 }
 // 지점별 카카오 플러스 친구 누적 등록건 수 막대그래프 설정 (세로 막대 · 이슈제품 성공사례
@@ -16006,9 +15931,10 @@ function renderKakaoFriends(){
   }
 
   return `
+    <div class="kakao-plain">
     <div class="page-title">카카오 플친 관리 현황</div>
     <div class="page-desc">지점별 카카오톡 플러스친구(플친) 컨테스트 현황입니다.</div>
-    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:stretch;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-bottom:10px;">
       <div style="flex:1;min-width:280px;max-width:420px;display:flex;">
         ${renderKakaoContestResultImage()}
       </div>
@@ -16020,6 +15946,7 @@ function renderKakaoFriends(){
     <div class="card">
       <h3>지점별 카카오 플러스 친구 누적 등록건 수</h3>
       ${cumulativeRows.length ? `<div style="position:relative;height:340px;"><canvas id="kakaoCumulativeChart"></canvas></div>` : `<div class="muted">등록된 데이터가 없습니다.</div>`}
+    </div>
     </div>
   `;
 }
