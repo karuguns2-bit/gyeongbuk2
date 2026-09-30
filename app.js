@@ -3934,9 +3934,9 @@ function renderHome(){
     </div>
     ${state.noticeFormOpen ? renderNoticeForm() : ''}
     <div class="home-plain">
-    <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:10px;flex-wrap:wrap;">
-      <div style="flex:2;min-width:360px;">${renderHomeBranchBadges()}</div>
-      <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;">
+    <div class="home-top-row">
+      <div class="home-top-left">${renderHomeBranchBadges()}</div>
+      <div class="home-top-right">
         ${renderHomeGoalsManagerBanner()}
         ${renderHomeManagerCompetitivenessBanner()}
         ${renderHomeSubManagerRateBanner()}

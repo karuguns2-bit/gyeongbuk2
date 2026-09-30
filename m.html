@@ -445,6 +445,12 @@
   .home-plain .stat-tile-blue,.home-plain .stat-tile-pink,.home-plain .stat-tile-purple,
   .home-plain .stat-tile-green,.home-plain .stat-tile-amber{background:#fff;color:var(--text);}
   .home-plain #homeWidgetList{gap:10px;margin-bottom:0;}
+  /* 이달의 지점 배지(위) + 관리자별 배너 3종(아래). 모바일은 폭이 좁아 나란히 배치하면
+     배너가 찌그러지므로 항상 위아래로 쌓는다(PC의 좌우 2:1 배치와 다름). */
+  .home-top-row{ display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+  .home-top-left, .home-top-right{ width:100%; }
+  .home-top-right{ display:flex; flex-direction:column; gap:8px; }
+  .home-top-right > .card{ min-height:76px; }
   /* 2026.09: 지표 한 눈에 보기 전용 - 홈대시보드와 동일하게 파스텔 배경 제거하고
      흰 바탕+검은 글씨, 강조 수치/그래프는 붉은색(--primary) 하나로 통일. 여백도 촘촘하게. */
   .mo-plain .card{padding:10px 12px;}
