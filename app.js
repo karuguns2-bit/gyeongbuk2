@@ -10685,17 +10685,23 @@ function deleteExecPhotoGuideImage(idx){
   saveDB();
   renderTab('collectPhoto');
 }
+// 가이드 갤러리는 기본은 접어두고(여백 절약), 클릭하면 펼쳐서 확인할 수 있게 한다.
+function toggleExecPhotoGuideOpen(){
+  state.execPhotoGuideOpen = !state.execPhotoGuideOpen;
+  renderTab('collectPhoto');
+}
 function renderExecPhotoGuide(){
   const isAdmin = SESSION.role==='admin';
   const guide = DB.execPhotoGuide;
   const images = (guide && guide.images) || [];
+  if(images.length===0 && !isAdmin) return '';
+  const isOpen = !!state.execPhotoGuideOpen;
   const adminControls = isAdmin ? `
     <div style="margin-top:${images.length?'10px':'0'};display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <select id="epgWeek" style="width:140px">${execPhotoWeekOptionsHtml(guide ? guide.week : '')}</select>
       <input type="file" multiple onchange="handleExecPhotoGuideUpload(event)" style="max-width:240px;">
       <span id="epgMsg" class="small-note"></span>
     </div>` : '';
-  if(images.length===0 && !isAdmin) return '';
   // 사진뿐 아니라 엑셀/PPT 등 문서도 함께 첨부할 수 있어, 이미지는 확대 가능한 썸네일로,
   // 문서는 다운로드 칩으로 자동 구분해서 보여주는 공통 헬퍼(noticeAttachmentHtml)를 재사용한다.
   const galleryHtml = images.length>0 ? `
@@ -10703,21 +10709,45 @@ function renderExecPhotoGuide(){
       ${images.map((img,idx)=>noticeAttachmentHtml(img, 160, isAdmin ? `deleteExecPhotoGuideImage(${idx})` : null)).join('')}
     </div>` : '';
   return `
-    <div class="card" style="margin-bottom:16px;text-align:center;">
-      ${images.length>0 ? `
-        <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;"><b style="color:var(--primary);">${escapeHtml(guide.week||'')} 실행력 점검 사진 가이드</b> <span class="muted">(${images.length}개)</span> · 등록일 ${guide.uploadedAt||''} · ${escapeHtml(guide.uploadedBy||'')}</div>
-        ${galleryHtml}
-      ` : `<div class="muted" style="padding:10px 0;">등록된 실행력 점검 사진 가이드가 없습니다. 관리자만 등록할 수 있습니다.</div>`}
-      ${adminControls}
+    <div class="card" style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleExecPhotoGuideOpen()">
+        <div style="display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;">
+          <i class="ti ti-photo" aria-hidden="true"></i>
+          실행력 점검 사진 가이드 ${images.length>0 ? `<span class="muted" style="font-weight:400;">(${images.length}개)</span>` : ''}
+        </div>
+        <i class="ti ti-chevron-${isOpen?'up':'down'}" aria-hidden="true"></i>
+      </div>
+      ${isOpen ? `
+        <div style="margin-top:10px;text-align:center;">
+          ${images.length>0 ? `
+            <div class="muted" style="text-align:left;margin-bottom:8px;font-size:12px;"><b style="color:var(--primary);">${escapeHtml(guide.week||'')}</b> · 등록일 ${guide.uploadedAt||''} · ${escapeHtml(guide.uploadedBy||'')}</div>
+            ${galleryHtml}
+          ` : `<div class="muted" style="padding:10px 0;">등록된 실행력 점검 사진 가이드가 없습니다. 관리자만 등록할 수 있습니다.</div>`}
+          ${adminControls}
+        </div>` : ''}
     </div>`;
 }
 function renderCollectPhoto(){
   if(!state.epSelectedIds) state.epSelectedIds = new Set();
+  if(state.epWeekFilter===undefined) state.epWeekFilter = '';
   const myBranch = collectScopeBranch(true);
   const scoped = collectListScope(DB.execPhotos, true);
-  const sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  let sorted = [...scoped].sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  if(state.epWeekFilter) sorted = sorted.filter(r=>r.week===state.epWeekFilter);
   const epAllSelected = sorted.length>0 && sorted.every(r=>state.epSelectedIds.has(r.id));
   const editId = state.epEditId;
+
+  // 이번 주(가장 최근 실행 주차) 기준 지점별 등록 현황 요약 - 관리자/매니저 모두가 한눈에
+  // 미등록 지점을 파악할 수 있게 한다(지점/주차 필터와는 별개로 항상 최신 주차 기준).
+  const currentExecWeek = EXEC_PHOTO_WEEK_OPTIONS[EXEC_PHOTO_WEEK_OPTIONS.length-1];
+  const registeredBranchIds = new Set(DB.execPhotos.filter(r=>r.week===currentExecWeek).map(r=>r.branchId));
+  const missingBranches = DB.branches.filter(b=>!registeredBranchIds.has(b.id));
+  const summaryHtml = `
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <span class="badge ${missingBranches.length===0?'good':'warn'}">${escapeHtml(currentExecWeek)} 등록 현황 · ${DB.branches.length-missingBranches.length}/${DB.branches.length} 지점 완료</span>
+    </div>
+    ${missingBranches.length>0 ? `<div class="muted" style="font-size:12px;margin-bottom:12px;">미등록 지점: ${missingBranches.map(b=>escapeHtml(b.name)).join(', ')}</div>` : ''}
+  `;
   const cards = sorted.map(r=>{
     const canEdit = canEditExecPhoto(r);
     if(canEdit && editId===r.id){
@@ -10744,7 +10774,7 @@ function renderCollectPhoto(){
     const photosHtml = (r.photos||[]).length>0
       ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">${(r.photos||[]).map(p=> isImageAttachment(p)
           ? `<img src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:calc(50% - 2px);height:90px;object-fit:cover;border-radius:6px;cursor:zoom-in;">`
-          : `<a href="${p.dataUrl}" download="${escapeHtml(p.name||'file')}" style="display:flex;align-items:center;gap:5px;width:calc(50% - 2px);height:90px;padding:6px;border:1px solid var(--border);border-radius:6px;background:#f7f7f8;font-size:11px;text-decoration:none;color:inherit;overflow:hidden;">📎 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name||'파일')}</span></a>`
+          : `<a href="${p.dataUrl}" download="${escapeHtml(p.name||'file')}" style="display:flex;align-items:center;gap:5px;width:calc(50% - 2px);height:90px;padding:6px;border:1px solid var(--border);border-radius:6px;background:#f7f7f8;font-size:11px;text-decoration:none;color:inherit;overflow:hidden;"><i class="ti ti-file-text" aria-hidden="true" style="font-size:15px;color:var(--text-sub);"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name||'파일')}</span></a>`
         ).join('')}</div>`
       : `<div class="muted" style="margin-bottom:6px;">등록된 파일이 없습니다.</div>`;
     const hasFiles = (r.photos||[]).length>0;
@@ -10759,19 +10789,24 @@ function renderCollectPhoto(){
       </div>
       ${photosHtml}
       <div class="muted" style="font-size:11.5px;">${r.uploaderName} · ${r.createdAt.slice(0,16).replace('T',' ')}</div>
-      ${SESSION.role==='admin' && hasFiles ? `<button id="epDownloadBtn_${r.id}" class="btn btn-sm" style="width:100%;margin-top:6px;color:#2b6cb0;border-color:#2b6cb0;" onclick="downloadExecPhotoCard('${r.id}')">⬇ 이 지점 사진 다운로드</button>` : ''}
+      ${SESSION.role==='admin' && hasFiles ? `<button id="epDownloadBtn_${r.id}" class="btn btn-sm" style="width:100%;margin-top:6px;color:#2b6cb0;border-color:#2b6cb0;" onclick="downloadExecPhotoCard('${r.id}')"><i class="ti ti-download" aria-hidden="true"></i> 이 지점 사진 다운로드</button>` : ''}
       ${canEdit ? `<div style="display:flex;gap:4px;margin-top:6px;"><button class="btn btn-sm" style="flex:1;" onclick="startEditExecPhoto('${r.id}')">수정</button><button class="btn btn-sm" style="flex:1;" onclick="deleteExecPhoto('${r.id}')">삭제</button></div>` : ''}
     </div>`;
   }).join('') || `<div class="muted">등록된 사진이 없습니다.</div>`;
 
+  const weekFilterOptionsHtml = `<option value="">전체 주차</option>` + EXEC_PHOTO_WEEK_OPTIONS.map(w=>`<option value="${w}" ${w===state.epWeekFilter?'selected':''}>${w}</option>`).join('');
+
   return `
+  <div class="execPhoto-plain">
     <div class="page-title">실행력 점검 사진 취합</div>
     <div class="page-desc">지점별 실행력 점검 사진을 업로드·공유합니다.</div>
+    ${summaryHtml}
     ${renderExecPhotoGuide()}
-    ${collectBranchPills('collectPhoto', true)}
 
-    <div class="card" style="margin-bottom:16px;">
-      <h3>사진 업로드</h3>
+    <div style="margin-bottom:14px;">
+      ${boardWriteButtonHtml('execPhotoWrite', '사진 등록하기')}
+    </div>
+    ${boardWriteModalHtml('execPhotoWrite', '사진 등록', `
       <div class="form-row">
         <div class="field">
           <label>지점명</label>
@@ -10785,20 +10820,33 @@ function renderCollectPhoto(){
           <label>파일 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
           <input id="epFile" type="file" multiple>
         </div>
-        <button class="btn btn-primary" onclick="submitExecPhoto()">등록</button>
+      </div>
+      <button class="btn btn-primary" onclick="submitExecPhoto()">등록</button>
+    `)}
+
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      ${collectBranchPills('collectPhoto', true)}
+      <div style="margin-left:auto;display:flex;align-items:center;gap:6px;">
+        <span class="muted" style="font-size:12px;">주차</span>
+        <select style="width:130px" onchange="setExecPhotoWeekFilter(this.value)">${weekFilterOptionsHtml}</select>
       </div>
     </div>
 
     ${SESSION.role==='admin' && sorted.length>0 ? `
-    <div style="margin-bottom:10px;">
+    <div style="position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 10px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;">
       <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
         <input type="checkbox" ${epAllSelected?'checked':''} onchange="toggleExecPhotoSelectAll(this.checked)">
         전체 선택
       </label>
+      <div style="display:flex;gap:6px;">
+        <button id="execPhotoDownloadSelectedBtn" class="btn btn-sm" onclick="downloadSelectedExecPhotos()"><i class="ti ti-download" aria-hidden="true"></i> 선택 다운로드<span id="execPhotoSelCountDl"></span></button>
+        <button class="btn btn-sm" style="color:var(--primary);border-color:var(--primary);" onclick="deleteSelectedExecPhotos()"><i class="ti ti-trash" aria-hidden="true"></i> 선택 삭제<span id="execPhotoSelCountDel"></span></button>
+      </div>
     </div>` : ''}
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;">
       ${cards}
     </div>
+  </div>
   `;
 }
 function submitExecPhoto(){
@@ -10889,9 +10937,16 @@ function deleteExecPhoto(id){
 // state에 Set으로만 들고 있다가 툴바 버튼의 표시 건수만 가볍게 갱신한다(전체 재렌더 없음).
 function toggleExecPhotoSelectAll(checked){
   if(!state.epSelectedIds) state.epSelectedIds = new Set();
-  const scoped = collectListScope(DB.execPhotos, true);
+  // 주차 필터가 걸려 있으면 화면에 실제로 보이는 건들만 전체선택 대상이 되어야 한다
+  // (필터로 가려진 다른 주차 건까지 조용히 선택되는 걸 막는다).
+  let scoped = collectListScope(DB.execPhotos, true);
+  if(state.epWeekFilter) scoped = scoped.filter(r=>r.week===state.epWeekFilter);
   if(checked) scoped.forEach(r=>state.epSelectedIds.add(r.id));
   else scoped.forEach(r=>state.epSelectedIds.delete(r.id));
+  renderTab('collectPhoto');
+}
+function setExecPhotoWeekFilter(v){
+  state.epWeekFilter = v;
   renderTab('collectPhoto');
 }
 function toggleExecPhotoSelect(id, checked){
