@@ -9826,7 +9826,7 @@ function renderSales(){
     </div>`;
 
   const salesRow2Html = `
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-top:10px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-top:28px;">
       <div style="flex:1;min-width:220px;display:flex;">
         <div class="card" style="display:flex;flex-direction:column;flex:1;height:300px;overflow:hidden;">
           <h3>제품군 비중 <small>${empPersonalSuffix}</small></h3>
