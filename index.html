@@ -826,21 +826,26 @@
   /* 홈 대시보드 개인화 위젯(교육 안내/근무 일정/AI 분석) - 순서는 고정 */
   #homeWidgetList{ display:flex; flex-wrap:wrap; gap:16px; margin-bottom:16px; }
   .home-widget-item{ display:flex; align-items:stretch; flex:1 1 100%; min-width:0; }
-  /* 근무 일정 / 인센티브 참고는 공백이 많아 같은 줄에 절반씩(50/50) 배치한다.
-     (2026.09: 기존에는 AI 분석 피드백과 짝이었으나, 인센티브 참고 카드가 새로 들어오면서
-     근무 일정과 짝을 이루도록 옮기고, AI 분석 피드백은 아래에 전체 폭으로 내려간다.) */
-  .home-widget-item[data-widget-key="attendance"], .home-widget-item[data-widget-key="incentiveRef"]{ flex:1 1 calc(50% - 8px); }
+  /* 근무 일정 / 인센티브 참고 / AI 분석 피드백을 한 줄에 3등분으로 배치한다.
+     (2026.09: 처음엔 근무일정+AI피드백 50/50 → 인센티브 참고 추가되며 근무일정+인센티브 50/50,
+     AI피드백은 아래 전체 폭 → 다시 3개를 한 줄에 나란히 배치하는 것으로 변경.) */
+  .home-widget-item[data-widget-key="attendance"], .home-widget-item[data-widget-key="incentiveRef"],
+  .home-widget-item[data-widget-key="aiFeedback"]{ flex:1 1 calc(33.333% - 11px); }
   .home-widget-body{ flex:1; min-width:0; }
   .home-widget-body > .card{ margin:0; }
   /* 2026.09: 근무 일정 카드는 선택한 지점의 인원 수에 따라 표 길이가 늘거나 줄어서
-     옆의 인센티브 참고 카드와 높이가 안 맞고 레이아웃이 흔들려 보였다. 두 카드 모두
-     높이를 고정하고, 내용이 넘치면 카드 안쪽만 스크롤되게 한다. */
+     옆 카드들과 높이가 안 맞고 레이아웃이 흔들려 보였다. 세 카드 모두 높이를 고정하고,
+     내용이 넘치면 카드 안쪽만 스크롤되게 한다. */
   .home-widget-item[data-widget-key="attendance"] .card,
-  .home-widget-item[data-widget-key="incentiveRef"] .card{
+  .home-widget-item[data-widget-key="incentiveRef"] .card,
+  .home-widget-item[data-widget-key="aiFeedback"] .card{
     height:260px; display:flex; flex-direction:column; overflow:hidden;
   }
   .home-widget-item[data-widget-key="attendance"] .card .table-scroll{
     flex:1; min-height:0; max-height:none;
+  }
+  .home-widget-item[data-widget-key="aiFeedback"] .card .ai-box{
+    flex:1; min-height:0; overflow-y:auto;
   }
   .small-note{font-size:11.5px;color:var(--text-sub);margin-top:8px;}
   /* 가로 스크롤이 긴 취합/등록 표에서 수정·삭제 버튼이 화면 밖으로 밀려나 안 보인다는
