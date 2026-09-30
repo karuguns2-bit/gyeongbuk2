@@ -375,6 +375,7 @@ function buildSeedDataFromReal(){
     eduVideoRich: null,
     inventoryClearanceCodes: [],
     kakaoFriends, prospects: [], subB2bSales: [], policyQuizAttempts: [],
+    branchSchedule: {},
     kakaoContestInfo: JSON.parse(JSON.stringify(KAKAO_CONTEST_INFO)),
     kakaoContestResultImage: null,
     execPhotoGuide: null,
@@ -1186,6 +1187,7 @@ function migrateDB(){
   if(DB.inventoryClearanceBaseline===undefined) DB.inventoryClearanceBaseline = null;
   // 여러 영업팀 재고가 섞인 파일을 올려도 기본은 혼매경북팀만 표시 - 관리자가 켜면 전체 팀 표시
   if(DB.inventoryShowAllTeams===undefined) DB.inventoryShowAllTeams = false;
+  if(!DB.branchSchedule) DB.branchSchedule = {};
   if(!DB.kakaoFriends) DB.kakaoFriends = [];
   DB.kakaoFriends.forEach(r=>{ if(!r.date) r.date = r.weekStart; if(!r.weekStart && r.date) r.weekStart = getMondayStr(r.date); });
   if(!DB.prospects) DB.prospects = [];
@@ -1831,6 +1833,27 @@ function enterApp(user, fromRestore){
   startHeartbeat();
   startScreensaverWatch();
   if(!fromRestore) logActivity('login');
+  checkBranchScheduleAlarmForToday();
+}
+// 로그인(또는 새로고침 세션 복원) 시, 오늘 날짜에 등록된 지점 스케줄이 있으면 알림 팝업을
+// 띄운다. 매니저(staff)는 본인 소속 지점 기준으로, 하루에 한 번만(localStorage로 표시 여부
+// 기록) 뜨도록 한다 - 새로고침할 때마다 반복해서 뜨면 번거로우므로.
+function checkBranchScheduleAlarmForToday(){
+  if(!SESSION || SESSION.role!=='staff' || !SESSION.branchId) return;
+  const today = todayStr();
+  const entries = ((DB.branchSchedule||{})[SESSION.branchId]||[]).filter(e=>e.date===today);
+  if(entries.length===0) return;
+  const shownKey = `schedAlarmShown_${SESSION.empId}_${today}`;
+  try{ if(localStorage.getItem(shownKey)) return; }catch(e){ /* 무시 */ }
+  const body = document.getElementById('branchSchedAlarmBody');
+  if(body) body.innerHTML = entries.map(e=>`${escapeHtml(today)} · ${escapeHtml(e.title)}`).join('<br>');
+  const modal = document.getElementById('branchSchedAlarmModal');
+  if(modal) modal.style.display = 'flex';
+  try{ localStorage.setItem(shownKey, '1'); }catch(e){ /* 무시 */ }
+}
+function closeBranchScheduleAlarm(){
+  const modal = document.getElementById('branchSchedAlarmModal');
+  if(modal) modal.style.display = 'none';
 }
 function handleLogin(){
   const err = document.getElementById('loginError');
@@ -3460,6 +3483,105 @@ function goalsManagerSummary(period){
 }
 // 2026.09: 이달의 지점 배지 카드 우측에 관리자별 배너 3종(목표달성/합산경쟁력/구독달성율)을
 // 세로로 쌓아 넣으면서, 원래의 큰 stat-tile 카드 형태는 좁은 컬럼 폭에서 세로로 계속 줄바꿈되어
+// 홈 대시보드 "지점 스케줄 등록하기": 관리자 배너 3종 위에 버튼을 두고, 누르면 그 지점의
+// 월간 캘린더가 펼쳐진다. 등록/수정은 해당 지점 매니저(staff, 같은 branchId) 또는 시스템
+// 관리자(admin)만 가능하고, 그 외(타 지점 매니저/임원)는 조회만 가능하다.
+function canEditBranchSchedule(branchId){
+  if(!SESSION) return false;
+  if(SESSION.role==='admin') return true;
+  return SESSION.role==='staff' && SESSION.branchId===branchId;
+}
+function homeSchedMonthKey(){
+  if(!state.homeSchedMonth) state.homeSchedMonth = todayStr().slice(0,7);
+  return state.homeSchedMonth;
+}
+function toggleHomeSchedulePanel(){
+  state.homeSchedOpen = !state.homeSchedOpen;
+  if(state.homeSchedOpen && !state.homeSchedSelDate) state.homeSchedSelDate = todayStr();
+  renderTab('home');
+}
+function shiftHomeSchedMonth(delta){
+  const cur = homeSchedMonthKey();
+  const [y,m] = cur.split('-').map(Number);
+  const d = new Date(y, m-1+delta, 1);
+  state.homeSchedMonth = `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+  renderTab('home');
+}
+function selectHomeSchedDate(dateStr){
+  state.homeSchedSelDate = dateStr;
+  renderTab('home');
+}
+function saveHomeScheduleEntry(branchId){
+  if(!canEditBranchSchedule(branchId)) return;
+  const dateStr = state.homeSchedSelDate || todayStr();
+  const input = document.getElementById('homeSchedTitleInput');
+  const title = input ? input.value.trim() : '';
+  if(!title){ if(input) input.focus(); return; }
+  if(!DB.branchSchedule) DB.branchSchedule = {};
+  if(!DB.branchSchedule[branchId]) DB.branchSchedule[branchId] = [];
+  DB.branchSchedule[branchId].push({ id:'sched_'+Date.now()+'_'+Math.floor(Math.random()*1000), date:dateStr, title, createdBy:SESSION.empId, createdByName:SESSION.name, createdAt:new Date().toISOString() });
+  saveDB();
+  renderTab('home');
+}
+function deleteHomeScheduleEntry(branchId, id){
+  if(!canEditBranchSchedule(branchId)) return;
+  if(!DB.branchSchedule || !DB.branchSchedule[branchId]) return;
+  DB.branchSchedule[branchId] = DB.branchSchedule[branchId].filter(e=>e.id!==id);
+  saveDB();
+  renderTab('home');
+}
+function renderHomeBranchScheduleWidget(branchId){
+  const open = !!state.homeSchedOpen;
+  const btnHtml = `<button type="button" class="btn btn-sm" style="width:100%;margin-bottom:${open?'8':'0'}px;" onclick="toggleHomeSchedulePanel()"><i class="ti ti-calendar-plus" aria-hidden="true"></i> 지점 스케줄 ${open?'접기':'등록하기'}</button>`;
+  if(!open) return btnHtml;
+  const monthKey = homeSchedMonthKey();
+  const [y,m] = monthKey.split('-').map(Number);
+  const startWeekday = new Date(y, m-1, 1).getDay();
+  const numDays = new Date(y, m, 0).getDate();
+  const entries = (DB.branchSchedule && DB.branchSchedule[branchId]) || [];
+  const byDate = {};
+  entries.forEach(e=>{ if(!byDate[e.date]) byDate[e.date] = []; byDate[e.date].push(e); });
+  const today = todayStr();
+  const selDate = state.homeSchedSelDate || today;
+  const cells = [];
+  for(let i=0;i<startWeekday;i++) cells.push('<div></div>');
+  for(let d=1; d<=numDays; d++){
+    const dateStr = `${y}-${pad(m)}-${pad(d)}`;
+    const has = (byDate[dateStr]||[]).length>0;
+    const isToday = dateStr===today;
+    const isSel = dateStr===selDate;
+    cells.push(`<div class="edu-cal-daycell" style="min-height:34px;cursor:pointer;${isSel?'background:var(--primary);':(isToday?'background:#f2f2f4;':'')}" onclick="selectHomeSchedDate('${dateStr}')">
+      <div class="edu-cal-daynum" style="${isSel?'color:#fff;font-weight:700;':(isToday?'color:var(--primary);font-weight:700;':'')}">${d}</div>
+      ${has?`<div style="width:5px;height:5px;border-radius:50%;background:${isSel?'#fff':'var(--primary)'};"></div>`:''}
+    </div>`);
+  }
+  const weekDayHeaders = ['일','월','화','수','목','금','토'].map(w=>`<div class="muted" style="text-align:center;font-size:10.5px;font-weight:700;">${w}</div>`).join('');
+  const canEdit = canEditBranchSchedule(branchId);
+  const selEntries = byDate[selDate] || [];
+  const listHtml = selEntries.length>0 ? selEntries.map(e=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:4px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:12px;">${escapeHtml(e.title)} <span class="muted" style="font-size:10.5px;">(${escapeHtml(e.createdByName||'')})</span></span>
+      ${canEdit?`<span style="cursor:pointer;color:var(--text-sub);" onclick="deleteHomeScheduleEntry('${branchId}','${e.id}')">✕</span>`:''}
+    </div>`).join('') : `<div class="muted" style="font-size:11.5px;padding:4px 0;">등록된 일정이 없습니다.</div>`;
+  const formHtml = canEdit ? `
+    <div style="display:flex;gap:4px;margin-top:6px;">
+      <input id="homeSchedTitleInput" type="text" placeholder="일정 제목 (예: 판촉행사 방문)" style="flex:1;font-size:12px;" onkeydown="if(event.key==='Enter')saveHomeScheduleEntry('${branchId}')">
+      <button type="button" class="btn btn-sm" onclick="saveHomeScheduleEntry('${branchId}')">등록</button>
+    </div>` : `<div class="muted" style="font-size:10.5px;margin-top:6px;">이 지점 매니저만 등록/수정할 수 있습니다.</div>`;
+  return `${btnHtml}
+    <div class="card" style="padding:8px 10px;">
+      <div class="flex-between" style="margin-bottom:6px;">
+        <button type="button" class="btn btn-sm" onclick="shiftHomeSchedMonth(-1)">◀</button>
+        <div style="font-weight:700;font-size:13px;">${y}년 ${m}월</div>
+        <button type="button" class="btn btn-sm" onclick="shiftHomeSchedMonth(1)">▶</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px;">${weekDayHeaders}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">${cells.join('')}</div>
+      <div style="margin-top:8px;font-size:11.5px;font-weight:700;">${selDate} 일정</div>
+      ${listHtml}
+      ${formHtml}
+    </div>`;
+}
 // 오히려 스크롤이 늘어났다. 같은 데이터를 한 줄 요약(관리자 · 수치)로 압축한 컴팩트 카드로 바꾼다.
 // 관리자 배너 3종 공통: 진행률 바 대신 단색 tabler 트로피 아이콘 + 이름 + 수치를 칩으로 만들어
 // 한 줄에 가로로 나열한다(줄바꿈 금지 - flex-wrap:nowrap). 관리자 수가 많아져도 줄바꿈되지 않도록
@@ -3935,6 +4057,7 @@ function renderHome(){
     <div class="home-top-row">
       <div class="home-top-left">${renderHomeBranchBadges()}</div>
       <div class="home-top-right">
+        ${renderHomeBranchScheduleWidget(myBranch)}
         ${renderHomeGoalsManagerBanner()}
         ${renderHomeManagerCompetitivenessBanner()}
         ${renderHomeSubManagerRateBanner()}
@@ -4879,7 +5002,7 @@ function renderHomeNoticeTicker(){
   }
   return `
     <style>
-      .nb-ticker{ flex:1 1 260px; min-width:200px; display:flex; align-items:center; gap:8px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:20px; padding:6px 8px 6px 12px; overflow:hidden; box-sizing:border-box; }
+      .nb-ticker{ flex:0 1 50%; max-width:50%; min-width:160px; display:flex; align-items:center; gap:8px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:20px; padding:6px 8px 6px 12px; overflow:hidden; box-sizing:border-box; }
       .nb-ticker-label{ flex-shrink:0; font-size:13px; }
       .nb-ticker-wrap{ flex:1 1 auto; overflow:hidden; white-space:nowrap; position:relative; height:18px; }
       .nb-ticker-track{ display:inline-flex; align-items:center; white-space:nowrap; position:absolute; left:0; top:0; }
