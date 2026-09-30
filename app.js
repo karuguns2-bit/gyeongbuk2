@@ -3857,6 +3857,9 @@ function renderHome(){
   const homeB2bMyQty = homeB2bQtyMap[myBranch] || 0;
   const homeB2bAvg = DB.branches.length ? (DB.branches.reduce((s,b)=>s+(homeB2bQtyMap[b.id]||0),0) / DB.branches.length) : 0;
   const homeB2bBelowAvg = homeB2bMyQty < homeB2bAvg;
+  // 플친 누적 친구수: 플친관리 페이지와 동일한 "최신 주차 누적치" 헬퍼(kakaoFriendsLatestCumulative)를
+  // 그대로 재사용해 지점별 누적 플친 수를 마지막 7번째 카드에 표시한다.
+  const homeKakaoFriendsCum = kakaoFriendsLatestCumulative(myBranch);
   // 매니저/사원은 본인 소속 지점(myBranch)에 고정되어 있지만, "오늘 출근 현황" 카드만은 다른
   // 지점의 출근 현황도 조회할 수 있도록 카드 우측 상단에 별도 지점 선택을 둔다(관리자는 이미
   // 상단 전체 지점 pill로 페이지 전체를 전환할 수 있으므로, 카드에도 같은 목록을 띄워 관리자
@@ -3938,7 +3941,7 @@ function renderHome(){
       </div>
     </div>
     ${branchSelectorHtml}
-    <div class="grid ${(()=>{ const n = 4 + (homeCompBranch&&homeCompBranch.msPct!=null?1:0) + (homeSubSpRate!=null?1:0); return n>=6?'grid-6':n===5?'grid-5':n===4?'grid-4':'grid-3'; })()}" style="margin-bottom:10px;">
+    <div class="grid ${(()=>{ const n = 5 + (homeCompBranch&&homeCompBranch.msPct!=null?1:0) + (homeSubSpRate!=null?1:0); return n>=7?'grid-7':n===6?'grid-6':n===5?'grid-5':n===4?'grid-4':'grid-3'; })()}" style="margin-bottom:10px;">
       <div class="card stat-tile stat-tile-blue">
         <div class="stat-tile-label">이번 달 목표 <span style="font-weight:400;opacity:.8;">(MSIS실판매등록 기준 예상 목표치)</span></div>
         <div class="stat-tile-num">${fmtKK(msisTarget)}</div>
@@ -3972,6 +3975,11 @@ function renderHome(){
         <div class="stat-tile-label">구독소상공인 ${homeB2bBelowAvg ? `<span class="sysadmin-info">ⓘ<span class="sysadmin-tip">구독소상공인판촉 활용율이 타지점 比 저조합니다. 외부 영업활동 및 온라인홍보 활동 등 적극적인 영업활동 부탁드립니다.</span></span>` : ''}</div>
         <div class="stat-tile-num">${homeB2bMyQty}건</div>
         <div class="stat-tile-sub">평균 ${homeB2bAvg.toFixed(1)}건</div>
+      </div>
+      <div class="card stat-tile stat-tile-blue">
+        <div class="stat-tile-label">플친 누적</div>
+        <div class="stat-tile-num">${homeKakaoFriendsCum}명</div>
+        <div class="stat-tile-sub">최신 주차 누적</div>
       </div>
     </div>
 
