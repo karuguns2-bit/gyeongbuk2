@@ -4092,6 +4092,7 @@ function renderHome(){
     <div class="page-desc" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <span style="white-space:nowrap;">${branch?branch.name:''} · ${todayStr()} 기준</span>
       ${renderHomeNoticeTicker()}
+      ${homeQuickLinksHtml()}
     </div>
     ${state.noticeFormOpen ? renderNoticeForm() : ''}
     <div class="home-plain">
@@ -5014,6 +5015,25 @@ function renderNoticeBanner(){
 // 티커의 + 버튼을 통해 처리하므로, 예전의 회전식 배너(renderNoticeBanner)에서 쓰던 인덱스
 // 기반 함수(goToNotice/shiftNotice/editCurrentNotice 등)는 더 이상 호출되지 않는다(다른 곳에서
 // 참조하지 않는지 확인했고, 안전하게 남겨둔 죽은 코드다 — 굳이 지우지 않아 회귀 위험을 줄였다).
+// 홈 대시보드 상단(공지 티커 오른쪽 빈 공간)에 자주 쓰는 외부 사이트 바로가기 6개를
+// 3x2 버튼 그리드로 배치한다. 다른 레이아웃 크기/위치는 전혀 건드리지 않고, 이 줄
+// (page-desc) 안에서 남는 공간만 차지하도록 margin-left:auto로 오른쪽에 붙인다.
+const HOME_QUICK_LINKS = [
+  {label:'MSIS', url:'https://msis.lge.com/index.do'},
+  {label:'뉴베스트', url:'https://newbest.lge.com/cm/portal/index.do'},
+  {label:'LG전자업무지원', url:'https://msis.lge.com/index.do'},
+  {label:'급여조회', url:'https://m.hanbiza.com/'},
+  {label:'배움마당', url:'https://edumadang.singlex.com/login/index.php'},
+  {label:'연출물 신청', url:'https://lgevisual.com/login'}
+];
+function homeQuickLinksHtml(){
+  const btns = HOME_QUICK_LINKS.map(l=>`
+    <a href="${l.url}" target="_blank" rel="noopener" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 3px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);text-decoration:none;min-width:0;">
+      <i class="ti ti-external-link" aria-hidden="true" style="font-size:15px;"></i>
+      <span style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${escapeHtml(l.label)}</span>
+    </a>`).join('');
+  return `<div style="margin-left:auto;display:grid;grid-template-columns:repeat(3,72px);grid-auto-rows:44px;gap:6px;">${btns}</div>`;
+}
 function renderHomeNoticeTicker(){
   const isAdmin = SESSION.role==='admin';
   if(state.noticeFormOpen===undefined) state.noticeFormOpen = false;
