@@ -10641,9 +10641,34 @@ function canEditExecPhoto(r){
   return !!(r && (SESSION.role==='admin' || r.uploaderEmpId===SESSION.empId || (!!SESSION.branchId && r.branchId===SESSION.branchId)));
 }
 // 실행력 점검 사진 등록/가이드 이미지에서 공통으로 쓰는 실행 주차 선택지.
-const EXEC_PHOTO_WEEK_OPTIONS = ['9월 1주차', '9월 2주차', '9월 3주차', '9월 4주차', '9월 5주차'];
+// 2026.09: 예전에는 "9월 1주차"~"9월 5주차"를 코드에 그대로 적어뒀었는데, 그러면 달이
+// 바뀔 때마다 매번 코드를 열어 수동으로 고쳐야 했다. 이제는 오늘 날짜를 기준으로 이번 달의
+// 주차 목록을 그때그때 계산한다(1~7일=1주차, 8~14일=2주차 ... 방식, 그 달의 일수에 따라
+// 4~5주차까지 자동으로 늘어난다) - 더 이상 수동으로 갱신할 필요가 없다.
+function execPhotoWeekOptionsList(){
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1; // 1~12
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const weekCount = Math.ceil(daysInMonth / 7);
+  const arr = [];
+  for(let i=1;i<=weekCount;i++) arr.push(`${month}월 ${i}주차`);
+  return arr;
+}
+// 오늘 날짜가 정확히 몇 주차인지(예: 9/12 -> "9월 2주차") - 등록 현황 요약에서 "이번 주"
+// 기준으로 쓴다.
+function execPhotoCurrentWeekLabel(){
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const week = Math.ceil(now.getDate() / 7);
+  return `${month}월 ${week}주차`;
+}
 function execPhotoWeekOptionsHtml(selected){
-  return '<option value="">주차 선택</option>' + EXEC_PHOTO_WEEK_OPTIONS.map(w=>`<option value="${w}" ${w===selected?'selected':''}>${w}</option>`).join('');
+  let options = execPhotoWeekOptionsList();
+  // 지난달 이전에 등록된 건을 수정할 때, 원래 주차가 이번 달 목록에 없어서 조용히 다른
+  // 값으로 바뀌어버리지 않도록 선택된 값이 목록에 없으면 맨 앞에 추가해 둔다.
+  if(selected && !options.includes(selected)) options = [selected, ...options];
+  return '<option value="">주차 선택</option>' + options.map(w=>`<option value="${w}" ${w===selected?'selected':''}>${w}</option>`).join('');
 }
 // ---- 실행력 점검 사진 가이드 이미지 (관리자만 게시/수정/삭제, 전 직원 열람 — 카카오 컨테스트 결과 이미지와 동일 패턴) ----
 // 예전에는 가이드 이미지를 1장만 등록할 수 있었는데(dataUrl 단일 필드), 여러 장을 한 번에
@@ -10739,7 +10764,7 @@ function renderCollectPhoto(){
 
   // 이번 주(가장 최근 실행 주차) 기준 지점별 등록 현황 요약 - 관리자/매니저 모두가 한눈에
   // 미등록 지점을 파악할 수 있게 한다(지점/주차 필터와는 별개로 항상 최신 주차 기준).
-  const currentExecWeek = EXEC_PHOTO_WEEK_OPTIONS[EXEC_PHOTO_WEEK_OPTIONS.length-1];
+  const currentExecWeek = execPhotoCurrentWeekLabel();
   const registeredBranchIds = new Set(DB.execPhotos.filter(r=>r.week===currentExecWeek).map(r=>r.branchId));
   const missingBranches = DB.branches.filter(b=>!registeredBranchIds.has(b.id));
   const summaryHtml = `
@@ -10794,7 +10819,9 @@ function renderCollectPhoto(){
     </div>`;
   }).join('') || `<div class="muted">등록된 사진이 없습니다.</div>`;
 
-  const weekFilterOptionsHtml = `<option value="">전체 주차</option>` + EXEC_PHOTO_WEEK_OPTIONS.map(w=>`<option value="${w}" ${w===state.epWeekFilter?'selected':''}>${w}</option>`).join('');
+  let weekFilterOptions = execPhotoWeekOptionsList();
+  if(state.epWeekFilter && !weekFilterOptions.includes(state.epWeekFilter)) weekFilterOptions = [state.epWeekFilter, ...weekFilterOptions];
+  const weekFilterOptionsHtml = `<option value="">전체 주차</option>` + weekFilterOptions.map(w=>`<option value="${w}" ${w===state.epWeekFilter?'selected':''}>${w}</option>`).join('');
 
   return `
   <div class="execPhoto-plain">
