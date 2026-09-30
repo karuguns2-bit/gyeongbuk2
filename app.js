@@ -5032,7 +5032,10 @@ function homeQuickLinksHtml(){
       <i class="ti ti-external-link" aria-hidden="true" style="font-size:17px;"></i>
       <span style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:56px;">${escapeHtml(l.label)}</span>
     </a>`).join('');
-  return `<div style="margin-left:auto;display:flex;flex-wrap:nowrap;gap:6px;">${btns}</div>`;
+  return `<div style="margin-left:4px;border:1px solid var(--border);border-radius:10px;padding:6px 8px 5px;display:flex;flex-direction:column;gap:4px;">
+      <div style="font-size:9.5px;color:var(--text-sub);font-weight:700;white-space:nowrap;">다른 업무 사이트 바로가기</div>
+      <div style="display:flex;flex-wrap:nowrap;gap:6px;">${btns}</div>
+    </div>`;
 }
 function renderHomeNoticeTicker(){
   const isAdmin = SESSION.role==='admin';
