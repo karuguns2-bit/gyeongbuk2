@@ -3374,74 +3374,63 @@ function aiFeedbackForBranch(branchId, period){
   else if(diffVsPace >= 0) status='정상';
   else if(diffVsPace >= -15) status='주의';
   else status='부진';
+  // 2026.09: 좁아진 카드(3등분 배치)에 맞춰 모든 항목을 나열하던 방식에서, 핵심만 짚어주는
+  // 짧은 요약 코멘트 3줄로 정리한다. 상태 요약 1줄은 항상 고정으로 보여주고, 나머지 후보들은
+  // "얼마나 시급한지(score)"로 우선순위를 매겨 상위 2개만 골라 짧게 붙인다(부진/열위/하락세처럼
+  // 조치가 필요한 내용을 우선하고, 그 다음으로 긍정적인 포인트를 균형있게 보여준다).
   let lines = [];
-  lines.push(`<b>${branchName(branchId)}</b> 전체 달성률 ${pct.toFixed(1)}% (목표 페이스 ${pace.toFixed(1)}%, 차이 ${diffVsPace>=0?'+':''}${diffVsPace.toFixed(1)}%p) — 상태: <b>${status}</b>. 목표 ${fmtWon(target)} 중 ${fmtWon(achieved)} 달성.`);
+  lines.push(`<b>${branchName(branchId)}</b> 달성률 <b>${pct.toFixed(1)}%</b> (페이스대비 ${diffVsPace>=0?'+':''}${diffVsPace.toFixed(1)}%p · <b>${status}</b>)`);
+  const candidates = [];
   if(gapAmt>0 && daysLeft>0){
-    lines.push(`잔여 목표 <b>${fmtWon(gapAmt)}</b> — 남은 ${daysLeft}일간 지점 전체 하루 평균 <b>${fmtWon(Math.round(gapAmt/daysLeft))}</b> 판매 필요.`);
+    const urgent = status==='부진' || status==='주의';
+    candidates.push({ score: urgent?90:40, text:`잔여 <b>${fmtKK(gapAmt)}</b> · 일평균 <b>${fmtKK(gapAmt/daysLeft)}</b> 필요` });
   }
-  // ranking: strongest / weakest team member
-  if(g && g.allocations && g.allocations.filter(a=>a.target>0).length>0){
+  // ranking: weakest team member
+  if(g && g.allocations && g.allocations.filter(a=>a.target>0).length>1){
     const ranked = g.allocations
       .filter(a=>a.target>0)
       .map(a=>({name:a.name, pct: pctOf(empAchieved(branchId,a.empId,period), a.target)}))
       .sort((a,b)=>b.pct-a.pct);
-    if(ranked.length>0){
-      const strongest = ranked[0];
-      const weakest = ranked[ranked.length-1];
-      if(ranked.length>1){
-        lines.push(`팀 내 최고 달성률: <b>${strongest.name}</b>(${strongest.pct.toFixed(1)}%) / 최저 달성률: <b>${weakest.name}</b>(${weakest.pct.toFixed(1)}%) — 목표 재배분 또는 집중 지원을 검토하세요.`);
-      } else {
-        lines.push(`<b>${weakest.name}</b> 달성률 ${weakest.pct.toFixed(1)}%.`);
-      }
-    }
+    const weakest = ranked[ranked.length-1];
+    if(weakest.pct < 70) candidates.push({ score:80, text:`<b>${weakest.name}</b> 달성률 ${weakest.pct.toFixed(1)}% — 지원 필요` });
   }
-  // branch-level product mix top3 (이번 달 기준, 같은 달 내 중복 업로드는 최신 스냅샷만 사용)
+  // 주간 속도(모멘텀)
+  const momentumLine = weeklyMomentumLine(target, branchWeeklyActualsCum(branchId, period));
+  if(momentumLine) candidates.push({ score: momentumLine.includes('둔화')||momentumLine.includes('하락')?75:30, text: momentumLine });
+  // 시장 경쟁력(MSIS 경쟁력)
+  const compData = competitivenessDataForPeriod(period);
+  const compBranch = compData && compData.competitiveness && compData.competitiveness[branchId];
+  if(compBranch && compBranch.msPct!=null){
+    const gapWon = compBranch.gapWon||0;
+    if(gapWon < 0) candidates.push({ score:70, text:`시장 경쟁력 MS <b>${compBranch.msPct}%</b> — 경쟁사 比 열위` });
+    else candidates.push({ score:20, text:`시장 경쟁력 MS <b>${compBranch.msPct}%</b> — 경쟁사 比 우위` });
+  }
+  // 구독 목표/실적
+  if((g.subAmtTarget||0) > 0){
+    const subAchievedTotal = (g.allocations||[]).reduce((s,a)=>s+empSubscriptionActual(branchId,a.empId,period).amt,0);
+    const subPct = pctOf(subAchievedTotal, g.subAmtTarget);
+    candidates.push({ score: subPct<80?60:15, text:`구독 목표 대비 <b>${subPct.toFixed(1)}%</b>` });
+  }
+  // 이슈제품 판매 우수 사례
+  const branchCases = (DB.issueCases||[]).filter(p=>p.branchId===branchId && String(p.activityDate||'').slice(0,7)===period);
+  if(branchCases.length>0){
+    candidates.push({ score:10, text:`이슈제품 우수 사례 <b>${branchCases.length}건</b> 등록` });
+  } else {
+    candidates.push({ score:25, text:`이슈제품 우수 사례 등록 없음 — 공유 권장` });
+  }
+  // branch-level product mix top1 (참고용, 낮은 우선순위)
   const rows = latestSalesRowsPerMonth(DB.salesData.filter(r=>r.branchId===branchId && String(r.date||'').slice(0,7)===period));
   if(rows.length>0){
     const byProduct = {};
     rows.forEach(r=>{ byProduct[r.product]=(byProduct[r.product]||0)+r.amount; });
     const total = Object.values(byProduct).reduce((a,b)=>a+b,0);
     if(total>0){
-      const top3 = Object.entries(byProduct).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([p,amt])=>`${p}(${(amt/total*100).toFixed(0)}%)`).join(', ');
-      lines.push(`지점 판매 제품 구성 상위: ${top3}.`);
+      const [topProduct, topAmt] = Object.entries(byProduct).sort((a,b)=>b[1]-a[1])[0];
+      candidates.push({ score:5, text:`주력 판매: <b>${topProduct}</b>(${(topAmt/total*100).toFixed(0)}%)` });
     }
   }
-  // attendance today
-  const att = DB.attendance[branchId];
-  if(att){
-    const absent = att.records.filter(r=>r.status==='휴가').length;
-    if(absent>0) lines.push(`오늘 휴가자 ${absent}명 — 근무 인원 감소로 목표 페이스 관리에 유의하세요.`);
-  }
-  // 주간 속도(모멘텀): 지점 소속 전 직원의 주차별 누적 실적을 합산해 최근 두 주차 달성률을 비교한다.
-  const momentumLine = weeklyMomentumLine(target, branchWeeklyActualsCum(branchId, period));
-  if(momentumLine) lines.push(momentumLine);
-  // 구독 목표/실적 교차 참고 (지점 전체 배분 목표 기준)
-  if((g.subAmtTarget||0) > 0){
-    const subAchievedTotal = (g.allocations||[]).reduce((s,a)=>s+empSubscriptionActual(branchId,a.empId,period).amt,0);
-    const subPct = pctOf(subAchievedTotal, g.subAmtTarget);
-    lines.push(`구독 목표 대비 지점 실적: <b>${subPct.toFixed(1)}%</b> (목표 ${roundKK1(g.subAmtTarget)}KK / 실적 ${roundKK1(subAchievedTotal)}KK).`);
-  }
-  // 시장 경쟁력(MSIS 경쟁력) 교차 참고 - 목표관리 파일 업로드 시 함께 반영되는 지점별 LG/경쟁사 매출 비교
-  const compData = competitivenessDataForPeriod(period);
-  const compBranch = compData && compData.competitiveness && compData.competitiveness[branchId];
-  if(compBranch && compBranch.msPct!=null){
-    const gapWon = compBranch.gapWon||0;
-    if(gapWon < 0){
-      lines.push(`시장 경쟁력: MS <b>${compBranch.msPct}%</b> — 경쟁사 대비 ${fmtWon(Math.abs(gapWon))} 열위입니다. 경쟁 열위 카테고리 집중 소구가 필요합니다.`);
-    } else {
-      lines.push(`시장 경쟁력: MS <b>${compBranch.msPct}%</b> — 경쟁사 대비 ${fmtWon(gapWon)} 우위를 유지하고 있습니다.`);
-    }
-  }
-  // 이슈제품 판매 우수 사례 등록 현황 교차 참고
-  const branchCases = (DB.issueCases||[]).filter(p=>p.branchId===branchId && String(p.activityDate||'').slice(0,7)===period);
-  if(branchCases.length>0){
-    const typeCounts = {};
-    branchCases.forEach(p=>{ if(p.successType) typeCounts[p.successType] = (typeCounts[p.successType]||0)+1; });
-    const topType = Object.entries(typeCounts).sort((a,b)=>b[1]-a[1])[0];
-    lines.push(`이번 달 이슈제품 판매 우수 사례 <b>${branchCases.length}건</b> 등록${topType?` — 주요 성공유형: ${topType[0]}`:''}.`);
-  } else {
-    lines.push(`이번 달 등록된 이슈제품 판매 우수 사례가 없습니다 — 우수 사례를 공유하면 팀 전체 학습에 도움이 됩니다.`);
-  }
+  candidates.sort((a,b)=>b.score-a.score);
+  candidates.slice(0,2).forEach(c=>lines.push(c.text));
   return lines;
 }
 
