@@ -1406,7 +1406,7 @@ function ensureUser(empIdRaw, name, branchId){
     const empId = (empIdRaw && String(empIdRaw).trim()) || ('auto' + slugify(name) + slugify(branchId));
     u = DB.users.find(x=>x.empId===empId);
     if(!u){
-      u = {empId, pw:'1234', name, role:'staff', branchId};
+      u = {empId, pw:'1234', mustChangePw:true, name, role:'staff', branchId};
       DB.users.push(u);
       created = true;
     }
@@ -1803,7 +1803,11 @@ function applyRememberedLoginId(){
 
 // 로그인 성공 후 화면 전환/사이드바 갱신/폴링 시작 등 공통 처리.
 // fromRestore가 true면 새로고침 등으로 저장된 세션을 복원한 경우이므로 로그인 활동 로그는 남기지 않는다.
+// 최초 로그인(또는 관리자가 비밀번호를 초기화한) 계정은 반드시 새 비밀번호로 바꿔야만
+// 앱에 들어갈 수 있다 - enterApp이 호출되는 모든 경로(직접 로그인/새로고침 세션복원/
+// 앱 잠금 해제)에서 한 곳만 지키면 되도록 진입점에서 막는다.
 function enterApp(user, fromRestore){
+  if(user.mustChangePw){ showForcedPwChangeScreen(user); return; }
   SESSION = {empId:user.empId, name:user.name, role:user.role, branchId:user.branchId};
   document.getElementById('loginScreen').style.display='none';
   document.getElementById('app').classList.add('active');
@@ -2011,6 +2015,51 @@ function handlePwChange(){
   saveDB();
   ok.textContent='비밀번호가 변경되었습니다. 새 비밀번호로 로그인해 주세요.';
   document.getElementById('pwcOld').value=''; document.getElementById('pwcNew').value=''; document.getElementById('pwcNew2').value='';
+}
+
+// 최초 로그인(초기 비밀번호 1234) 또는 관리자의 비밀번호 초기화 이후 - 사번/기존 비밀번호를
+// 다시 물을 필요 없이(방금 로그인 화면에서 이미 확인됐으므로) 새 비밀번호만 입력받아 바꾼다.
+// 변경을 마치기 전에는 "로그아웃"으로 로그인 화면으로 돌아가는 것만 가능하고, 앱 안으로는
+// 들어갈 수 없다.
+let forcedPwChangeUser = null;
+function showForcedPwChangeScreen(user){
+  forcedPwChangeUser = user;
+  document.getElementById('loginFormBox').style.display='none';
+  document.getElementById('pwChangeBox').style.display='none';
+  const box = document.getElementById('forcedPwBox');
+  box.style.display='block';
+  document.getElementById('forcedPwName').textContent = user.name;
+  document.getElementById('forcedPwNew').value='';
+  document.getElementById('forcedPwNew2').value='';
+  document.getElementById('forcedPwError').textContent='';
+}
+function cancelForcedPwChange(){
+  forcedPwChangeUser = null;
+  document.getElementById('forcedPwBox').style.display='none';
+  document.getElementById('loginFormBox').style.display='block';
+  document.getElementById('loginId').value='';
+  document.getElementById('loginPw').value='';
+  document.getElementById('loginError').textContent='';
+  applyRememberedLoginId();
+}
+function handleForcedPwChange(){
+  const err = document.getElementById('forcedPwError');
+  err.textContent='';
+  if(!forcedPwChangeUser){ cancelForcedPwChange(); return; }
+  const newPw = document.getElementById('forcedPwNew').value.trim();
+  const newPw2 = document.getElementById('forcedPwNew2').value.trim();
+  if(newPw.length < 4){ err.textContent='새 비밀번호는 4자리 이상 입력해 주세요.'; return; }
+  if(newPw !== newPw2){ err.textContent='새 비밀번호가 서로 일치하지 않습니다.'; return; }
+  if(newPw === '1234'){ err.textContent='초기 비밀번호(1234)가 아닌 다른 비밀번호로 설정해 주세요.'; return; }
+  const user = forcedPwChangeUser;
+  user.pw = newPw;
+  user.mustChangePw = false;
+  saveDB();
+  forcedPwChangeUser = null;
+  document.getElementById('forcedPwBox').style.display='none';
+  // 새로고침해도 로그인 상태가 유지되도록 세션을 저장한 뒤 앱으로 들어간다.
+  try{ localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({empId:user.empId})); }catch(e){ /* 무시 */ }
+  enterApp(user, false);
 }
 
 /* =========================================================================
@@ -4436,6 +4485,7 @@ function resetSystemUserPw(empId){
   if(!u) return;
   if(!confirm(`${u.name}(${u.empId}) 계정의 비밀번호를 1234로 초기화하시겠습니까?`)) return;
   u.pw = '1234';
+  u.mustChangePw = true;
   saveDB();
   renderTab('accountManagement');
 }
@@ -4607,7 +4657,7 @@ function createSystemUser(){
   if(!empId || !name){ msgEl.textContent = '사번과 이름을 입력해 주세요.'; return; }
   if(DB.users.find(u=>u.empId===empId)){ msgEl.textContent = '이미 존재하는 사번입니다.'; return; }
   const branchId = (role==='admin' || role==='exec' || !branchIdRaw) ? null : branchIdRaw;
-  DB.users.push({empId, pw:'1234', name, role, branchId});
+  DB.users.push({empId, pw:'1234', mustChangePw:true, name, role, branchId});
   if(role!=='admin' && role!=='exec' && branchId){
     const g = getGoals(branchId, currentGoalsPeriod());
     if(g && !g.allocations.find(a=>a.empId===empId)) g.allocations.push({empId, name, target:0, subQtyTarget:0, subAmtTarget:0});
@@ -6364,7 +6414,7 @@ function parseGoalsFileWorkbook(wb){
       }
       let userName = sr;
       if(!user){
-        user = {empId, pw:'1234', name:sr, role:'staff', branchId:branch.id};
+        user = {empId, pw:'1234', mustChangePw:true, name:sr, role:'staff', branchId:branch.id};
         DB.users.push(user);
         const g = getGoals(branch.id, period);
         if(!g.allocations.find(a=>a.empId===empId)) g.allocations.push({empId, name:sr, target:0, subQtyTarget:0, subAmtTarget:0});
@@ -7728,7 +7778,7 @@ function parseShifteeScheduleRows(rows, year, month){
       if(!user && !found.ambiguous && empId && empName){
         const matchedBranch = shifteeMatchBranch(homeBranchName);
         if(matchedBranch){
-          user = { empId, pw:'1234', name: empName, role:'staff', branchId: matchedBranch.id };
+          user = { empId, pw:'1234', mustChangePw:true, name: empName, role:'staff', branchId: matchedBranch.id };
           DB.users.push(user);
           result.createdEmp++;
           result.createdNames.push(`${empName}(${empId})`);
@@ -10089,7 +10139,7 @@ function mapSalesRows(json){
     if(empId){
       let u = DB.users.find(x=>x.empId===empId);
       if(!u){
-        u = {empId, pw:'1234', name:empName, role:'staff', branchId};
+        u = {empId, pw:'1234', mustChangePw:true, name:empName, role:'staff', branchId};
         DB.users.push(u);
         newUsers.push({empId:u.empId, name:u.name});
         const g = getGoals(branchId, currentGoalsPeriod());
