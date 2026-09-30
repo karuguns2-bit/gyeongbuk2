@@ -3495,21 +3495,30 @@ function homeSchedMonthKey(){
   if(!state.homeSchedMonth) state.homeSchedMonth = todayStr().slice(0,7);
   return state.homeSchedMonth;
 }
-function toggleHomeSchedulePanel(){
-  state.homeSchedOpen = !state.homeSchedOpen;
-  if(state.homeSchedOpen && !state.homeSchedSelDate) state.homeSchedSelDate = todayStr();
-  renderTab('home');
+// 2026-09-30: 배너 레이아웃 위에 버튼만 얹고, 캘린더는 그 자리에서 펼치지 않고(레이아웃이
+// 깨지므로) 팝업(모달)으로 띄우는 방식으로 변경했다. 모달 안에서 월 이동/날짜 선택/등록/삭제를
+// 해도 홈 전체를 다시 그리지 않고 모달 본문만 갱신한다(renderHomeScheduleModalBody).
+function openHomeSchedulePanel(branchId){
+  state.homeSchedModalBranch = branchId;
+  if(!state.homeSchedSelDate) state.homeSchedSelDate = todayStr();
+  renderHomeScheduleModalBody(branchId);
+  const modal = document.getElementById('homeSchedModal');
+  if(modal) modal.style.display = 'flex';
+}
+function closeHomeSchedulePanel(){
+  const modal = document.getElementById('homeSchedModal');
+  if(modal) modal.style.display = 'none';
 }
 function shiftHomeSchedMonth(delta){
   const cur = homeSchedMonthKey();
   const [y,m] = cur.split('-').map(Number);
   const d = new Date(y, m-1+delta, 1);
   state.homeSchedMonth = `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
-  renderTab('home');
+  renderHomeScheduleModalBody(state.homeSchedModalBranch);
 }
 function selectHomeSchedDate(dateStr){
   state.homeSchedSelDate = dateStr;
-  renderTab('home');
+  renderHomeScheduleModalBody(state.homeSchedModalBranch);
 }
 function saveHomeScheduleEntry(branchId){
   if(!canEditBranchSchedule(branchId)) return;
@@ -3521,19 +3530,23 @@ function saveHomeScheduleEntry(branchId){
   if(!DB.branchSchedule[branchId]) DB.branchSchedule[branchId] = [];
   DB.branchSchedule[branchId].push({ id:'sched_'+Date.now()+'_'+Math.floor(Math.random()*1000), date:dateStr, title, createdBy:SESSION.empId, createdByName:SESSION.name, createdAt:new Date().toISOString() });
   saveDB();
-  renderTab('home');
+  renderHomeScheduleModalBody(branchId);
 }
 function deleteHomeScheduleEntry(branchId, id){
   if(!canEditBranchSchedule(branchId)) return;
   if(!DB.branchSchedule || !DB.branchSchedule[branchId]) return;
   DB.branchSchedule[branchId] = DB.branchSchedule[branchId].filter(e=>e.id!==id);
   saveDB();
-  renderTab('home');
+  renderHomeScheduleModalBody(branchId);
 }
 function renderHomeBranchScheduleWidget(branchId){
-  const open = !!state.homeSchedOpen;
-  const btnHtml = `<button type="button" class="btn btn-sm" style="width:100%;margin-bottom:${open?'8':'0'}px;" onclick="toggleHomeSchedulePanel()"><i class="ti ti-calendar-plus" aria-hidden="true"></i> 지점 스케줄 ${open?'접기':'등록하기'}</button>`;
-  if(!open) return btnHtml;
+  return `<button type="button" class="btn btn-sm" style="width:100%;" onclick="openHomeSchedulePanel('${branchId}')"><i class="ti ti-calendar-plus" aria-hidden="true"></i> 지점 스케줄 등록하기</button>`;
+}
+function renderHomeScheduleModalBody(branchId){
+  const bodyEl = document.getElementById('homeSchedModalBody');
+  const titleEl = document.getElementById('homeSchedModalTitle');
+  if(!bodyEl) return;
+  if(titleEl) titleEl.textContent = `${branchName(branchId)} 지점 스케줄`;
   const monthKey = homeSchedMonthKey();
   const [y,m] = monthKey.split('-').map(Number);
   const startWeekday = new Date(y, m-1, 1).getDay();
@@ -3568,8 +3581,7 @@ function renderHomeBranchScheduleWidget(branchId){
       <input id="homeSchedTitleInput" type="text" placeholder="일정 제목 (예: 판촉행사 방문)" style="flex:1;font-size:12px;" onkeydown="if(event.key==='Enter')saveHomeScheduleEntry('${branchId}')">
       <button type="button" class="btn btn-sm" onclick="saveHomeScheduleEntry('${branchId}')">등록</button>
     </div>` : `<div class="muted" style="font-size:10.5px;margin-top:6px;">이 지점 매니저만 등록/수정할 수 있습니다.</div>`;
-  return `${btnHtml}
-    <div class="card" style="padding:8px 10px;">
+  bodyEl.innerHTML = `
       <div class="flex-between" style="margin-bottom:6px;">
         <button type="button" class="btn btn-sm" onclick="shiftHomeSchedMonth(-1)">◀</button>
         <div style="font-weight:700;font-size:13px;">${y}년 ${m}월</div>
@@ -3580,7 +3592,7 @@ function renderHomeBranchScheduleWidget(branchId){
       <div style="margin-top:8px;font-size:11.5px;font-weight:700;">${selDate} 일정</div>
       ${listHtml}
       ${formHtml}
-    </div>`;
+    `;
 }
 // 오히려 스크롤이 늘어났다. 같은 데이터를 한 줄 요약(관리자 · 수치)로 압축한 컴팩트 카드로 바꾼다.
 // 관리자 배너 3종 공통: 진행률 바 대신 단색 tabler 트로피 아이콘 + 이름 + 수치를 칩으로 만들어

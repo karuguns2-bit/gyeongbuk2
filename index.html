@@ -1165,6 +1165,15 @@
     </div>
   </div>
 </div>
+<div id="homeSchedModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this) closeHomeSchedulePanel();">
+  <div style="background:#fff;border-radius:10px;overflow:hidden;width:380px;max-width:92vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 8px 40px rgba(0,0,0,.4);">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
+      <b id="homeSchedModalTitle" style="font-size:14px;"><i class="ti ti-calendar" aria-hidden="true"></i> 지점 스케줄</b>
+      <button type="button" onclick="closeHomeSchedulePanel()" style="border:none;background:none;font-size:20px;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div id="homeSchedModalBody" style="padding:14px 16px;overflow-y:auto;color:var(--text);"></div>
+  </div>
+</div>
 <div id="branchSchedAlarmModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;align-items:center;justify-content:center;" onclick="if(event.target===this) closeBranchScheduleAlarm();">
   <div style="background:#fff;border-radius:10px;overflow:hidden;width:360px;max-width:90vw;box-shadow:0 8px 40px rgba(0,0,0,.4);text-align:center;padding:22px 20px;">
     <i class="ti ti-bell-ringing" aria-hidden="true" style="font-size:28px;color:var(--primary);"></i>
