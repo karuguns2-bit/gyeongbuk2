@@ -3540,7 +3540,7 @@ function deleteHomeScheduleEntry(branchId, id){
   renderHomeScheduleModalBody(branchId);
 }
 function renderHomeBranchScheduleWidget(branchId){
-  return `<button type="button" class="btn btn-sm" style="width:100%;" onclick="openHomeSchedulePanel('${branchId}')"><i class="ti ti-calendar-plus" aria-hidden="true"></i> 지점 스케줄 등록하기</button>`;
+  return `<button type="button" class="btn btn-sm" style="width:100%;background:#d40000;border-color:#d40000;color:#fff;font-weight:700;" onclick="openHomeSchedulePanel('${branchId}')"><i class="ti ti-calendar-plus" aria-hidden="true"></i> 지점 스케줄 등록하기</button>`;
 }
 function renderHomeScheduleModalBody(branchId){
   const bodyEl = document.getElementById('homeSchedModalBody');
