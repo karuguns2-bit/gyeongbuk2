@@ -5028,11 +5028,11 @@ const HOME_QUICK_LINKS = [
 ];
 function homeQuickLinksHtml(){
   const btns = HOME_QUICK_LINKS.map(l=>`
-    <a href="${l.url}" target="_blank" rel="noopener" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px 3px;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);text-decoration:none;min-width:0;">
-      <i class="ti ti-external-link" aria-hidden="true" style="font-size:15px;"></i>
-      <span style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${escapeHtml(l.label)}</span>
+    <a href="${l.url}" target="_blank" rel="noopener" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:62px;height:52px;flex:0 0 auto;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);text-decoration:none;">
+      <i class="ti ti-external-link" aria-hidden="true" style="font-size:17px;"></i>
+      <span style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:56px;">${escapeHtml(l.label)}</span>
     </a>`).join('');
-  return `<div style="margin-left:auto;display:grid;grid-template-columns:repeat(3,72px);grid-auto-rows:44px;gap:6px;">${btns}</div>`;
+  return `<div style="margin-left:auto;display:flex;flex-wrap:nowrap;gap:6px;">${btns}</div>`;
 }
 function renderHomeNoticeTicker(){
   const isAdmin = SESSION.role==='admin';
