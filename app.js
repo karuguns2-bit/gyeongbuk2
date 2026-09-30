@@ -1816,6 +1816,7 @@ function enterApp(user, fromRestore){
   document.getElementById('sbUserName').textContent = user.name + (user.role==='admin'?' (관리자)':(user.role==='exec'?' (임원)':''));
   document.getElementById('sbUserMeta').textContent = user.role==='admin' ? '본사' : (user.role==='exec' ? '임원 (전 지점 조회)' : (branchName(user.branchId) + ' · 매니저'));
   updateNavVisibilityForRole();
+  applyNavGroupCollapseState();
   state.viewBranchId = user.branchId || DB.branches[0].id;
   state.eduReminders = computeEduReminders();
   loadUiPrefs();
@@ -2004,6 +2005,34 @@ function updateNavVisibilityForRole(){
   const i = document.getElementById('navSystemAdminItem');
   if(g) g.style.display = isAdmin ? '' : 'none';
   if(i) i.style.display = isAdmin ? '' : 'none';
+}
+
+// 사이드바가 너무 길어서(실적 관리/운영 관리/교육 관리/각종 취합/성장 지원) 그룹 제목을 누르면
+// 하위 메뉴를 접고 펼 수 있게 한다. 접힌 상태는 기기별로 localStorage에 저장해 다음에 들어와도
+// 그대로 유지된다(사용자 계정 구분 없이 이 브라우저 전체에 하나만 저장 - 다크모드 등 다른
+// 화면 설정과 달리 계정별로 다를 필요가 없는 순수 UI 편의 기능이라 단순하게 뒀다).
+const NAV_GROUP_COLLAPSE_KEY = 'navGroupCollapsed_v1';
+function loadNavGroupCollapseState(){
+  try{ return JSON.parse(localStorage.getItem(NAV_GROUP_COLLAPSE_KEY) || '{}'); }catch(e){ return {}; }
+}
+function saveNavGroupCollapseState(st){
+  try{ localStorage.setItem(NAV_GROUP_COLLAPSE_KEY, JSON.stringify(st)); }catch(e){ /* 무시 */ }
+}
+function toggleNavGroup(key){
+  const st = loadNavGroupCollapseState();
+  st[key] = !st[key];
+  saveNavGroupCollapseState(st);
+  applyNavGroupCollapseState();
+}
+function applyNavGroupCollapseState(){
+  const st = loadNavGroupCollapseState();
+  ['perf','ops','edu','collect','growth'].forEach(key=>{
+    const body = document.getElementById('navGroupBody_'+key);
+    const chevron = document.getElementById('navGroupChevron_'+key);
+    const collapsed = !!st[key];
+    if(body) body.classList.toggle('collapsed', collapsed);
+    if(chevron) chevron.classList.toggle('collapsed', collapsed);
+  });
 }
 
 function showPwChangeBox(){

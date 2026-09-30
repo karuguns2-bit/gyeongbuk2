@@ -423,10 +423,13 @@
   .nav-item.active .nav-pin-star{color:rgba(255,255,255,.8);}
   .nav-item.active .nav-pin-star.pinned{color:#ffe066;}
   .nav-pin-item{font-weight:500;}
-  .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--text-sub);text-transform:uppercase;border-top:1px solid var(--border);margin-top:8px;}
+  .nav-group-label{padding:16px 20px 6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--text-sub);text-transform:uppercase;border-top:1px solid var(--border);margin-top:8px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;}
   .nav-item.sub{padding:8px 34px 8px 20px;font-size:13px;}
   .nav-item.sub.sub2{padding:7px 34px 7px 28px;font-size:12px;}
-  .nav-subgroup-label{padding:8px 20px 2px 30px;font-size:10.5px;letter-spacing:.02em;color:var(--text-sub);}
+  .nav-subgroup-label{padding:8px 20px 2px 30px;font-size:10.5px;letter-spacing:.02em;color:var(--text-sub);cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none;}
+  .nav-group-chevron{font-size:13px;transition:transform .15s ease;}
+  .nav-group-chevron.collapsed{transform:rotate(-90deg);}
+  .nav-group-body.collapsed{display:none;}
   .nav-sub-date{font-size:10px;color:var(--text-sub);margin-top:2px;font-weight:400;}
   .inv-filter-row .field label{font-size:13.5px;font-weight:700;color:var(--text);margin-bottom:5px;}
   .inv-filter-row select,.inv-filter-row input{font-size:15.5px;padding:11px 14px;border-radius:8px;border:1.5px solid var(--border);min-height:22px;}
@@ -1037,7 +1040,8 @@
     <div class="nav-item active" data-tab="home"><i class="ti ti-home" aria-hidden="true"></i>홈</div>
     <div class="nav-group-label" id="navSystemAdminGroup" style="display:none;">시스템 관리</div>
     <div class="nav-item sub" data-tab="systemAdmin" id="navSystemAdminItem" style="display:none;"><i class="ti ti-settings" aria-hidden="true"></i>시스템 관리</div>
-    <div class="nav-group-label">실적 관리</div>
+    <div class="nav-group-label" onclick="toggleNavGroup('perf')">실적 관리<i class="ti ti-chevron-down nav-group-chevron" id="navGroupChevron_perf" aria-hidden="true"></i></div>
+    <div class="nav-group-body" id="navGroupBody_perf">
     <div class="nav-item sub" data-tab="metricsOverview">
       <div><i class="ti ti-chart-bar" aria-hidden="true"></i>지표 한 눈에 보기</div>
       <div class="nav-sub-date">(LG전자DATA 기준)</div>
@@ -1047,7 +1051,9 @@
     <div class="nav-item sub sub2" data-tab="subB2bSales"><i class="ti ti-building-store" aria-hidden="true"></i>구독소상공인판매등록</div>
     <div class="nav-item sub" data-tab="sales"><i class="ti ti-chart-line" aria-hidden="true"></i>실적/제품 분석</div>
     <div class="nav-item sub sub2" data-tab="incentiveOverview"><i class="ti ti-coin" aria-hidden="true"></i>지점별 인센티브(참고용)</div>
-    <div class="nav-group-label">운영 관리</div>
+    </div>
+    <div class="nav-group-label" onclick="toggleNavGroup('ops')">운영 관리<i class="ti ti-chevron-down nav-group-chevron" id="navGroupChevron_ops" aria-hidden="true"></i></div>
+    <div class="nav-group-body" id="navGroupBody_ops">
     <div class="nav-item sub" data-tab="notices"><i class="ti ti-speakerphone" aria-hidden="true"></i>공지사항</div>
     <div class="nav-item sub" data-tab="materials"><i class="ti ti-folder" aria-hidden="true"></i>각종 자료</div>
     <div class="nav-item sub" data-tab="infoReports"><i class="ti ti-file-text" aria-hidden="true"></i>정보보고</div>
@@ -1057,10 +1063,14 @@
     </div>
     <div class="nav-item sub" data-tab="kakaoFriends"><i class="ti ti-brand-hipchat" aria-hidden="true"></i>플친관리</div>
     <div class="nav-item sub" data-tab="prospects"><i class="ti ti-heart-handshake" aria-hidden="true"></i>가망고객 관리</div>
-    <div class="nav-subgroup-label">교육 관리</div>
+    <div class="nav-subgroup-label" onclick="toggleNavGroup('edu')">교육 관리<i class="ti ti-chevron-down nav-group-chevron" id="navGroupChevron_edu" aria-hidden="true"></i></div>
+    <div class="nav-group-body" id="navGroupBody_edu">
     <div class="nav-item sub sub2" data-tab="eduHq"><i class="ti ti-calendar-event" aria-hidden="true"></i>교육 일정 안내</div>
     <div class="nav-item sub sub2" data-tab="eduVideo"><i class="ti ti-checkbox" aria-hidden="true"></i>교육 이수율 확인</div>
-    <div class="nav-group-label">각종 취합</div>
+    </div>
+    </div>
+    <div class="nav-group-label" onclick="toggleNavGroup('collect')">각종 취합<i class="ti ti-chevron-down nav-group-chevron" id="navGroupChevron_collect" aria-hidden="true"></i></div>
+    <div class="nav-group-body" id="navGroupBody_collect">
     <div class="nav-item sub" data-tab="collectPhoto"><i class="ti ti-camera" aria-hidden="true"></i>실행력 점검 등록</div>
     <div class="nav-item sub" data-tab="collectGiftcard"><i class="ti ti-ticket" aria-hidden="true"></i>모바일 상품권 취합</div>
     <div class="nav-item sub" data-tab="collectContest"><i class="ti ti-gift" aria-hidden="true"></i>구독연동사은품 취합</div>
@@ -1068,11 +1078,14 @@
       <div><i class="ti ti-gifts" aria-hidden="true"></i>기타 사은품 취합</div>
       <div class="nav-sub-date">(다품목/금액대/연동사은품등)</div>
     </div>
-    <div class="nav-group-label">성장 지원</div>
+    </div>
+    <div class="nav-group-label" onclick="toggleNavGroup('growth')">성장 지원<i class="ti ti-chevron-down nav-group-chevron" id="navGroupChevron_growth" aria-hidden="true"></i></div>
+    <div class="nav-group-body" id="navGroupBody_growth">
     <div class="nav-item sub" data-tab="mistakeNote"><i class="ti ti-link" aria-hidden="true"></i>통합 링크 허브 바로가기</div>
     <div class="nav-item sub" data-tab="issueCase"><i class="ti ti-trophy" aria-hidden="true"></i>판매 성공 사례</div>
     <div class="nav-item sub" data-tab="bestPractice"><i class="ti ti-star" aria-hidden="true"></i>우수 활동 사례</div>
     <div class="nav-item sub" data-tab="policyQuiz"><i class="ti ti-notebook" aria-hidden="true"></i>정책 숙지도TEST</div>
+    </div>
     <div class="nav-group-label">건의함</div>
     <div class="nav-item sub" data-tab="suggestions"><i class="ti ti-message-2" aria-hidden="true"></i>현장 건의사항</div>
     <div class="user-box">
