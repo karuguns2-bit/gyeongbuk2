@@ -3144,13 +3144,13 @@ function renderHomeBranchBadges(){
         .bbadge-item.bbadge-won .bbadge-branch{ color:var(--text); }
         .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:10px; }
         .bbadge-total{ font-size:8.5px; font-weight:700; color:var(--primary); white-space:nowrap; }
-        .bbadge-outer{ display:flex; align-items:stretch; gap:8px; flex-wrap:wrap; }
+        .bbadge-outer{ display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; }
         .bbadge-leftcol{ flex:0 1 auto; min-width:300px; }
         .bbadge-medals{
           display:grid; grid-template-columns:repeat(4,1fr); gap:6px 4px;
           padding:2px 2px 0;
         }
-        .bbadge-rankpanel{ flex:1 1 220px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:9px; padding:6px 8px; display:flex; flex-direction:column; }
+        .bbadge-rankpanel{ flex:1 1 220px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:9px; padding:5px 6px; display:flex; flex-direction:column; }
         .bbadge-rank-header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:3px; flex-wrap:wrap; gap:6px; flex-shrink:0; }
         .bbadge-rank-toggle{ display:flex; gap:4px; }
         .bbadge-rank-tab{ border:1px solid var(--border); background:#fff; border-radius:20px; padding:2px 8px; font-size:9px; cursor:pointer; color:var(--text-sub); }
@@ -3170,7 +3170,7 @@ function renderHomeBranchBadges(){
         .bbadge-rank-sep{ display:none; }
         .bbadge-rank-empty{ color:#b7b8bf; font-size:9.5px; }
         .bbadge-rule-info{ font-size:9px; font-weight:500; color:var(--text-sub); background:var(--bg-soft,#f7f7f9); border-radius:7px; padding:3px 7px; line-height:1.3; margin-bottom:4px; }
-        .bbadge-event-banner{ background:#fff; border:1px solid var(--border); border-radius:6px; padding:4px 6px; margin-bottom:4px; }
+        .bbadge-event-banner{ background:#fff; border:1px solid var(--border); border-radius:6px; padding:3px 5px; margin-bottom:3px; }
         .bbadge-event-title{ font-size:11px; font-weight:700; color:var(--text); margin-bottom:3px; display:flex; align-items:center; gap:5px; }
         .bbadge-event-title i.ti{ font-size:12px; color:var(--primary); }
         .bbadge-event-period{ font-size:9.5px; font-weight:500; color:var(--text-sub); }
@@ -3469,22 +3469,18 @@ function goalsManagerSummary(period){
     .map(m=>({...m, pct: pctOf(m.achieved, m.target)}))
     .sort((a,b)=>b.pct-a.pct);
 }
+// 2026.09: 이달의 지점 배지 카드 우측에 관리자별 배너 3종(목표달성/합산경쟁력/구독달성율)을
+// 세로로 쌓아 넣으면서, 원래의 큰 stat-tile 카드 형태는 좁은 컬럼 폭에서 세로로 계속 줄바꿈되어
+// 오히려 스크롤이 늘어났다. 같은 데이터를 한 줄 요약(관리자 · 수치)로 압축한 컴팩트 카드로 바꾼다.
 function renderHomeGoalsManagerBanner(){
   const period = currentGoalsPeriod();
   const summary = goalsManagerSummary(period);
   if(summary.length===0) return '';
-  const cards = summary.map(m=>`
-    <div class="card stat-tile ${m.pct>=100?'stat-tile-green':m.pct>=80?'stat-tile-amber':'stat-tile-pink'}" style="min-width:150px;flex:1;">
-      <div style="font-weight:700;font-size:13px;">${m.manager}</div>
-      <div class="stat-tile-sub">${m.branchCount}개 지점</div>
-      <div class="stat-tile-num" style="font-size:19px;margin-top:2px;">${m.pct.toFixed(1)}% ${pctBadge(m.pct)}</div>
-      ${progressBarRunnerHtml(m.pct, {marginTop:4})}
-      <div class="stat-tile-sub" style="margin-top:4px;">${fmtKK(m.achieved)} / ${fmtKK(m.target)}</div>
-    </div>`).join('');
+  const line = summary.map(m=>`<span style="font-weight:700;">${escapeHtml(m.manager)}</span> ${m.pct.toFixed(1)}%`).join(' <span class="muted">·</span> ');
   return `
-    <div class="card" style="margin-bottom:10px;">
-      <h3><i class="ti ti-users" aria-hidden="true"></i> 관리자별 목표 달성 현황 <small>(${goalsPeriodLabel(period)} · MSIS실판매등록 기준 예상 목표치 · 전체 지점 공개)</small></h3>
-      <div class="mo-kpi-row" style="display:flex;gap:8px;flex-wrap:wrap;">${cards}</div>
+    <div class="card" style="padding:8px 10px;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-users" aria-hidden="true"></i> 관리자별 목표 달성 현황</div>
+      <div style="font-size:12.5px;line-height:1.6;">${line}</div>
     </div>`;
 }
 // 지점별 경쟁력(msis경쟁력 시트) 조회 — 월별 히스토리(DB.competitivenessHistory)에서 먼저 찾고,
@@ -3548,17 +3544,30 @@ function renderHomeManagerCompetitivenessBanner(){
   const period = currentGoalsPeriod();
   const summary = competManagerSummary(period);
   if(summary.length===0) return '';
-  const cards = summary.map(m=>`
-    <div class="card stat-tile stat-tile-blue" style="min-width:150px;flex:1;">
-      <div style="font-weight:700;font-size:13px;">${m.manager}</div>
-      <div class="stat-tile-sub">${m.branchCount}개 지점</div>
-      <div class="stat-tile-num" style="font-size:19px;margin-top:2px;">MS ${m.msPct}%</div>
-      <div class="stat-tile-sub" style="margin-top:4px;">LG ${fmtKK(m.lgWon)} · SS ${fmtKK(m.ssWon)} · GAP ${gapCell(m.gapWon)}</div>
-    </div>`).join('');
+  const line = summary.map(m=>`<span style="font-weight:700;">${escapeHtml(m.manager)}</span> MS ${m.msPct}%`).join(' <span class="muted">·</span> ');
   return `
-    <div class="card" style="margin-bottom:10px;">
-      <h3><i class="ti ti-trophy" aria-hidden="true"></i> 관리자별 합산 경쟁력 <small>(${goalsPeriodLabel(period)} · msis경쟁력 시트 기준 · 전체 지점 공개)</small></h3>
-      <div class="mo-kpi-row" style="display:flex;gap:8px;flex-wrap:wrap;">${cards}</div>
+    <div class="card" style="padding:8px 10px;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-trophy" aria-hidden="true"></i> 관리자별 합산 경쟁력</div>
+      <div style="font-size:12.5px;line-height:1.6;">${line}</div>
+    </div>`;
+}
+// 구독 실적 페이지의 "관리자별 목표대비 달성율" 차트와 같은 데이터(구독 실판 달성률)를 홈에서도
+// 한 줄 요약으로 보여준다 - 표시 전용이라 구독 실적 페이지의 집계 함수를 그대로 재사용한다.
+function homeSubManagerRateSummary(){
+  const managers = moManagerList();
+  return managers.map(m=>{
+    const a = moAggregate(moBranchesOf(m).map(subMergedRow));
+    return { manager:m, rate:a.s_sp_rate };
+  }).filter(x=>x.rate!=null);
+}
+function renderHomeSubManagerRateBanner(){
+  const summary = homeSubManagerRateSummary();
+  if(summary.length===0) return '';
+  const line = summary.map(m=>`<span style="font-weight:700;">${escapeHtml(m.manager)}</span> ${m.rate.toFixed(1)}%`).join(' <span class="muted">·</span> ');
+  return `
+    <div class="card" style="padding:8px 10px;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-refresh" aria-hidden="true"></i> 관리자별 구독 목표대비 달성율</div>
+      <div style="font-size:12.5px;line-height:1.6;">${line}</div>
     </div>`;
 }
 // 홈 대시보드 - 개인화 가능한 위젯 목록(교육 안내/근무 일정/AI 분석 피드백). 순서는 항상
@@ -3569,9 +3578,28 @@ function renderHomeManagerCompetitivenessBanner(){
 const HOME_WIDGET_DEFS = [
   { key:'eduReminder', label:'교육 안내' },
   { key:'attendance', label:'근무 일정' },
+  { key:'incentiveRef', label:'인센티브 참고' },
   { key:'aiFeedback', label:'AI 분석 피드백' },
   { key:'clearanceRec', label:'소진 추천' }
 ];
+// [지점별 인센티브(참고용)] 페이지의 계산 함수를 그대로 재사용해, 홈에서는 내 지점 합계와
+// 매니저별 구독 Grade 수당만 가볍게 보여준다(표시 전용 - 저장/수정 로직은 전혀 손대지 않음).
+function renderHomeIncentiveRefWidget(branchId){
+  const moEntry = moDataFor();
+  const row = (moEntry.rows||[]).find(r=>r.branchId===branchId);
+  if(!row) return '';
+  const m = row.m;
+  const total = incBranchTotal(m);
+  const records = incGradeRecordsForBranch(row.branchName);
+  return `
+    <div class="card">
+      <h3><i class="ti ti-coin" aria-hidden="true"></i> 인센티브 참고 <small>(${escapeHtml(row.branchName)} · [지점별 인센티브(참고용)] 기준)</small></h3>
+      <div style="font-size:20px;font-weight:800;color:var(--primary);margin-top:4px;">${moFmtWonRaw(total)}</div>
+      <div class="muted" style="font-size:11.5px;margin-top:2px;">목표달성 ${moFmtWonRaw(m.inc_expectedAmt)} · Grade ${moFmtWonRaw(m.inc_gradeSum)} · 제품수당(일시불+구독) ${moFmtWonRaw(incFlatSum(m)+(m.inc_subAllowanceTotal||0))}</div>
+      <div style="margin-top:8px;">${incGradeTableHtml(records, row.branchName)}</div>
+      <div class="small-note" style="margin-top:6px;">※ 참고용 수치이며 실제 지급액과 차이가 있을 수 있습니다. 더 자세한 내역은 [지점별 인센티브(참고용)] 페이지에서 확인하세요.</div>
+    </div>`;
+}
 function homeWidgetOrderedKeys(){
   return HOME_WIDGET_DEFS.map(w=>w.key);
 }
@@ -3790,6 +3818,11 @@ function renderHome(){
   // 카드 옆에 4번째 카드로 함께 보여준다. 데이터가 없는 지점/기간은 카드 자체를 숨긴다.
   const homeCompData = competitivenessDataForPeriod(homePeriod);
   const homeCompBranch = homeCompData && homeCompData.competitiveness && homeCompData.competitiveness[myBranch];
+  // 지점 구독 실판 달성률: [구독 실적] 페이지와 같은 집계(subMergedRow)를 그대로 재사용한
+  // 표시 전용 카드. 업로드된 지표 자료가 없거나 해당 지점 목표가 0이면 카드 자체를 숨긴다.
+  const homeSubRow = moDataFor().rows.find(r=>r.branchId===myBranch);
+  const homeSubMerged = homeSubRow ? subMergedRow(homeSubRow) : null;
+  const homeSubSpRate = homeSubMerged && homeSubMerged.m.s_sp_rate!=null ? homeSubMerged.m.s_sp_rate : null;
   // 매니저/사원은 본인 소속 지점(myBranch)에 고정되어 있지만, "오늘 출근 현황" 카드만은 다른
   // 지점의 출근 현황도 조회할 수 있도록 카드 우측 상단에 별도 지점 선택을 둔다(관리자는 이미
   // 상단 전체 지점 pill로 페이지 전체를 전환할 수 있으므로, 카드에도 같은 목록을 띄워 관리자
@@ -3850,7 +3883,8 @@ function renderHome(){
           ${feedback.map(l=>`<div class="ai-item">${l}</div>`).join('')}
         </div>
       </div>`,
-    clearanceRec: renderClearanceRecommendationWidget()
+    clearanceRec: renderClearanceRecommendationWidget(),
+    incentiveRef: renderHomeIncentiveRefWidget(myBranch)
   };
 
   return `
@@ -3861,11 +3895,16 @@ function renderHome(){
     </div>
     ${state.noticeFormOpen ? renderNoticeForm() : ''}
     <div class="home-plain">
-    <div style="margin-bottom:10px;">${renderHomeBranchBadges()}</div>
-    ${renderHomeGoalsManagerBanner()}
-    ${renderHomeManagerCompetitivenessBanner()}
+    <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:10px;flex-wrap:wrap;">
+      <div style="flex:2;min-width:360px;">${renderHomeBranchBadges()}</div>
+      <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:8px;">
+        ${renderHomeGoalsManagerBanner()}
+        ${renderHomeManagerCompetitivenessBanner()}
+        ${renderHomeSubManagerRateBanner()}
+      </div>
+    </div>
     ${branchSelectorHtml}
-    <div class="grid ${homeCompBranch&&homeCompBranch.msPct!=null?'grid-4 stat-grid-4':'grid-3 stat-grid-3'}" style="margin-bottom:10px;">
+    <div class="grid ${(()=>{ const n = 3 + (homeCompBranch&&homeCompBranch.msPct!=null?1:0) + (homeSubSpRate!=null?1:0); return n>=5?'grid-5':n===4?'grid-4':'grid-3'; })()}" style="margin-bottom:10px;">
       <div class="card stat-tile stat-tile-blue">
         <div class="stat-tile-label">이번 달 목표 <span style="font-weight:400;opacity:.8;">(MSIS실판매등록 기준 예상 목표치)</span></div>
         <div class="stat-tile-num">${fmtWon(msisTarget)}</div>
@@ -3888,6 +3927,12 @@ function renderHome(){
         <div class="stat-tile-num">${homeCompBranch.msPct}%</div>
         <div class="stat-tile-sub">LG ${fmtKK(homeCompBranch.lgWon)} · SS ${fmtKK(homeCompBranch.ssWon)} · GAP ${gapCell(homeCompBranch.gapWon)}</div>
         <div class="stat-tile-sub" style="margin-top:4px;">${homeCompData.asOf?'as of '+homeCompData.asOf:goalsPeriodLabel(homePeriod)}</div>
+      </div>` : ''}
+      ${homeSubSpRate!=null ? `
+      <div class="card stat-tile ${homeSubSpRate>=100?'stat-tile-green':homeSubSpRate>=80?'stat-tile-amber':'stat-tile-pink'}">
+        <div class="stat-tile-label">지점 구독 실판 달성률 <span style="font-weight:400;opacity:.8;">([구독 실적] 기준)</span></div>
+        <div class="stat-tile-num">${homeSubSpRate.toFixed(1)}%</div>
+        ${progressBarRunnerHtml(homeSubSpRate, {marginTop:8})}
       </div>` : ''}
     </div>
 
@@ -11898,18 +11943,11 @@ function getCollectionNotice(key){
   if(!DB.collectionNotices[key]) DB.collectionNotices[key] = { text:'', images:[] };
   return DB.collectionNotices[key];
 }
-function toggleCollectionNoticeEdit(key, tab, on){
-  if(SESSION.role!=='admin') return;
-  if(!state.collectionNoticeEditing) state.collectionNoticeEditing = {};
-  state.collectionNoticeEditing[key] = on;
-  renderTab(tab);
-}
 function saveCollectionNoticeText(key, tab){
   if(SESSION.role!=='admin') return;
   const n = getCollectionNotice(key);
   n.text = richEditorValue('cn_'+key+'_text');
   n.updatedAt = todayStr(); n.updatedBy = SESSION.name;
-  if(state.collectionNoticeEditing) state.collectionNoticeEditing[key] = false;
   saveDB();
   logActivity('update', `${SESSION.name}님(관리자)이 [${currentPageTitle()}] 공지 문구를 수정했습니다`);
   renderTab(tab);
@@ -11966,7 +12004,6 @@ function deleteCollectionNotice(key, tab){
   const n = getCollectionNotice(key);
   (n.images||[]).forEach(img=>{ if(img.dataUrl) deleteFromStorage(img.dataUrl); });
   DB.collectionNotices[key] = { text:'', images:[] };
-  if(state.collectionNoticeEditing) state.collectionNoticeEditing[key] = false;
   saveDB();
   logActivity('update', `${SESSION.name}님(관리자)이 [${currentPageTitle()}] 공지를 삭제했습니다`);
   renderTab(tab);
@@ -11976,13 +12013,20 @@ function renderCollectionNotice(key, tab){
   const n = getCollectionNotice(key);
   const hasContent = !!(n.text || (n.images && n.images.length>0));
   if(!hasContent && !isAdmin) return '';
-  const editing = isAdmin && !!(state.collectionNoticeEditing && state.collectionNoticeEditing[key]);
-  const showEditor = isAdmin && (editing || !hasContent);
-  const imagesHtml = (n.images||[]).map((img,idx)=>{
-    const removeBtn = showEditor ? `<button type="button" title="파일 삭제" onclick="removeCollectionNoticeImage('${key}','${tab}',${idx})" style="position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:12px;line-height:1;">×</button>` : '';
+  const modalId = 'cn_'+key;
+  // 읽기 화면에 보이는 사진/첨부(삭제 버튼 없음) - 팝업이 아니라 카드 자체에 그대로 노출된다.
+  const viewImagesHtml = (n.images||[]).map(img=>{
+    if(isImageAttachment(img)){
+      return `<img class="xlsx-photo" src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="width:132px;height:132px;border-radius:10px;cursor:zoom-in;object-fit:cover;box-shadow:0 2px 8px rgba(16,24,32,.1);">`;
+    }
+    return `<a href="${img.dataUrl}" download="${escapeHtml(img.name||'file')}" style="display:inline-flex;align-items:center;gap:6px;padding:10px 14px;border:1px solid var(--border);border-radius:10px;background:#f7f8fa;font-size:12.5px;text-decoration:none;color:inherit;max-width:220px;">📎 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(img.name||'파일')}</span></a>`;
+  }).join('');
+  // 팝업(수정 모드) 안에서만 개별 사진/첨부 삭제 버튼을 보여준다.
+  const editImagesHtml = (n.images||[]).map((img,idx)=>{
+    const removeBtn = `<button type="button" title="파일 삭제" onclick="removeCollectionNoticeImage('${key}','${tab}',${idx})" style="position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:none;background:var(--bad);color:#fff;cursor:pointer;font-size:12px;line-height:1;">×</button>`;
     if(isImageAttachment(img)){
       return `<div style="position:relative;display:inline-block;">
-        <img class="xlsx-photo" src="${img.dataUrl}" onclick="openImgLightbox(this.src)" style="width:132px;height:132px;border-radius:10px;cursor:zoom-in;object-fit:cover;box-shadow:0 2px 8px rgba(16,24,32,.1);">
+        <img class="xlsx-photo" src="${img.dataUrl}" style="width:100px;height:100px;border-radius:10px;object-fit:cover;box-shadow:0 2px 8px rgba(16,24,32,.1);">
         ${removeBtn}
       </div>`;
     }
@@ -11991,36 +12035,31 @@ function renderCollectionNotice(key, tab){
       ${removeBtn}
     </div>`;
   }).join('');
-  const editorControls = showEditor ? `
-    <div style="margin-top:${hasContent?'10px':'0'};display:flex;flex-direction:column;gap:8px;">
-      ${richEditorHtml('cn_'+key+'_text', richContentHtml(n.text), '공지 문구를 입력하세요', 160)}
-      <div class="field" style="margin:0;">
-        <label style="font-size:11.5px;">파일 첨부 (사진/PPT/엑셀 등 여러 개 선택 가능, 이 위로 파일을 끌어다 놓아도 첨부됩니다)</label>
-        <input id="cn_${key}_file" type="file" multiple onchange="addCollectionNoticeImage('${key}','${tab}',event)">
-      </div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-sm btn-primary" onclick="saveCollectionNoticeText('${key}','${tab}')">저장</button>
-        ${hasContent ? `<button class="btn btn-sm" onclick="toggleCollectionNoticeEdit('${key}','${tab}',false)">취소</button>` : ''}
-        <span id="cn_${key}_msg" class="small-note"></span>
-      </div>
-    </div>` : '';
-  const viewActions = (isAdmin && hasContent && !editing) ? `
-    <div style="margin-top:10px;display:flex;gap:8px;">
-      <button class="btn btn-sm" onclick="toggleCollectionNoticeEdit('${key}','${tab}',true)">수정</button>
-      <button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="deleteCollectionNotice('${key}','${tab}')">삭제</button>
-    </div>` : '';
+  const modalHtml = isAdmin ? boardWriteModalHtml(modalId, hasContent ? '공지 수정하기' : '공지 등록하기', `
+    ${richEditorHtml('cn_'+key+'_text', richContentHtml(n.text), '공지 문구를 입력하세요', 160)}
+    ${editImagesHtml ? `<div class="attach-gallery" style="margin-top:10px;">${editImagesHtml}</div>` : ''}
+    <div class="field" style="margin-top:8px;">
+      <label style="font-size:11.5px;">파일 첨부 (사진/PPT/엑셀 등 여러 개 선택 가능, 이 위로 파일을 끌어다 놓아도 첨부됩니다)</label>
+      <input id="cn_${key}_file" type="file" multiple onchange="addCollectionNoticeImage('${key}','${tab}',event)">
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;">
+      <button class="btn btn-primary" onclick="saveCollectionNoticeText('${key}','${tab}')">저장</button>
+      <button class="btn" onclick="closeBoardModal('${modalId}')">취소</button>
+      <span id="cn_${key}_msg" class="small-note"></span>
+    </div>`) : '';
   if(!hasContent){
     return `
     <div class="card" style="margin-bottom:16px;">
       <div style="font-size:11.5px;font-weight:700;opacity:.7;display:flex;align-items:center;gap:6px;"><i class="ti ti-speakerphone" aria-hidden="true"></i> 공지</div>
-      <div class="muted" style="font-size:13px;margin-top:4px;">등록된 안내가 없습니다. 관리자만 등록할 수 있습니다.</div>
-      ${editorControls}
+      <div class="muted" style="font-size:13px;margin:4px 0 10px;">등록된 안내가 없습니다. 관리자만 등록할 수 있습니다.</div>
+      ${isAdmin ? boardWriteButtonHtml(modalId, '공지 등록하기') : ''}
+      ${modalHtml}
     </div>`;
   }
   // 2026.09: 공지 내용(사진/문구)이 길어지면 카드가 항상 펼쳐져 있어 표까지 스크롤을 많이
   // 내려야 했다. 실행력 점검 사진 가이드와 동일하게 기본은 접어두고, 클릭하면 펼쳐서
-  // 확인할 수 있게 한다(관리자가 "수정" 중일 때는 편집창이 안 보이면 안 되므로 항상 펼침).
-  const isOpen = editing || !!(state.collectionNoticeOpen && state.collectionNoticeOpen[key]);
+  // 확인할 수 있게 한다. 등록/수정은 다른 등록창들과 동일하게 버튼+팝업으로 분리했다.
+  const isOpen = !!(state.collectionNoticeOpen && state.collectionNoticeOpen[key]);
   return `
     <div class="card" style="margin-bottom:16px;">
       <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleCollectionNoticeOpen('${key}','${tab}')">
@@ -12029,12 +12068,15 @@ function renderCollectionNotice(key, tab){
       </div>
       ${isOpen ? `
         ${n.text ? `<div style="font-size:13.5px;line-height:1.7;margin-top:6px;">${richContentHtml(n.text)}</div>` : ''}
-        ${imagesHtml ? `<div class="attach-gallery" style="margin-top:${n.text?'12px':'6px'};">${imagesHtml}</div>` : ''}
-        ${imagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진은 클릭하면 확대, 그 외 파일은 클릭하면 다운로드됩니다.</div>` : ''}
-        ${editorControls}
-        ${viewActions}
+        ${viewImagesHtml ? `<div class="attach-gallery" style="margin-top:${n.text?'12px':'6px'};">${viewImagesHtml}</div>` : ''}
+        ${viewImagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진은 클릭하면 확대, 그 외 파일은 클릭하면 다운로드됩니다.</div>` : ''}
+        ${isAdmin ? `<div style="margin-top:10px;display:flex;gap:8px;">
+          <button class="btn btn-sm" onclick="openBoardModal('${modalId}')">수정</button>
+          <button class="btn btn-sm" style="color:var(--bad);border-color:var(--bad);" onclick="deleteCollectionNotice('${key}','${tab}')">삭제</button>
+        </div>` : ''}
       ` : ''}
-    </div>`;
+    </div>
+    ${modalHtml}`;
 }
 function toggleCollectionNoticeOpen(key, tab){
   if(!state.collectionNoticeOpen) state.collectionNoticeOpen = {};
