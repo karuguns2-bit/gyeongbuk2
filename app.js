@@ -3472,27 +3472,33 @@ function goalsManagerSummary(period){
 // 2026.09: 이달의 지점 배지 카드 우측에 관리자별 배너 3종(목표달성/합산경쟁력/구독달성율)을
 // 세로로 쌓아 넣으면서, 원래의 큰 stat-tile 카드 형태는 좁은 컬럼 폭에서 세로로 계속 줄바꿈되어
 // 오히려 스크롤이 늘어났다. 같은 데이터를 한 줄 요약(관리자 · 수치)로 압축한 컴팩트 카드로 바꾼다.
-// 관리자 배너 3종 공통: 이름/수치 옆에 얇은 진행률 바를 붙인다. 같은 배너 안 관리자들의
-// 최댓값 대비 상대폭으로 그려 좁은 우측 컬럼에서도 비교가 한눈에 들어오게 한다.
-// colorFn(value)이 있으면 그 값으로 막대 색을, 없으면 항상 강조색(--primary)을 쓴다.
-function homeManagerBarRowsHtml(summary, valueKey, fmtFn, colorFn){
-  const maxV = Math.max(...summary.map(m=>Math.abs(m[valueKey])||0), 0.0001);
-  return summary.map(m=>{
+// 관리자 배너 3종 공통: 진행률 바 대신 단색 tabler 트로피 아이콘 + 이름 + 수치를 칩으로 만들어
+// 한 줄에 가로로 나열한다(줄바꿈 금지 - flex-wrap:nowrap). 관리자 수가 많아져도 줄바꿈되지 않도록
+// flex:1 1 0으로 균등 분할하고, 인원수에 따라 아이콘/글자 크기 자체를 줄여서 배율로 대응한다.
+// 순위(1등)만 강조색으로 표시하고, 나머지는 순위권 밖이어도 전부 표기한다.
+function homeManagerTrophyRowHtml(summary, valueKey, fmtFn){
+  const sorted = summary.slice().sort((a,b)=>(b[valueKey]||0)-(a[valueKey]||0));
+  const n = sorted.length;
+  // 인원수별 크기 배율(3명 이하/6명 이하/그 이상)
+  const sizes = n<=3 ? {icon:15,name:11,val:10.5,pad:'5px 3px',radius:8}
+    : n<=6 ? {icon:13,name:10,val:9.5,pad:'4px 2px',radius:7}
+    : {icon:11,name:9,val:8.5,pad:'3px 1px',radius:6};
+  const chips = sorted.map((m,i)=>{
     const v = m[valueKey]||0;
-    const color = colorFn ? colorFn(v) : 'var(--primary)';
-    const w = Math.max(4, Math.min(100, Math.abs(v)/maxV*100));
-    return `<div style="margin-bottom:3px;">
-      <div style="display:flex;justify-content:space-between;font-size:11.5px;line-height:1.3;"><span style="font-weight:700;">${escapeHtml(m.manager)}</span><span>${fmtFn(v)}</span></div>
-      <div style="height:4px;background:var(--border,#eee);border-radius:2px;margin-top:1px;"><div style="height:100%;width:${w}%;background:${color};border-radius:2px;"></div></div>
+    const iconColor = i===0 ? 'var(--primary)' : '#999';
+    return `<div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;background:var(--bg-alt,#f8f8f8);border-radius:${sizes.radius}px;padding:${sizes.pad};">
+      <i class="ti ti-trophy" aria-hidden="true" style="font-size:${sizes.icon}px;color:${iconColor};"></i>
+      <b style="font-size:${sizes.name}px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${escapeHtml(m.manager)}</b>
+      <span style="font-size:${sizes.val}px;font-weight:700;white-space:nowrap;">${fmtFn(v)}</span>
     </div>`;
   }).join('');
+  return `<div style="display:flex;gap:4px;flex-wrap:nowrap;">${chips}</div>`;
 }
-function homeAchievementBarColor(v){ return v>=100?'var(--primary)':(v>=80?'#e0a03c':'#999'); }
 function renderHomeGoalsManagerBanner(){
   const period = currentGoalsPeriod();
   const summary = goalsManagerSummary(period);
   if(summary.length===0) return '';
-  const rows = homeManagerBarRowsHtml(summary, 'pct', v=>v.toFixed(1)+'%', homeAchievementBarColor);
+  const rows = homeManagerTrophyRowHtml(summary, 'pct', v=>v.toFixed(1)+'%');
   return `
     <div class="card" style="padding:8px 10px;flex:1;display:flex;flex-direction:column;justify-content:center;">
       <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-users" aria-hidden="true"></i> 관리자별 목표 달성 현황</div>
@@ -3560,7 +3566,7 @@ function renderHomeManagerCompetitivenessBanner(){
   const period = currentGoalsPeriod();
   const summary = competManagerSummary(period);
   if(summary.length===0) return '';
-  const rows = homeManagerBarRowsHtml(summary, 'msPct', v=>'MS '+v+'%');
+  const rows = homeManagerTrophyRowHtml(summary, 'msPct', v=>'MS '+v+'%');
   return `
     <div class="card" style="padding:8px 10px;flex:1;display:flex;flex-direction:column;justify-content:center;">
       <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-trophy" aria-hidden="true"></i> 관리자별 합산 경쟁력</div>
@@ -3579,7 +3585,7 @@ function homeSubManagerRateSummary(){
 function renderHomeSubManagerRateBanner(){
   const summary = homeSubManagerRateSummary();
   if(summary.length===0) return '';
-  const rows = homeManagerBarRowsHtml(summary, 'rate', v=>v.toFixed(1)+'%', homeAchievementBarColor);
+  const rows = homeManagerTrophyRowHtml(summary, 'rate', v=>v.toFixed(1)+'%');
   return `
     <div class="card" style="padding:8px 10px;flex:1;display:flex;flex-direction:column;justify-content:center;">
       <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-refresh" aria-hidden="true"></i> 관리자별 구독 목표대비 달성율</div>
@@ -3615,16 +3621,16 @@ function renderHomeIncentiveRefWidget(branchId){
   const subSum = m.inc_subAllowanceTotal||0;
   const total = expectedAmt + gradeSum + flatSum + subSum;
   const tileHtml = (label, val)=>`
-        <div class="card" style="padding:8px 6px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;">
-          <div class="muted" style="font-size:11.5px;">${label}</div>
-          <div style="font-size:16px;font-weight:800;">${moFmtWonRaw(val)}</div>
+        <div class="card" style="padding:8px 4px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;">
+          <div class="muted" style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;">${label}</div>
+          <div style="font-size:14.5px;font-weight:800;white-space:nowrap;">${moFmtWonRaw(val)}</div>
         </div>`;
   return `
     <div class="card" style="padding:10px 12px;">
       <h3 style="margin-bottom:2px;"><i class="ti ti-coin" aria-hidden="true"></i> 인센티브 참고 <small>(${escapeHtml(row.branchName)} · [지점별 인센티브(참고용)] 기준)</small></h3>
       <div style="font-size:20px;font-weight:800;color:var(--primary);margin-top:2px;">${moFmtWonRaw(total)}</div>
       <div class="muted" style="font-size:11px;margin-top:1px;">아래 4개 항목의 합계</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px;">
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px;">
         ${tileHtml('목표달성 인센티브', expectedAmt)}
         ${tileHtml('Grade수당 계', gradeSum)}
         ${tileHtml('일시불 수당 계', flatSum)}
