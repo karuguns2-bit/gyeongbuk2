@@ -9826,26 +9826,26 @@ function renderSales(){
     </div>`;
 
   const salesRow2Html = `
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-top:28px;">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;margin-top:10px;">
       <div style="flex:1;min-width:220px;display:flex;">
-        <div class="card" style="display:flex;flex-direction:column;flex:1;height:300px;overflow:hidden;">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;height:340px;overflow:hidden;">
           <h3>제품군 비중 <small>${empPersonalSuffix}</small></h3>
-          <div style="position:relative;flex:1;"><canvas id="categoryShareChart"></canvas></div>
+          <div style="position:relative;flex:1;min-height:260px;"><canvas id="categoryShareChart"></canvas></div>
         </div>
       </div>
       <div style="flex:1;min-width:220px;display:flex;">
-        <div class="card" style="display:flex;flex-direction:column;flex:1;height:300px;overflow:hidden;">
+        <div class="card" style="display:flex;flex-direction:column;flex:1;height:340px;overflow:hidden;">
           <h3>매니저별 판매 비중</h3>
           ${showEmpShareChart
-            ? `<div style="position:relative;flex:1;"><canvas id="empShareChart"></canvas></div>`
+            ? `<div style="position:relative;flex:1;min-height:260px;"><canvas id="empShareChart"></canvas></div>`
             : `<div style="flex:1;display:flex;align-items:center;justify-content:center;"><div class="muted" style="font-size:13px;text-align:center;">${state.salesEmp!=='ALL' ? '담당자를 &quot;전체&quot;로 선택하면<br>매니저별 판매 비중이 표시됩니다.' : '표시할 판매 데이터가 없습니다.'}</div></div>`}
         </div>
       </div>
       <div style="flex:1;min-width:220px;display:flex;">
-        <div style="display:flex;flex-direction:column;flex:1;height:300px;overflow:hidden;">${aiFeedbackCardHtml.replace('<div class="card">','<div class="card" style="display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden;">')}</div>
+        <div style="display:flex;flex-direction:column;flex:1;height:340px;overflow:hidden;">${aiFeedbackCardHtml.replace('<div class="card">','<div class="card" style="display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden;">')}</div>
       </div>
       <div style="flex:2;min-width:340px;display:flex;">
-        <div style="display:flex;flex-direction:column;flex:1;height:300px;overflow:hidden;">${detailCardHtml.replace('<div class="card">','<div class="card" style="display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden;">')}</div>
+        <div style="display:flex;flex-direction:column;flex:1;height:340px;overflow:hidden;">${detailCardHtml.replace('<div class="card">','<div class="card" style="display:flex;flex-direction:column;flex:1;height:100%;overflow:hidden;">')}</div>
       </div>
     </div>`;
 
