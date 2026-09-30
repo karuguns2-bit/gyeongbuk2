@@ -11100,13 +11100,23 @@ function renderCollectGiftcard(){
   const remain = Math.max(budget - usedRaw, 0);
   const overBudget = usedRaw > budget;
   const gcAllSelected = sorted.length>0 && sorted.every(r=>state.gcSelectedIds.has(r.id));
-  const rows = sorted.map(r=>{
+  const { items: gcItems, barHtml: gcSearchBarHtml, pagerHtml: gcPagerHtml } = applyBoardSearchAndPaging(
+    'gc', 'collectGiftcard', sorted,
+    r => `${branchName(r.branchId)} ${r.orderNo||''} ${r.model||''} ${r.saleType||''} ${r.customerName||''} ${r.phone||''} ${r.requesterName||''}`,
+    '지점명, 모델명, 고객명, 연락처로 검색'
+  );
+  // 표 컬럼이 많아 가로 스크롤이 길어지므로, 체크박스+지점명 두 컬럼만은 스크롤해도 항상
+  // 보이도록 고정한다(기존 .act-col 우측 고정과 같은 방식, 왼쪽 버전).
+  const gcCkColStyle = `position:sticky;left:0;background:var(--card);z-index:2;`;
+  const gcBranchColLeft = SESSION.role==='admin' ? '26px' : '0';
+  const gcBranchColStyle = `position:sticky;left:${gcBranchColLeft};background:var(--card);z-index:2;box-shadow:2px 0 4px -2px rgba(0,0,0,.15);`;
+  const rows = gcItems.map(r=>{
     const canEdit = canEditGiftcardRequest(r);
     if(state.gcEditId === r.id){
       return `
     <tr>
-      ${SESSION.role==='admin' ? '<td></td>' : ''}
-      <td><select id="gceBranch_${r.id}" style="width:120px">${branchOptionsHtml(r.branchId)}</select></td>
+      ${SESSION.role==='admin' ? `<td style="${gcCkColStyle}"></td>` : ''}
+      <td style="${gcBranchColStyle}"><select id="gceBranch_${r.id}" style="width:120px">${branchOptionsHtml(r.branchId)}</select></td>
       <td><select id="gceTransferBranch_${r.id}" style="width:120px"><option value="NONE" ${(r.transferBranchId==='NONE'||!r.transferBranchId)?'selected':''}>해당없음</option>${branchOptionsHtml(r.transferBranchId)}</select></td>
       <td><input id="gceOrderNo_${r.id}" value="${escapeHtml(r.orderNo||'')}" style="width:110px"></td>
       <td><input id="gceModel_${r.id}" value="${escapeHtml(r.model||'')}" style="width:130px"></td>
@@ -11132,8 +11142,8 @@ function renderCollectGiftcard(){
     }
     return `
     <tr>
-      ${SESSION.role==='admin' ? `<td><input type="checkbox" ${state.gcSelectedIds.has(r.id)?'checked':''} onchange="toggleGiftcardSelect('${r.id}', this.checked)"></td>` : ''}
-      <td>${branchName(r.branchId)}</td>
+      ${SESSION.role==='admin' ? `<td style="${gcCkColStyle}"><input type="checkbox" ${state.gcSelectedIds.has(r.id)?'checked':''} onchange="toggleGiftcardSelect('${r.id}', this.checked)"></td>` : ''}
+      <td style="${gcBranchColStyle}">${branchName(r.branchId)}</td>
       <td>${r.transferBranchId==='NONE'||!r.transferBranchId ? '해당없음' : branchName(r.transferBranchId)}</td>
       <td class="muted">${r.orderNo||'-'}</td>
       <td>${r.model}</td>
@@ -11180,9 +11190,9 @@ function renderCollectGiftcard(){
       ${overBudget ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:8px 10px;margin-top:6px;font-weight:600;">⚠ 실제 등록된 금액 합계는 ${fmtWon(usedRaw)}로 총 사용 가능 금액을 초과했습니다. 총 사용 가능 금액을 올리거나 건을 확인해 주세요.</div>` : ''}
     </div>
 
+    ${SESSION.role==='admin' ? `
     <div class="card" style="margin-bottom:16px;">
-      <h3>새 건 등록</h3>
-      ${SESSION.role==='admin' ? `
+      <h3>등록 설정 (관리자 전용)</h3>
       <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
         <span class="toggle-switch">
           <input type="checkbox" ${DB.giftcardRegistrationLocked ? 'checked' : ''} onchange="toggleGiftcardLockSetting(this.checked)">
@@ -11190,7 +11200,7 @@ function renderCollectGiftcard(){
         </span>
         <span style="font-size:13.5px;">등록 일시 정지 ${DB.giftcardRegistrationLocked ? '(사용 중 - 매니저 등록이 막혀 있습니다)' : '(사용 안 함)'}</span>
       </label>
-      <div class="form-row" style="align-items:flex-end;margin-bottom:12px;">
+      <div class="form-row" style="align-items:flex-end;">
         <div class="field">
           <label>운영 시작일</label>
           <input type="date" value="${DB.giftcardWindowStart||''}" onchange="updateGiftcardWindow('start', this.value)" style="width:160px">
@@ -11200,7 +11210,13 @@ function renderCollectGiftcard(){
           <input type="date" value="${DB.giftcardWindowEnd||''}" onchange="updateGiftcardWindow('end', this.value)" style="width:160px">
         </div>
         <div class="small-note" style="margin-bottom:6px;">비워두면 기간 제한 없이 상시 등록 가능합니다.</div>
-      </div>` : ''}
+      </div>
+    </div>` : ''}
+
+    <div style="margin-bottom:14px;">
+      ${boardWriteButtonHtml('gcWrite', '새 건 등록하기')}
+    </div>
+    ${boardWriteModalHtml('gcWrite', '새 건 등록', `
       ${giftcardRegistrationBlockedReason() ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-weight:600;">⛔ ${giftcardRegistrationBlockedReason()}</div>` : ''}
       <div class="form-row">
         <div class="field">
@@ -11256,17 +11272,29 @@ function renderCollectGiftcard(){
           <label>영수증 증빙 업로드 (사진/PPT/엑셀 등 여러 개 가능)</label>
           <input id="gcReceipt" type="file" multiple>
         </div>
-        <button class="btn btn-primary" onclick="submitGiftcardRequest()" ${giftcardRegistrationBlockedReason() ? `disabled title="${escapeHtml(giftcardRegistrationBlockedReason())}"` : ''}>등록</button>
       </div>
-    </div>
+      <button class="btn btn-primary" onclick="submitGiftcardRequest()" ${giftcardRegistrationBlockedReason() ? `disabled title="${escapeHtml(giftcardRegistrationBlockedReason())}"` : ''}>등록</button>
+    `)}
+
+    ${gcSearchBarHtml}
+
+    ${SESSION.role==='admin' && sorted.length>0 ? `
+    <div style="position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 10px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;">
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" ${gcAllSelected?'checked':''} onchange="toggleGiftcardSelectAll(this.checked)">
+        전체 선택
+      </label>
+      <button class="btn btn-sm" style="color:var(--primary);border-color:var(--primary);" onclick="deleteSelectedGiftcardRequests()"><i class="ti ti-trash" aria-hidden="true"></i> 선택 삭제<span id="gcSelCountDel"></span></button>
+    </div>` : ''}
 
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr>${SESSION.role==='admin' ? `<th style="width:26px;"><input type="checkbox" ${gcAllSelected?'checked':''} onchange="toggleGiftcardSelectAll(this.checked)" title="전체 선택"></th>` : ''}<th>지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>판매 유형</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th>등록일시</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${SESSION.role==='admin' ? `<th style="width:26px;${gcCkColStyle}"><input type="checkbox" ${gcAllSelected?'checked':''} onchange="toggleGiftcardSelectAll(this.checked)" title="전체 선택"></th>` : ''}<th style="${gcBranchColStyle}">지점명</th><th>이관지점</th><th>주문번호</th><th>모델명</th><th>판매 유형</th><th>사용금액</th><th>판매일자</th><th>배송일자</th><th>고객명</th><th>연락처</th><th>영수증</th><th>등록자</th><th>등록일시</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
+      ${gcPagerHtml}
     </div>
   `;
 }
@@ -11945,7 +11973,17 @@ function renderCollectContest(){
   const isAdmin = SESSION.role==='admin';
   const editId = state.cgEditId;
   const cgAllSelected = sorted.length>0 && sorted.every(r=>state.cgSelectedIds.has(r.id));
-  const rows = sorted.map(r=>{
+  const { items: cgItems, barHtml: cgSearchBarHtml, pagerHtml: cgPagerHtml } = applyBoardSearchAndPaging(
+    'cg', 'collectContest', sorted,
+    r => `${escapeHtml(r.contestType||'')} ${escapeHtml(r.giftName||'')} ${branchName(r.branchId)} ${r.model||''} ${r.customerName||''} ${r.phone||''}`,
+    '컨테스트 구분, 지점명, 모델명, 고객명으로 검색'
+  );
+  // 표 컬럼이 많아 가로 스크롤이 길어지므로, 체크박스+컨테스트 구분 두 컬럼만은 스크롤해도
+  // 항상 보이도록 고정한다.
+  const cgCkColStyle = `position:sticky;left:0;background:var(--card);z-index:2;`;
+  const cgFirstColLeft = isAdmin ? '26px' : '0';
+  const cgFirstColStyle = `position:sticky;left:${cgFirstColLeft};background:var(--card);z-index:2;box-shadow:2px 0 4px -2px rgba(0,0,0,.15);`;
+  const rows = cgItems.map(r=>{
     const canEdit = canEditContestGift(r);
     if(canEdit && editId===r.id){
       const existingPhotos = (r.evidenceFiles&&r.evidenceFiles.length>0)
@@ -11953,8 +11991,8 @@ function renderCollectContest(){
         : '없음';
       return `
     <tr>
-      ${isAdmin ? '<td></td>' : ''}
-      <td><select id="cge_${r.id}_contestType" style="width:170px" onchange="syncContestGiftNameFor('cge_${r.id}_contestType','cge_${r.id}_giftName','cge_${r.id}_address','${r.id}')">
+      ${isAdmin ? `<td style="${cgCkColStyle}"></td>` : ''}
+      <td style="${cgFirstColStyle}"><select id="cge_${r.id}_contestType" style="width:170px" onchange="syncContestGiftNameFor('cge_${r.id}_contestType','cge_${r.id}_giftName','cge_${r.id}_address','${r.id}')">
         <option value="">선택하세요</option>
         ${DB.contestGiftTypeOptions.map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===r.contestType?'selected':''}>${escapeHtml(o.value)}</option>`).join('')}
       </select></td>
@@ -11986,8 +12024,8 @@ function renderCollectContest(){
     }
     return `
     <tr>
-      ${isAdmin ? `<td><input type="checkbox" ${state.cgSelectedIds.has(r.id)?'checked':''} onchange="toggleContestGiftSelect('${r.id}', this.checked)"></td>` : ''}
-      <td>${escapeHtml(r.contestType||'-')}</td>
+      ${isAdmin ? `<td style="${cgCkColStyle}"><input type="checkbox" ${state.cgSelectedIds.has(r.id)?'checked':''} onchange="toggleContestGiftSelect('${r.id}', this.checked)"></td>` : ''}
+      <td style="${cgFirstColStyle}">${escapeHtml(r.contestType||'-')}</td>
       <td>${escapeHtml(r.giftName||'-')}</td>
       <td>${branchName(r.branchId)}</td>
       <td>${r.saleDate||'-'}</td>
@@ -12010,8 +12048,10 @@ function renderCollectContest(){
     ${renderCollectionNotice('collectContest','collectContest')}
     ${isAdmin ? renderContestGiftTypeOptionAdmin() : ''}
 
-    <div class="card" style="margin-bottom:16px;">
-      <h3>새 건 등록</h3>
+    <div style="margin-bottom:14px;">
+      ${boardWriteButtonHtml('cgWrite', '새 건 등록하기')}
+    </div>
+    ${boardWriteModalHtml('cgWrite', '새 건 등록', `
       ${contestGiftOptionsForNewEntry().length===0 ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-weight:600;">⛔ 현재 운영 중인 구독연동사은품 컨테스트가 없습니다.${isAdmin ? ' 위 "컨테스트 항목 관리"에서 새 항목을 추가해 주세요.' : ''}</div>` : ''}
       <div class="form-row">
         <div class="field">
@@ -12077,18 +12117,30 @@ function renderCollectContest(){
           <label>증빙자료 첨부 (사진/PPT/엑셀 등 여러 개 가능)</label>
           <input id="cgEvidenceFiles" type="file" multiple>
         </div>
-        <button class="btn btn-primary" onclick="submitContestGift()" ${contestGiftOptionsForNewEntry().length===0 ? 'disabled title="운영이 종료되어 등록할 수 없습니다"' : ''}>등록</button>
       </div>
       <div class="small-note" style="margin-top:-8px;">※ 촬영한 사진을 첨부 할 시 대용량 이슈로 인하여 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
-    </div>
+      <button class="btn btn-primary" onclick="submitContestGift()" ${contestGiftOptionsForNewEntry().length===0 ? 'disabled title="운영이 종료되어 등록할 수 없습니다"' : ''}>등록</button>
+    `)}
+
+    ${cgSearchBarHtml}
+
+    ${isAdmin && sorted.length>0 ? `
+    <div style="position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 10px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;">
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" ${cgAllSelected?'checked':''} onchange="toggleContestGiftSelectAll(this.checked)">
+        전체 선택
+      </label>
+      <button class="btn btn-sm" style="color:var(--primary);border-color:var(--primary);" onclick="deleteSelectedContestGifts()"><i class="ti ti-trash" aria-hidden="true"></i> 선택 삭제<span id="cgSelCountDel"></span></button>
+    </div>` : ''}
 
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr>${isAdmin ? `<th style="width:26px;"><input type="checkbox" ${cgAllSelected?'checked':''} onchange="toggleContestGiftSelectAll(this.checked)" title="전체 선택"></th>` : ''}<th>컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th>증빙자료</th><th>등록일시</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${isAdmin ? `<th style="width:26px;${cgCkColStyle}"><input type="checkbox" ${cgAllSelected?'checked':''} onchange="toggleContestGiftSelectAll(this.checked)" title="전체 선택"></th>` : ''}<th style="${cgFirstColStyle}">컨테스트 구분</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>배송일자</th><th>모델명</th><th>판매건수</th><th>고객명</th><th>연락처</th><th>주소</th><th>증빙자료</th><th>등록일시</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
+      ${cgPagerHtml}
     </div>
   `;
 }
@@ -12598,7 +12650,17 @@ function renderSubTierContest(){
   const editId = state.stcEditId;
 
   const stcAllSelected = sorted.length>0 && sorted.every(r=>state.stcSelectedIds.has(r.id));
-  const rows = sorted.map(r=>{
+  const { items: stcItems, barHtml: stcSearchBarHtml, pagerHtml: stcPagerHtml } = applyBoardSearchAndPaging(
+    'stc', 'subTierContest', sorted,
+    r => `${escapeHtml(r.contestType||'')} ${escapeHtml(r.giftName||'')} ${branchName(r.branchId)} ${escapeHtml(r.requesterName||'')}`,
+    '컨테스트 항목, 지점명, 등록자로 검색'
+  );
+  // 표 컬럼이 많아 가로 스크롤이 길어지므로, 체크박스+컨테스트 항목 두 컬럼만은 스크롤해도
+  // 항상 보이도록 고정한다.
+  const stcCkColStyle = `position:sticky;left:0;background:var(--card);z-index:2;`;
+  const stcFirstColLeft = SESSION.role==='admin' ? '26px' : '0';
+  const stcFirstColStyle = `position:sticky;left:${stcFirstColLeft};background:var(--card);z-index:2;box-shadow:2px 0 4px -2px rgba(0,0,0,.15);`;
+  const rows = stcItems.map(r=>{
     const canEdit = canEditSubTierContest(r);
     if(canEdit && editId===r.id){
       const existingPhotos = (r.evidenceFiles&&r.evidenceFiles.length>0)
@@ -12608,8 +12670,8 @@ function renderSubTierContest(){
       const curNeedsAddress = !!(curOpt && curOpt.needsAddress);
       return `
     <tr>
-      ${SESSION.role==='admin' ? '<td></td>' : ''}
-      <td><select id="stce_${r.id}_contestType" style="width:190px" onchange="syncSubTierGiftNameFor('stce_${r.id}_contestType','stce_${r.id}_giftName','stce_${r.id}_address','stce_${r.id}_addressBtn')">
+      ${SESSION.role==='admin' ? `<td style="${stcCkColStyle}"></td>` : ''}
+      <td style="${stcFirstColStyle}"><select id="stce_${r.id}_contestType" style="width:190px" onchange="syncSubTierGiftNameFor('stce_${r.id}_contestType','stce_${r.id}_giftName','stce_${r.id}_address','stce_${r.id}_addressBtn')">
         <option value="">선택하세요</option>
         ${DB.subTierContestOptions.map(o=>`<option value="${escapeHtml(o.value)}" ${o.value===r.contestType?'selected':''}>${escapeHtml(o.value)}</option>`).join('')}
       </select></td>
@@ -12634,8 +12696,8 @@ function renderSubTierContest(){
     }
     return `
     <tr>
-      ${SESSION.role==='admin' ? `<td><input type="checkbox" ${state.stcSelectedIds.has(r.id)?'checked':''} onchange="toggleSubTierContestSelect('${r.id}', this.checked)"></td>` : ''}
-      <td>${escapeHtml(r.contestType||'-')}</td>
+      ${SESSION.role==='admin' ? `<td style="${stcCkColStyle}"><input type="checkbox" ${state.stcSelectedIds.has(r.id)?'checked':''} onchange="toggleSubTierContestSelect('${r.id}', this.checked)"></td>` : ''}
+      <td style="${stcFirstColStyle}">${escapeHtml(r.contestType||'-')}</td>
       <td>${escapeHtml(r.giftName||'-')}</td>
       <td>${branchName(r.branchId)}</td>
       <td>${r.saleDate||'-'}</td>
@@ -12657,8 +12719,10 @@ function renderSubTierContest(){
     ${collectBranchPills('subTierContest')}
     ${isAdmin ? renderSubTierContestOptionAdmin() : ''}
 
-    <div class="card" style="margin-bottom:16px;">
-      <h3>새 건 등록</h3>
+    <div style="margin-bottom:14px;">
+      ${boardWriteButtonHtml('stcWrite', '새 건 등록하기')}
+    </div>
+    ${boardWriteModalHtml('stcWrite', '새 건 등록', `
       ${subTierContestOptionsForNewEntry().length===0 ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-weight:600;">⛔ 현재 운영 중인 기타 사은품 컨테스트가 없습니다.${isAdmin ? ' 위 "컨테스트 항목 관리"에서 새 항목을 추가해 주세요.' : ''}</div>` : ''}
       <div class="form-row">
         <div class="field">
@@ -12697,19 +12761,31 @@ function renderSubTierContest(){
           <label>영수증 사진 증빙</label>
           <input id="stcEvidenceFiles" type="file" multiple>
         </div>
-        <button class="btn btn-primary" onclick="submitSubTierContest()" ${subTierContestOptionsForNewEntry().length===0 ? 'disabled title="운영 중인 항목이 없어 등록할 수 없습니다"' : ''}>등록</button>
       </div>
       <div class="small-note" style="margin-top:-8px;">※ 촬영한 사진을 첨부 할 시 대용량 이슈로 인하여 등록이 안 될 수도 있으니, 등록이 안될 시 담당관리자에게 연락바랍니다.</div>
       <div id="stcMsg" class="small-note"></div>
-    </div>
+      <button class="btn btn-primary" onclick="submitSubTierContest()" ${subTierContestOptionsForNewEntry().length===0 ? 'disabled title="운영 중인 항목이 없어 등록할 수 없습니다"' : ''}>등록</button>
+    `)}
+
+    ${stcSearchBarHtml}
+
+    ${SESSION.role==='admin' && sorted.length>0 ? `
+    <div style="position:sticky;top:0;z-index:5;background:var(--bg);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:8px 10px;margin-bottom:10px;border:1px solid var(--border);border-radius:8px;">
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" ${stcAllSelected?'checked':''} onchange="toggleSubTierContestSelectAll(this.checked)">
+        전체 선택
+      </label>
+      <button class="btn btn-sm" style="color:var(--primary);border-color:var(--primary);" onclick="deleteSelectedSubTierContestGifts()"><i class="ti ti-trash" aria-hidden="true"></i> 선택 삭제<span id="stcSelCountDel"></span></button>
+    </div>` : ''}
 
     <div class="card">
       <div class="table-scroll">
       <table>
-        <thead><tr>${SESSION.role==='admin' ? `<th style="width:26px;"><input type="checkbox" ${stcAllSelected?'checked':''} onchange="toggleSubTierContestSelectAll(this.checked)" title="전체 선택"></th>` : ''}<th>컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>주소</th><th>영수증 증빙</th><th>등록자</th><th>등록일시</th><th class="act-col"></th></tr></thead>
+        <thead><tr>${SESSION.role==='admin' ? `<th style="width:26px;${stcCkColStyle}"><input type="checkbox" ${stcAllSelected?'checked':''} onchange="toggleSubTierContestSelectAll(this.checked)" title="전체 선택"></th>` : ''}<th style="${stcFirstColStyle}">컨테스트 항목</th><th>사은품명</th><th>지점명</th><th>판매일자</th><th>주소</th><th>영수증 증빙</th><th>등록자</th><th>등록일시</th><th class="act-col"></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
       </div>
+      ${stcPagerHtml}
     </div>
   `;
 }
