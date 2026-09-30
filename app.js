@@ -11188,30 +11188,29 @@ function renderCollectGiftcard(){
       </div>
       <div class="small-note">건이 등록될 때마다 사용 금액에 반영되어 잔여 금액이 실시간으로 차감됩니다. 사용 금액·잔여 금액은 총 사용 가능 금액 한도 안에서만 표시됩니다.</div>
       ${overBudget ? `<div class="small-note" style="background:#fdecec;color:var(--bad);border:1px solid var(--bad);border-radius:8px;padding:8px 10px;margin-top:6px;font-weight:600;">⚠ 실제 등록된 금액 합계는 ${fmtWon(usedRaw)}로 총 사용 가능 금액을 초과했습니다. 총 사용 가능 금액을 올리거나 건을 확인해 주세요.</div>` : ''}
+      ${SESSION.role==='admin' ? `
+      <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border);">
+        <div class="small-note" style="font-weight:700;margin-bottom:10px;">등록 설정 (관리자 전용)</div>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
+          <span class="toggle-switch">
+            <input type="checkbox" ${DB.giftcardRegistrationLocked ? 'checked' : ''} onchange="toggleGiftcardLockSetting(this.checked)">
+            <span class="slider"></span>
+          </span>
+          <span style="font-size:13.5px;">등록 일시 정지 ${DB.giftcardRegistrationLocked ? '(사용 중 - 매니저 등록이 막혀 있습니다)' : '(사용 안 함)'}</span>
+        </label>
+        <div class="form-row" style="align-items:flex-end;">
+          <div class="field">
+            <label>운영 시작일</label>
+            <input type="date" value="${DB.giftcardWindowStart||''}" onchange="updateGiftcardWindow('start', this.value)" style="width:160px">
+          </div>
+          <div class="field">
+            <label>운영 종료일</label>
+            <input type="date" value="${DB.giftcardWindowEnd||''}" onchange="updateGiftcardWindow('end', this.value)" style="width:160px">
+          </div>
+          <div class="small-note" style="margin-bottom:6px;">비워두면 기간 제한 없이 상시 등록 가능합니다.</div>
+        </div>
+      </div>` : ''}
     </div>
-
-    ${SESSION.role==='admin' ? `
-    <div class="card" style="margin-bottom:16px;">
-      <h3>등록 설정 (관리자 전용)</h3>
-      <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;">
-        <span class="toggle-switch">
-          <input type="checkbox" ${DB.giftcardRegistrationLocked ? 'checked' : ''} onchange="toggleGiftcardLockSetting(this.checked)">
-          <span class="slider"></span>
-        </span>
-        <span style="font-size:13.5px;">등록 일시 정지 ${DB.giftcardRegistrationLocked ? '(사용 중 - 매니저 등록이 막혀 있습니다)' : '(사용 안 함)'}</span>
-      </label>
-      <div class="form-row" style="align-items:flex-end;">
-        <div class="field">
-          <label>운영 시작일</label>
-          <input type="date" value="${DB.giftcardWindowStart||''}" onchange="updateGiftcardWindow('start', this.value)" style="width:160px">
-        </div>
-        <div class="field">
-          <label>운영 종료일</label>
-          <input type="date" value="${DB.giftcardWindowEnd||''}" onchange="updateGiftcardWindow('end', this.value)" style="width:160px">
-        </div>
-        <div class="small-note" style="margin-bottom:6px;">비워두면 기간 제한 없이 상시 등록 가능합니다.</div>
-      </div>
-    </div>` : ''}
 
     <div style="margin-bottom:14px;">
       ${boardWriteButtonHtml('gcWrite', '새 건 등록하기')}
@@ -11720,10 +11719,18 @@ function renderContestGiftTypeOptionAdmin(){
       <td style="white-space:nowrap;"><button class="btn btn-sm" onclick="startEditContestGiftTypeOption('${o.id}')">수정</button> <button class="btn btn-sm" onclick="deleteContestGiftTypeOption('${o.id}')">삭제</button></td>
     </tr>`;
   }).join('') || `<tr><td colspan="6" class="muted">등록된 항목이 없습니다.</td></tr>`;
+  // 2026.09: 관리자 전용 항목 관리 카드가 항상 펼쳐져 있어 매니저 눈에는 안 보여도 관리자
+  // 화면에서는 늘 등록폼 위를 차지했다. 다른 관리자 전용 섹션들과 동일하게 기본은 접어두고,
+  // 수정 중일 때만 자동으로 펼친다.
+  const isOpen = !!editId || !!(state.cgoOptionOpen);
   return `
     <div class="card" style="margin-bottom:16px;">
-      <h3>컨테스트 항목 관리 (관리자 전용)</h3>
-      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 구분 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다. 운영기간을 지정하면 그 기간이 지난 뒤에는 "새 건 등록" 선택지에서 자동으로 사라집니다(비워두면 상시 운영).</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleContestGiftTypeOptionOpen()">
+        <h3 style="margin:0;display:flex;align-items:center;gap:6px;"><i class="ti ti-settings" aria-hidden="true"></i> 컨테스트 항목 관리 (관리자 전용) <span class="muted" style="font-weight:400;font-size:12px;">(${list.length}개)</span></h3>
+        <i class="ti ti-chevron-${isOpen?'up':'down'}" aria-hidden="true"></i>
+      </div>
+      ${isOpen ? `
+      <div class="small-note" style="margin:10px 0;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 구분 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다. 운영기간을 지정하면 그 기간이 지난 뒤에는 "새 건 등록" 선택지에서 자동으로 사라집니다(비워두면 상시 운영).</div>
       <div class="form-row">
         <div class="field"><label>컨테스트 구분(항목명)</label><input id="cgoNewValue" placeholder="예: 구독 3건 계약 시" style="width:220px"></div>
         <div class="field"><label>사은품명</label><input id="cgoNewGift" placeholder="예: OOO 세트 1EA" style="width:220px"></div>
@@ -11753,7 +11760,12 @@ function renderContestGiftTypeOptionAdmin(){
         <thead><tr><th>컨테스트 구분</th><th>사은품명</th><th>수령 방식</th><th>한정수량</th><th>운영기간</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      ` : ''}
     </div>`;
+}
+function toggleContestGiftTypeOptionOpen(){
+  state.cgoOptionOpen = !state.cgoOptionOpen;
+  renderTab('collectContest');
 }
 function addContestGiftTypeOption(){
   if(SESSION.role!=='admin') return;
@@ -11950,20 +11962,34 @@ function renderCollectionNotice(key, tab){
   if(!hasContent){
     return `
     <div class="card" style="margin-bottom:16px;">
-      <div style="font-size:11.5px;font-weight:700;opacity:.7;">📌 공지</div>
+      <div style="font-size:11.5px;font-weight:700;opacity:.7;display:flex;align-items:center;gap:6px;"><i class="ti ti-speakerphone" aria-hidden="true"></i> 공지</div>
       <div class="muted" style="font-size:13px;margin-top:4px;">등록된 안내가 없습니다. 관리자만 등록할 수 있습니다.</div>
       ${editorControls}
     </div>`;
   }
+  // 2026.09: 공지 내용(사진/문구)이 길어지면 카드가 항상 펼쳐져 있어 표까지 스크롤을 많이
+  // 내려야 했다. 실행력 점검 사진 가이드와 동일하게 기본은 접어두고, 클릭하면 펼쳐서
+  // 확인할 수 있게 한다(관리자가 "수정" 중일 때는 편집창이 안 보이면 안 되므로 항상 펼침).
+  const isOpen = editing || !!(state.collectionNoticeOpen && state.collectionNoticeOpen[key]);
   return `
     <div class="card" style="margin-bottom:16px;">
-      <div style="font-size:11.5px;font-weight:700;opacity:.7;">📌 공지</div>
-      ${n.text ? `<div style="font-size:13.5px;line-height:1.7;margin-top:6px;">${richContentHtml(n.text)}</div>` : ''}
-      ${imagesHtml ? `<div class="attach-gallery" style="margin-top:${n.text?'12px':'6px'};">${imagesHtml}</div>` : ''}
-      ${imagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진은 클릭하면 확대, 그 외 파일은 클릭하면 다운로드됩니다.</div>` : ''}
-      ${editorControls}
-      ${viewActions}
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleCollectionNoticeOpen('${key}','${tab}')">
+        <div style="font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:6px;"><i class="ti ti-speakerphone" aria-hidden="true"></i> 공지</div>
+        <i class="ti ti-chevron-${isOpen?'up':'down'}" aria-hidden="true"></i>
+      </div>
+      ${isOpen ? `
+        ${n.text ? `<div style="font-size:13.5px;line-height:1.7;margin-top:6px;">${richContentHtml(n.text)}</div>` : ''}
+        ${imagesHtml ? `<div class="attach-gallery" style="margin-top:${n.text?'12px':'6px'};">${imagesHtml}</div>` : ''}
+        ${imagesHtml ? `<div class="muted" style="font-size:11px;margin-top:8px;">🔍 사진은 클릭하면 확대, 그 외 파일은 클릭하면 다운로드됩니다.</div>` : ''}
+        ${editorControls}
+        ${viewActions}
+      ` : ''}
     </div>`;
+}
+function toggleCollectionNoticeOpen(key, tab){
+  if(!state.collectionNoticeOpen) state.collectionNoticeOpen = {};
+  state.collectionNoticeOpen[key] = !state.collectionNoticeOpen[key];
+  renderTab(tab);
 }
 function renderCollectContest(){
   if(!state.cgSelectedIds) state.cgSelectedIds = new Set();
@@ -12517,10 +12543,15 @@ function renderSubTierContestOptionAdmin(){
       <td style="white-space:nowrap;"><button class="btn btn-sm" onclick="startEditSubTierContestOption('${o.id}')">수정</button> <button class="btn btn-sm" onclick="deleteSubTierContestOption('${o.id}')">삭제</button></td>
     </tr>`;
   }).join('') || `<tr><td colspan="6" class="muted">등록된 항목이 없습니다.</td></tr>`;
+  const isOpen = !!editId || !!(state.stcoOptionOpen);
   return `
     <div class="card" style="margin-bottom:16px;">
-      <h3>컨테스트 항목 관리 (관리자 전용)</h3>
-      <div class="small-note" style="margin-bottom:10px;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 항목 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다. 운영기간을 지정하면 그 기간이 지난 뒤에는 "새 건 등록" 선택지에서 자동으로 사라집니다(비워두면 상시 운영).</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="toggleSubTierContestOptionOpen()">
+        <h3 style="margin:0;display:flex;align-items:center;gap:6px;"><i class="ti ti-settings" aria-hidden="true"></i> 컨테스트 항목 관리 (관리자 전용) <span class="muted" style="font-weight:400;font-size:12px;">(${list.length}개)</span></h3>
+        <i class="ti ti-chevron-${isOpen?'up':'down'}" aria-hidden="true"></i>
+      </div>
+      ${isOpen ? `
+      <div class="small-note" style="margin:10px 0;">여기서 추가한 항목이 아래 "새 건 등록"의 컨테스트 항목 선택지에 바로 나타납니다. 항목을 삭제해도 이미 등록된 건은 그대로 유지되고, 새로 등록할 때만 선택할 수 없게 됩니다. 이미 등록한 항목의 내용이 바뀌면 "수정" 버튼으로 바로 고칠 수 있습니다. 운영기간을 지정하면 그 기간이 지난 뒤에는 "새 건 등록" 선택지에서 자동으로 사라집니다(비워두면 상시 운영).</div>
       <div class="form-row">
         <div class="field"><label>컨테스트 항목명</label><input id="stcoNewValue" placeholder="예: 워시타워 구재고 판매시" style="width:220px"></div>
         <div class="field"><label>사은품명</label><input id="stcoNewGift" placeholder="예: OOO 세트 1EA" style="width:220px"></div>
@@ -12550,7 +12581,12 @@ function renderSubTierContestOptionAdmin(){
         <thead><tr><th>컨테스트 항목</th><th>사은품명</th><th>수령 방식</th><th>한정수량</th><th>운영기간</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
+      ` : ''}
     </div>`;
+}
+function toggleSubTierContestOptionOpen(){
+  state.stcoOptionOpen = !state.stcoOptionOpen;
+  renderTab('subTierContest');
 }
 function addSubTierContestOption(){
   if(SESSION.role!=='admin') return;

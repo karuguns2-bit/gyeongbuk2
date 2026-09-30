@@ -563,7 +563,10 @@
   .board-plain h3{margin:0 0 6px;font-size:14px;}
   .board-plain .ai-box{background:#fff;border:1px solid var(--border);}
   .board-plain .ai-box .ai-title{color:var(--text);}
-  .board-plain .badge.good,.board-plain .badge.warn,.board-plain .badge.bad{background:#f2f2f4;color:var(--text);}
+  .board-plain .badge.good,.board-plain .badge.warn{background:#f2f2f4;color:var(--text);}
+  /* 2026.09: 공지사항 미확인 인원 명단은 "누가 아직 안 읽었는지" 눈에 띄어야 하는 경고
+     성격이라, 다른 배지처럼 회색으로 중화하지 않고 옅은 붉은 배경+붉은 글씨를 그대로 유지한다. */
+  .board-plain .badge.bad{background:#fdecec;color:var(--bad);}
   .board-plain .notice-banner{background:#fff;border:1px solid var(--border);color:var(--text);}
   .board-plain .like-btn-active{background:#fff0f3 !important;border-color:var(--primary) !important;color:var(--primary) !important;}
   /* 게시판 공통 "새 글 등록" 팝업 모달 */
