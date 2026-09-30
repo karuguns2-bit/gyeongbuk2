@@ -464,7 +464,8 @@
   .grid-2{grid-template-columns:repeat(2,1fr);}
   .grid-4{grid-template-columns:repeat(4,1fr);}
   .grid-5{grid-template-columns:repeat(5,1fr);}
-  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4,.grid-5{grid-template-columns:repeat(2,1fr);}}
+  .grid-6{grid-template-columns:repeat(6,1fr);}
+  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4,.grid-5,.grid-6{grid-template-columns:repeat(2,1fr);}}
   .sysadmin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:start;}
   .sysadmin-grid .sysadmin-span2{grid-column:span 2;}
   /* 카드마다 내용 길이가 달라 stretch만으로는 빈 여백이 생겨서, 아예 높이를 고정하고
@@ -528,6 +529,7 @@
   .home-plain .stat-tile{background:#fff;border:1px solid var(--border);color:var(--text);}
   .home-plain .stat-tile-blue,.home-plain .stat-tile-pink,.home-plain .stat-tile-purple,
   .home-plain .stat-tile-green,.home-plain .stat-tile-amber{background:#fff;color:var(--text);}
+  .home-plain .stat-tile-num{color:#111;}
   .home-plain #homeWidgetList{gap:10px;margin-bottom:0;}
   /* 이달의 지점 배지(좌) + 관리자별 배너 3종(우) 상단 행. PC에서는 2:1 비율로 나란히,
      화면이 좁아지면(태블릿/모바일) 배너 쪽이 찌그러지지 않도록 위아래로 쌓는다. */

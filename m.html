@@ -386,7 +386,8 @@
   .grid-2{grid-template-columns:repeat(2,1fr);}
   .grid-4{grid-template-columns:repeat(4,1fr);}
   .grid-5{grid-template-columns:repeat(5,1fr);}
-  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4,.grid-5{grid-template-columns:repeat(2,1fr);}}
+  .grid-6{grid-template-columns:repeat(6,1fr);}
+  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4,.grid-5,.grid-6{grid-template-columns:repeat(2,1fr);}}
   .sysadmin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:start;}
   .sysadmin-grid .sysadmin-span2{grid-column:span 2;}
   .sysadmin-grid .card{padding:12px 14px;display:flex;flex-direction:column;height:190px;overflow-y:auto;}
@@ -444,6 +445,7 @@
   .home-plain .stat-tile{background:#fff;border:1px solid var(--border);color:var(--text);}
   .home-plain .stat-tile-blue,.home-plain .stat-tile-pink,.home-plain .stat-tile-purple,
   .home-plain .stat-tile-green,.home-plain .stat-tile-amber{background:#fff;color:var(--text);}
+  .home-plain .stat-tile-num{color:#111;}
   .home-plain #homeWidgetList{gap:10px;margin-bottom:0;}
   /* 이달의 지점 배지(위) + 관리자별 배너 3종(아래). 모바일은 폭이 좁아 나란히 배치하면
      배너가 찌그러지므로 항상 위아래로 쌓는다(PC의 좌우 2:1 배치와 다름). */

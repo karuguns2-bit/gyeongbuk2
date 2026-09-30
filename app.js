@@ -3862,6 +3862,12 @@ function renderHome(){
   const homeSubRow = moDataFor().rows.find(r=>r.branchId===myBranch);
   const homeSubMerged = homeSubRow ? subMergedRow(homeSubRow) : null;
   const homeSubSpRate = homeSubMerged && homeSubMerged.m.s_sp_rate!=null ? homeSubMerged.m.s_sp_rate : null;
+  // 구독소상공인 누적건수: 지점별 누적 판매건수와 전 지점 평균을 비교해, 평균 미만 지점은
+  // ⓘ 아이콘에 마우스를 올리면 영업 독려 문구가 뜨도록 한다(house 패턴: .sysadmin-info/.sysadmin-tip 재사용).
+  const homeB2bQtyMap = subB2bBranchQtyMap();
+  const homeB2bMyQty = homeB2bQtyMap[myBranch] || 0;
+  const homeB2bAvg = DB.branches.length ? (DB.branches.reduce((s,b)=>s+(homeB2bQtyMap[b.id]||0),0) / DB.branches.length) : 0;
+  const homeB2bBelowAvg = homeB2bMyQty < homeB2bAvg;
   // 매니저/사원은 본인 소속 지점(myBranch)에 고정되어 있지만, "오늘 출근 현황" 카드만은 다른
   // 지점의 출근 현황도 조회할 수 있도록 카드 우측 상단에 별도 지점 선택을 둔다(관리자는 이미
   // 상단 전체 지점 pill로 페이지 전체를 전환할 수 있으므로, 카드에도 같은 목록을 띄워 관리자
@@ -3943,16 +3949,16 @@ function renderHome(){
       </div>
     </div>
     ${branchSelectorHtml}
-    <div class="grid ${(()=>{ const n = 3 + (homeCompBranch&&homeCompBranch.msPct!=null?1:0) + (homeSubSpRate!=null?1:0); return n>=5?'grid-5':n===4?'grid-4':'grid-3'; })()}" style="margin-bottom:10px;">
+    <div class="grid ${(()=>{ const n = 4 + (homeCompBranch&&homeCompBranch.msPct!=null?1:0) + (homeSubSpRate!=null?1:0); return n>=6?'grid-6':n===5?'grid-5':n===4?'grid-4':'grid-3'; })()}" style="margin-bottom:10px;">
       <div class="card stat-tile stat-tile-blue">
         <div class="stat-tile-label">이번 달 목표 <span style="font-weight:400;opacity:.8;">(MSIS실판매등록 기준 예상 목표치)</span></div>
-        <div class="stat-tile-num">${fmtWon(msisTarget)}</div>
+        <div class="stat-tile-num">${fmtKK(msisTarget)}</div>
         <div class="stat-tile-sub">${periodStr()} · ${branch?branch.name:''}</div>
       </div>
       <div class="card stat-tile stat-tile-pink">
         <div class="stat-tile-label">누적 실적</div>
-        <div class="stat-tile-num">${fmtWon(achieved)}</div>
-        <div class="stat-tile-sub">잔여 ${fmtWon(Math.max(msisTarget-achieved,0))}</div>
+        <div class="stat-tile-num">${fmtKK(achieved)}</div>
+        <div class="stat-tile-sub">잔여 ${fmtKK(Math.max(msisTarget-achieved,0))}</div>
       </div>
       <div class="card stat-tile ${pct>=100?'stat-tile-green':pct>=80?'stat-tile-amber':'stat-tile-pink'}">
         <div class="stat-tile-label">달성률 ${pctBadge(pct)}</div>
@@ -3969,10 +3975,15 @@ function renderHome(){
       </div>` : ''}
       ${homeSubSpRate!=null ? `
       <div class="card stat-tile ${homeSubSpRate>=100?'stat-tile-green':homeSubSpRate>=80?'stat-tile-amber':'stat-tile-pink'}">
-        <div class="stat-tile-label">지점 구독 실판 달성률 <span style="font-weight:400;opacity:.8;">([구독 실적] 기준)</span></div>
+        <div class="stat-tile-label">구독실판 달성율 <span style="font-weight:400;opacity:.8;">([구독 실적] 기준)</span></div>
         <div class="stat-tile-num">${homeSubSpRate.toFixed(1)}%</div>
         ${progressBarRunnerHtml(homeSubSpRate, {marginTop:8})}
       </div>` : ''}
+      <div class="card stat-tile ${homeB2bBelowAvg?'stat-tile-pink':'stat-tile-blue'}">
+        <div class="stat-tile-label">구독소상공인 ${homeB2bBelowAvg ? `<span class="sysadmin-info">ⓘ<span class="sysadmin-tip">구독소상공인판촉 활용율이 타지점 比 저조합니다. 외부 영업활동 및 온라인홍보 활동 등 적극적인 영업활동 부탁드립니다.</span></span>` : ''}</div>
+        <div class="stat-tile-num">${homeB2bMyQty}건</div>
+        <div class="stat-tile-sub">평균 ${homeB2bAvg.toFixed(1)}건</div>
+      </div>
     </div>
 
     ${renderHomeWidgetSection(homeWidgetHtmlByKey)}
@@ -9307,6 +9318,13 @@ function rateBadgeKK(rate){
    8c. RENDER: 구독 소상공인 판매건 등록 (지점별/월별/등록자별 자동 집계)
    ========================================================================= */
 function subB2bMonthKey(dateStr){ return String(dateStr||'').slice(0,7); }
+// 홈 대시보드의 "구독소상공인 누적건수" 카드용 - 지점별 누적 판매건수(qty 합)를 표시 전용으로
+// 집계한다(저장/수정 로직과 무관, 전체 DB.subB2bSales를 읽기만 함).
+function subB2bBranchQtyMap(){
+  const m = {};
+  (DB.subB2bSales||[]).forEach(r=>{ m[r.branchId] = (m[r.branchId]||0) + (r.qty||0); });
+  return m;
+}
 // 등록자 본인뿐 아니라 같은 지점 소속 매니저도 수정/삭제할 수 있어야 한다 (지점 공동 업무이므로 -
 // canEditSchedule/canEditKakaoFriends와 동일한 지점 단위 권한 기준).
 function canEditSubB2bSale(r){
