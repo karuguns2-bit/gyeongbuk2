@@ -3470,9 +3470,9 @@ function homeManagerTrophyRowHtml(summary, valueKey, fmtFn){
   const n = sorted.length;
   // 인원수별 크기 배율(3명 이하/6명 이하/그 이상) - 칩이 카드 남는 높이를 꽉 채우도록
   // flex:1로 늘어나므로, 인원수가 적을수록 아이콘/글자를 크게 잡는다.
-  const sizes = n<=3 ? {icon:22,name:13,val:12,radius:8}
-    : n<=6 ? {icon:17,name:11,val:10.5,radius:7}
-    : {icon:13,name:9.5,val:9,radius:6};
+  const sizes = n<=3 ? {icon:28,name:15,val:14,radius:8}
+    : n<=6 ? {icon:21,name:13,val:12,radius:7}
+    : {icon:16,name:11,val:10.5,radius:6};
   const chips = sorted.map((m,i)=>{
     const v = m[valueKey]||0;
     const iconColor = i===0 ? 'var(--primary)' : '#999';
