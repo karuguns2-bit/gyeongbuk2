@@ -5589,25 +5589,33 @@ function closeNoticeForm(){
   renderTab('home');
 }
 function renderNoticeForm(){
+  // 2026-09-30: 홈 대시보드 공지 티커의 "+ 공지 작성" 버튼을 눌렀을 때 카드가 페이지 안에
+  // 인라인으로 끼어드는 대신, 다른 취합 페이지들과 같은 팝업(모달) 방식으로 뜨도록 바꿨다.
+  // 이미 있던 .board-modal-overlay/.board-modal-box 스타일을 그대로 재사용한다.
   const editing = state.noticeEditId ? DB.notices.find(n=>n.id===state.noticeEditId) : null;
   return `
-    <div class="card notice-form-card" style="margin-bottom:16px;">
-      <h3>${editing ? '공지 수정' : '새 공지 작성'}</h3>
-      <div class="form-row">
-        <div class="field" style="flex:1;min-width:240px;">
-          <label>제목</label>
-          <input id="noticeTitleInput" style="width:100%" value="${editing?escapeHtml(editing.title):''}" placeholder="공지 제목">
+    <div class="board-modal-overlay" style="display:flex;" onclick="if(event.target===this) closeNoticeForm()">
+      <div class="board-modal-box" onclick="event.stopPropagation()">
+        <div class="flex-between" style="margin-bottom:10px;">
+          <div style="font-weight:800;font-size:15px;">${editing ? '공지 수정' : '새 공지 작성'}</div>
+          <span class="muted" style="cursor:pointer;font-size:20px;line-height:1;" onclick="closeNoticeForm()">×</span>
         </div>
-      </div>
-      <div class="form-row">
-        <div class="field" style="flex:1;">
-          <label>내용</label>
-          ${richEditorHtml('noticeContentInput', editing?richContentHtml(editing.content):'', '공지 내용을 입력하세요', 110)}
+        <div class="form-row">
+          <div class="field" style="flex:1;min-width:240px;">
+            <label>제목</label>
+            <input id="noticeTitleInput" style="width:100%" value="${editing?escapeHtml(editing.title):''}" placeholder="공지 제목">
+          </div>
         </div>
-      </div>
-      <div class="form-row">
-        <button class="btn btn-primary" onclick="saveNotice()">${editing?'저장':'등록'}</button>
-        <button class="btn" onclick="closeNoticeForm()">취소</button>
+        <div class="form-row">
+          <div class="field" style="flex:1;">
+            <label>내용</label>
+            ${richEditorHtml('noticeContentInput', editing?richContentHtml(editing.content):'', '공지 내용을 입력하세요', 110)}
+          </div>
+        </div>
+        <div class="form-row">
+          <button class="btn btn-primary" onclick="saveNotice()">${editing?'저장':'등록'}</button>
+          <button class="btn" onclick="closeNoticeForm()">취소</button>
+        </div>
       </div>
     </div>
   `;
