@@ -3605,28 +3605,30 @@ function renderHomeIncentiveRefWidget(branchId){
   const row = (moEntry.rows||[]).find(r=>r.branchId===branchId);
   if(!row) return '';
   const m = row.m;
-  const total = incBranchTotal(m);
-  const gradeSum = m.inc_gradeSum||0;
+  const expectedAmt = m.inc_expectedAmt||0;
+  // Grade수당 계: 인터비즈 파일의 "인센티브" 시트 Grade수당계 칸(inc_gradeSum)이 아직 전 지점
+  // 0으로 올라오고 있어(2026-09 확인), 실제 시상금이 들어있는 매니저별 "구독 Grade 수당"
+  // 업로드(별도 표, incGradeRecordsForBranch)의 gradeAmt 합계를 대신 쓴다.
+  const gradeRecords = incGradeRecordsForBranch(row.branchName);
+  const gradeSum = (gradeRecords||[]).reduce((a,r)=>a+(r.gradeAmt||0),0);
   const flatSum = incFlatSum(m);
   const subSum = m.inc_subAllowanceTotal||0;
+  const total = expectedAmt + gradeSum + flatSum + subSum;
+  const tileHtml = (label, val)=>`
+        <div class="card" style="padding:8px 6px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:56px;">
+          <div class="muted" style="font-size:11.5px;">${label}</div>
+          <div style="font-size:16px;font-weight:800;">${moFmtWonRaw(val)}</div>
+        </div>`;
   return `
     <div class="card" style="padding:10px 12px;">
       <h3 style="margin-bottom:2px;"><i class="ti ti-coin" aria-hidden="true"></i> 인센티브 참고 <small>(${escapeHtml(row.branchName)} · [지점별 인센티브(참고용)] 기준)</small></h3>
       <div style="font-size:20px;font-weight:800;color:var(--primary);margin-top:2px;">${moFmtWonRaw(total)}</div>
-      <div class="muted" style="font-size:11px;margin-top:1px;">목표달성 ${moFmtWonRaw(m.inc_expectedAmt)} 포함 인센티브 합계</div>
-      <div class="grid grid-3" style="gap:8px;margin-top:8px;">
-        <div class="card" style="padding:8px;text-align:center;">
-          <div class="muted" style="font-size:10.5px;">Grade수당 계</div>
-          <div style="font-size:14px;font-weight:800;margin-top:2px;">${moFmtWonRaw(gradeSum)}</div>
-        </div>
-        <div class="card" style="padding:8px;text-align:center;">
-          <div class="muted" style="font-size:10.5px;">일시불 수당 계</div>
-          <div style="font-size:14px;font-weight:800;margin-top:2px;">${moFmtWonRaw(flatSum)}</div>
-        </div>
-        <div class="card" style="padding:8px;text-align:center;">
-          <div class="muted" style="font-size:10.5px;">구독수당 계</div>
-          <div style="font-size:14px;font-weight:800;margin-top:2px;">${moFmtWonRaw(subSum)}</div>
-        </div>
+      <div class="muted" style="font-size:11px;margin-top:1px;">아래 4개 항목의 합계</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px;">
+        ${tileHtml('목표달성 인센티브', expectedAmt)}
+        ${tileHtml('Grade수당 계', gradeSum)}
+        ${tileHtml('일시불 수당 계', flatSum)}
+        ${tileHtml('구독수당 계', subSum)}
       </div>
       <div class="small-note" style="margin-top:6px;">※ 참고용 수치이며 실제 지급액과 차이가 있을 수 있습니다. 매니저별 상세 Grade 수당은 [지점별 인센티브(참고용)] 페이지에서 확인하세요.</div>
     </div>`;
