@@ -4088,9 +4088,8 @@ function renderHome(){
   };
 
   return `
-    <div class="page-title">홈 대시보드</div>
-    <div class="page-desc" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <span style="white-space:nowrap;">${branch?branch.name:''} · ${todayStr()} 기준</span>
+    <div class="page-title" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <span>홈 대시보드</span>
       ${renderHomeNoticeTicker()}
       ${homeQuickLinksHtml()}
     </div>
@@ -5028,13 +5027,13 @@ const HOME_QUICK_LINKS = [
 ];
 function homeQuickLinksHtml(){
   const btns = HOME_QUICK_LINKS.map(l=>`
-    <a href="${l.url}" target="_blank" rel="noopener" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:62px;height:52px;flex:0 0 auto;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);text-decoration:none;">
-      <i class="ti ti-external-link" aria-hidden="true" style="font-size:17px;"></i>
-      <span style="font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:56px;">${escapeHtml(l.label)}</span>
+    <a href="${l.url}" target="_blank" rel="noopener" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;width:80px;height:64px;flex:0 0 auto;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);text-decoration:none;">
+      <i class="ti ti-external-link" aria-hidden="true" style="font-size:20px;"></i>
+      <span style="font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:72px;">${escapeHtml(l.label)}</span>
     </a>`).join('');
-  return `<div style="margin-left:4px;border:1px solid var(--border);border-radius:10px;padding:6px 8px 5px;display:flex;flex-direction:column;gap:4px;">
-      <div style="font-size:9.5px;color:var(--text-sub);font-weight:700;white-space:nowrap;">다른 업무 사이트 바로가기</div>
-      <div style="display:flex;flex-wrap:nowrap;gap:6px;">${btns}</div>
+  return `<div style="margin-left:4px;border:1px solid var(--border);border-radius:10px;padding:7px 10px 6px;display:flex;flex-direction:column;gap:5px;">
+      <div style="font-size:10.5px;color:var(--text-sub);font-weight:700;white-space:nowrap;">다른 업무 사이트 바로가기</div>
+      <div style="display:flex;flex-wrap:nowrap;gap:8px;">${btns}</div>
     </div>`;
 }
 function renderHomeNoticeTicker(){
