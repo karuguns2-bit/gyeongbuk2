@@ -3472,15 +3472,31 @@ function goalsManagerSummary(period){
 // 2026.09: 이달의 지점 배지 카드 우측에 관리자별 배너 3종(목표달성/합산경쟁력/구독달성율)을
 // 세로로 쌓아 넣으면서, 원래의 큰 stat-tile 카드 형태는 좁은 컬럼 폭에서 세로로 계속 줄바꿈되어
 // 오히려 스크롤이 늘어났다. 같은 데이터를 한 줄 요약(관리자 · 수치)로 압축한 컴팩트 카드로 바꾼다.
+// 관리자 배너 3종 공통: 이름/수치 옆에 얇은 진행률 바를 붙인다. 같은 배너 안 관리자들의
+// 최댓값 대비 상대폭으로 그려 좁은 우측 컬럼에서도 비교가 한눈에 들어오게 한다.
+// colorFn(value)이 있으면 그 값으로 막대 색을, 없으면 항상 강조색(--primary)을 쓴다.
+function homeManagerBarRowsHtml(summary, valueKey, fmtFn, colorFn){
+  const maxV = Math.max(...summary.map(m=>Math.abs(m[valueKey])||0), 0.0001);
+  return summary.map(m=>{
+    const v = m[valueKey]||0;
+    const color = colorFn ? colorFn(v) : 'var(--primary)';
+    const w = Math.max(4, Math.min(100, Math.abs(v)/maxV*100));
+    return `<div style="margin-bottom:3px;">
+      <div style="display:flex;justify-content:space-between;font-size:11.5px;line-height:1.3;"><span style="font-weight:700;">${escapeHtml(m.manager)}</span><span>${fmtFn(v)}</span></div>
+      <div style="height:4px;background:var(--border,#eee);border-radius:2px;margin-top:1px;"><div style="height:100%;width:${w}%;background:${color};border-radius:2px;"></div></div>
+    </div>`;
+  }).join('');
+}
+function homeAchievementBarColor(v){ return v>=100?'var(--primary)':(v>=80?'#e0a03c':'#999'); }
 function renderHomeGoalsManagerBanner(){
   const period = currentGoalsPeriod();
   const summary = goalsManagerSummary(period);
   if(summary.length===0) return '';
-  const line = summary.map(m=>`<span style="font-weight:700;">${escapeHtml(m.manager)}</span> ${m.pct.toFixed(1)}%`).join(' <span class="muted">·</span> ');
+  const rows = homeManagerBarRowsHtml(summary, 'pct', v=>v.toFixed(1)+'%', homeAchievementBarColor);
   return `
-    <div class="card" style="padding:8px 10px;">
-      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-users" aria-hidden="true"></i> 관리자별 목표 달성 현황</div>
-      <div style="font-size:12.5px;line-height:1.6;">${line}</div>
+    <div class="card" style="padding:8px 10px;flex:1;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-users" aria-hidden="true"></i> 관리자별 목표 달성 현황</div>
+      <div>${rows}</div>
     </div>`;
 }
 // 지점별 경쟁력(msis경쟁력 시트) 조회 — 월별 히스토리(DB.competitivenessHistory)에서 먼저 찾고,
@@ -3544,11 +3560,11 @@ function renderHomeManagerCompetitivenessBanner(){
   const period = currentGoalsPeriod();
   const summary = competManagerSummary(period);
   if(summary.length===0) return '';
-  const line = summary.map(m=>`<span style="font-weight:700;">${escapeHtml(m.manager)}</span> MS ${m.msPct}%`).join(' <span class="muted">·</span> ');
+  const rows = homeManagerBarRowsHtml(summary, 'msPct', v=>'MS '+v+'%');
   return `
-    <div class="card" style="padding:8px 10px;">
-      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-trophy" aria-hidden="true"></i> 관리자별 합산 경쟁력</div>
-      <div style="font-size:12.5px;line-height:1.6;">${line}</div>
+    <div class="card" style="padding:8px 10px;flex:1;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-trophy" aria-hidden="true"></i> 관리자별 합산 경쟁력</div>
+      <div>${rows}</div>
     </div>`;
 }
 // 구독 실적 페이지의 "관리자별 목표대비 달성율" 차트와 같은 데이터(구독 실판 달성률)를 홈에서도
@@ -3563,11 +3579,11 @@ function homeSubManagerRateSummary(){
 function renderHomeSubManagerRateBanner(){
   const summary = homeSubManagerRateSummary();
   if(summary.length===0) return '';
-  const line = summary.map(m=>`<span style="font-weight:700;">${escapeHtml(m.manager)}</span> ${m.rate.toFixed(1)}%`).join(' <span class="muted">·</span> ');
+  const rows = homeManagerBarRowsHtml(summary, 'rate', v=>v.toFixed(1)+'%', homeAchievementBarColor);
   return `
-    <div class="card" style="padding:8px 10px;">
-      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-refresh" aria-hidden="true"></i> 관리자별 구독 목표대비 달성율</div>
-      <div style="font-size:12.5px;line-height:1.6;">${line}</div>
+    <div class="card" style="padding:8px 10px;flex:1;display:flex;flex-direction:column;justify-content:center;">
+      <div style="font-size:11px;font-weight:700;color:var(--text-sub);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-refresh" aria-hidden="true"></i> 관리자별 구독 목표대비 달성율</div>
+      <div>${rows}</div>
     </div>`;
 }
 // 홈 대시보드 - 개인화 가능한 위젯 목록(교육 안내/근무 일정/AI 분석 피드백). 순서는 항상
@@ -3590,14 +3606,29 @@ function renderHomeIncentiveRefWidget(branchId){
   if(!row) return '';
   const m = row.m;
   const total = incBranchTotal(m);
-  const records = incGradeRecordsForBranch(row.branchName);
+  const gradeSum = m.inc_gradeSum||0;
+  const flatSum = incFlatSum(m);
+  const subSum = m.inc_subAllowanceTotal||0;
   return `
-    <div class="card">
-      <h3><i class="ti ti-coin" aria-hidden="true"></i> 인센티브 참고 <small>(${escapeHtml(row.branchName)} · [지점별 인센티브(참고용)] 기준)</small></h3>
-      <div style="font-size:20px;font-weight:800;color:var(--primary);margin-top:4px;">${moFmtWonRaw(total)}</div>
-      <div class="muted" style="font-size:11.5px;margin-top:2px;">목표달성 ${moFmtWonRaw(m.inc_expectedAmt)} · Grade ${moFmtWonRaw(m.inc_gradeSum)} · 제품수당(일시불+구독) ${moFmtWonRaw(incFlatSum(m)+(m.inc_subAllowanceTotal||0))}</div>
-      <div style="margin-top:8px;">${incGradeTableHtml(records, row.branchName)}</div>
-      <div class="small-note" style="margin-top:6px;">※ 참고용 수치이며 실제 지급액과 차이가 있을 수 있습니다. 더 자세한 내역은 [지점별 인센티브(참고용)] 페이지에서 확인하세요.</div>
+    <div class="card" style="padding:10px 12px;">
+      <h3 style="margin-bottom:2px;"><i class="ti ti-coin" aria-hidden="true"></i> 인센티브 참고 <small>(${escapeHtml(row.branchName)} · [지점별 인센티브(참고용)] 기준)</small></h3>
+      <div style="font-size:20px;font-weight:800;color:var(--primary);margin-top:2px;">${moFmtWonRaw(total)}</div>
+      <div class="muted" style="font-size:11px;margin-top:1px;">목표달성 ${moFmtWonRaw(m.inc_expectedAmt)} 포함 인센티브 합계</div>
+      <div class="grid grid-3" style="gap:8px;margin-top:8px;">
+        <div class="card" style="padding:8px;text-align:center;">
+          <div class="muted" style="font-size:10.5px;">Grade수당 계</div>
+          <div style="font-size:14px;font-weight:800;margin-top:2px;">${moFmtWonRaw(gradeSum)}</div>
+        </div>
+        <div class="card" style="padding:8px;text-align:center;">
+          <div class="muted" style="font-size:10.5px;">일시불 수당 계</div>
+          <div style="font-size:14px;font-weight:800;margin-top:2px;">${moFmtWonRaw(flatSum)}</div>
+        </div>
+        <div class="card" style="padding:8px;text-align:center;">
+          <div class="muted" style="font-size:10.5px;">구독수당 계</div>
+          <div style="font-size:14px;font-weight:800;margin-top:2px;">${moFmtWonRaw(subSum)}</div>
+        </div>
+      </div>
+      <div class="small-note" style="margin-top:6px;">※ 참고용 수치이며 실제 지급액과 차이가 있을 수 있습니다. 매니저별 상세 Grade 수당은 [지점별 인센티브(참고용)] 페이지에서 확인하세요.</div>
     </div>`;
 }
 function homeWidgetOrderedKeys(){
