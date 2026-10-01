@@ -3235,7 +3235,7 @@ function renderHomeBranchBadges(){
         .bbadge-count-extra{ font-size:8.5px; font-weight:700; color:#e23b3b; margin-left:1px; }
         @keyframes bbadgeStarBlink{ 0%,100%{ opacity:1; } 50%{ opacity:0.35; } }
         .bbadge-outer{ display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; }
-        .bbadge-leftcol{ flex:0 1 auto; min-width:300px; }
+        .bbadge-leftcol{ flex:0 0 250px; }
         .bbadge-medals{
           display:grid; grid-template-columns:repeat(4,58px); justify-content:flex-start; gap:6px 2px;
           padding:2px 2px 0;
