@@ -3221,7 +3221,7 @@ function renderHomeBranchBadges(){
         .bbadge-outer{ display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; }
         .bbadge-leftcol{ flex:0 1 auto; min-width:300px; }
         .bbadge-medals{
-          display:grid; grid-template-columns:repeat(4,1fr); gap:6px 4px;
+          display:grid; grid-template-columns:repeat(4,58px); justify-content:flex-start; gap:6px 2px;
           padding:2px 2px 0;
         }
         .bbadge-rankpanel{ flex:1 1 220px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:9px; padding:5px 6px; display:flex; flex-direction:column; }
