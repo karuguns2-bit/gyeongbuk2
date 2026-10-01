@@ -3194,14 +3194,14 @@ function renderHomeBranchBadges(){
         .bbadge-item{ text-align:center; width:auto; }
         .bbadge-flatcard{
           position:relative; width:40px; height:40px; margin:4px auto 0; border-radius:10px;
-          background:#fff; border:2px solid var(--border); display:flex; align-items:center; justify-content:center;
+          background:#fff; border:2px solid var(--border); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1px;
           transition:transform .2s ease, border-color .2s ease;
         }
         .bbadge-item:hover .bbadge-flatcard{ transform:translateY(-3px); }
         .bbadge-flatcard.won{ border-color:var(--primary); }
         .bbadge-flatcard.locked{ background:#fafafa; }
         .bbadge-flaticon{ display:flex; }
-        .bbadge-flaticon i{ font-size:19px; color:#c7c8cc; }
+        .bbadge-flaticon i{ font-size:16px; color:#c7c8cc; }
         .bbadge-flatcard.won .bbadge-flaticon i{ color:var(--primary); }
         .bbadge-stars{ position:absolute; top:-9px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:8px; z-index:5; }
         .bbadge-stars i.ti{ color:var(--primary); }
@@ -3209,9 +3209,9 @@ function renderHomeBranchBadges(){
         .bbadge-item.bbadge-won .bbadge-branch{ color:var(--text); }
         .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:10px; }
         .bbadge-total{ font-size:8.5px; font-weight:700; color:var(--primary); white-space:nowrap; }
-        .bbadge-count-stars{ position:absolute; bottom:-6px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:6.5px; line-height:1; z-index:5; display:flex; align-items:center; gap:0.5px; }
-        .bbadge-count-stars i.ti-star{ color:var(--primary); font-size:6.5px; }
-        .bbadge-count-extra{ font-size:6.5px; font-weight:700; color:var(--primary); margin-left:1px; }
+        .bbadge-count-stars{ white-space:nowrap; line-height:1; display:flex; align-items:center; gap:0.5px; }
+        .bbadge-count-stars i.ti-star{ color:var(--primary); font-size:9.5px; }
+        .bbadge-count-extra{ font-size:8.5px; font-weight:700; color:var(--primary); margin-left:1px; }
         .bbadge-outer{ display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; }
         .bbadge-leftcol{ flex:0 1 auto; min-width:300px; }
         .bbadge-medals{
