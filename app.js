@@ -2973,13 +2973,19 @@ function renderHomeManagerBadges(){
   const streaks = (DB.managerBadgeStreaks && DB.managerBadgeStreaks.lastWinner) || {};
   const results = MANAGER_BADGE_CATEGORIES.map(cat=>{
     const winners = managerBadgeWinner(cat, period);
-    if(winners.length===0) return { cat, winners:[], streakByEmp:{} };
+    // 전월 수상자는 이번 달 1위 여부와 무관하게 "2연속 달성을 위한 참고 지표"로 항상 보여줘야
+    // 하므로, 이번 달 1위가 없는(미정) 종목에서도 lastArr는 먼저 계산해둔다.
     const lastArr = streaks[cat.id] || [];
+    const prevNames = lastArr.map(w=>{
+      const u = (DB.users||[]).find(x=>x.empId===w.empId);
+      return u ? u.name : w.empId;
+    });
+    if(winners.length===0) return { cat, winners:[], streakByEmp:{}, prevNames };
     const lastByEmp = {};
     lastArr.forEach(w=>{ lastByEmp[w.empId] = w.streak; });
     const streakByEmp = {};
     winners.forEach(w=>{ streakByEmp[w.empId] = lastByEmp[w.empId] ? lastByEmp[w.empId]+1 : 1; });
-    return { cat, winners, streakByEmp };
+    return { cat, winners, streakByEmp, prevNames };
   });
   const cardsHtml = results.map(r=>{
     const cat = r.cat;
@@ -3006,6 +3012,8 @@ function renderHomeManagerBadges(){
     const totalCount = (won && !isTie) ? managerBadgeTotalCount(cat.id, winners[0].empId, true) : 0;
     const countStarsHtml = bbadgeCountStarsHtml(totalCount);
     const streakLabelHtml = stars>0 ? `<div class="bbadge-streak-label">${maxStreak}개월 연속</div>` : '';
+    const prevNames = r.prevNames || [];
+    const prevLabelHtml = `<div class="bbadge-prev-label">전월 ${prevNames.length>0 ? escapeHtml(prevNames.join(' · ')) : '-'}</div>`;
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
         <div class="bbadge-flatcard ${won?'won':'locked'}">
@@ -3016,6 +3024,7 @@ function renderHomeManagerBadges(){
         <div class="bbadge-branch">${mgrName}</div>
         <div class="bbadge-title-label">${cat.label}</div>
         ${streakLabelHtml}
+        ${prevLabelHtml}
       </div>`;
   }).join('');
   // 카드를 따로 만들지 않고, 지점 배지 카드 안 좌측 영역(랭킹 패널보다 낮아 남는 여백)에
@@ -3085,13 +3094,16 @@ function renderHomeBranchBadges(){
   const streaks = (DB.branchBadgeStreaks && DB.branchBadgeStreaks.lastWinner) || {};
   const results = BRANCH_BADGE_CATEGORIES.map(cat=>{
     const winners = branchBadgeWinner(cat, period);
-    if(winners.length===0) return { cat, winners:[], streakByBranch:{} };
+    // 전월 수상 지점은 이번 달 1위 여부와 무관하게 "2연속 달성을 위한 참고 지표"로 항상
+    // 보여줘야 하므로, 이번 달 1위가 없는(미정) 종목에서도 lastArr는 먼저 계산해둔다.
     const lastArr = streaks[cat.id] || [];
+    const prevNames = lastArr.map(w=>branchName(w.branchId));
+    if(winners.length===0) return { cat, winners:[], streakByBranch:{}, prevNames };
     const lastByBranch = {};
     lastArr.forEach(w=>{ lastByBranch[w.branchId] = w.streak; });
     const streakByBranch = {};
     winners.forEach(w=>{ streakByBranch[w.branchId] = lastByBranch[w.branchId] ? lastByBranch[w.branchId]+1 : 1; });
-    return { cat, winners, streakByBranch };
+    return { cat, winners, streakByBranch, prevNames };
   });
   const withWinner = results.filter(r=>r.winners.length>0);
   // 그랜드슬램: 지점 배지가 11개로 늘어나면서 "전 종목 동시 1위"는 사실상 불가능에 가까워져서,
@@ -3123,6 +3135,8 @@ function renderHomeBranchBadges(){
     const totalCount = (won && !isTie) ? branchBadgeTotalCount(r.cat.id, winners[0].branchId, true) : 0;
     const countStarsHtml = bbadgeCountStarsHtml(totalCount);
     const streakLabelHtml = stars>0 ? `<div class="bbadge-streak-label">${maxStreak}개월 연속</div>` : '';
+    const prevNames = r.prevNames || [];
+    const prevLabelHtml = `<div class="bbadge-prev-label">전월 ${prevNames.length>0 ? escapeHtml(prevNames.join(' · ')) : '-'}</div>`;
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
         <div class="bbadge-flatcard ${won?'won':'locked'}">
@@ -3133,6 +3147,7 @@ function renderHomeBranchBadges(){
         <div class="bbadge-branch">${branchNm}</div>
         <div class="bbadge-title-label">${r.cat.label}</div>
         ${streakLabelHtml}
+        ${prevLabelHtml}
       </div>`;
   }).join('');
   // 2026.09: 그랜드슬램 배지는 지점 배지 4x3 그리드에서 빼고(고정 12칸 유지), 대신 아래
@@ -3213,6 +3228,7 @@ function renderHomeBranchBadges(){
         .bbadge-item.bbadge-won .bbadge-branch{ color:var(--text); }
         .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:10px; }
         .bbadge-streak-label{ font-size:7.5px; font-weight:700; color:var(--primary); line-height:1.1; margin-top:0px; white-space:nowrap; }
+        .bbadge-prev-label{ font-size:7px; font-weight:500; color:var(--text-sub); line-height:1.1; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0.85; }
         .bbadge-total{ font-size:8.5px; font-weight:700; color:var(--primary); white-space:nowrap; }
         .bbadge-count-stars{ white-space:nowrap; line-height:1; display:flex; align-items:center; gap:0.5px; }
         .bbadge-count-stars i.ti-star-filled{ color:#e23b3b; font-size:9.5px; animation:bbadgeStarBlink 1.4s ease-in-out infinite; }
