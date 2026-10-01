@@ -5102,7 +5102,7 @@ function renderHomeNoticeTicker(){
       .nb-ticker-track{ display:inline-flex; align-items:center; white-space:nowrap; position:absolute; left:0; top:50%; transform:translateY(-50%); line-height:1; }
       .nb-ticker-track.nb-ticker-scroll{ animation:nbTickerScroll 30s linear infinite; }
       .nb-ticker:hover .nb-ticker-track.nb-ticker-scroll{ animation-play-state:paused; }
-      @keyframes nbTickerScroll{ 0%{ transform:translateX(0); } 100%{ transform:translateX(-50%); } }
+      @keyframes nbTickerScroll{ 0%{ transform:translate(0,-50%); } 100%{ transform:translate(-50%,-50%); } }
       .nb-ticker-item{ font-size:12.5px; font-weight:600; color:var(--text); cursor:pointer; padding:0 4px; }
       .nb-ticker-item:hover{ color:var(--primary); text-decoration:underline; }
       .nb-ticker-sep{ color:var(--border); margin:0 4px; }
