@@ -2952,6 +2952,18 @@ function finalizeManagerBadgesIfNeeded(){
   }
   return changed;
 }
+// 배지 아래 "×N" 텍스트 대신, 배지 카드 안에 누적 획득 횟수만큼 별(★) 아이콘을 보여준다.
+// 기존 앱에서 쓰는 모노톤 Tabler 별 아이콘(ti-star)을 그대로 재사용 — 컬러 이모지 사용 금지.
+// 5개 초과분은 "+N"으로 요약 표기. 기존 연속우승 스트릭 별(.bbadge-stars, 카드 상단 오버레이)과는
+// 다른 요소이므로 별도 클래스(.bbadge-count-stars)를 사용한다.
+function bbadgeCountStarsHtml(totalCount){
+  if(!totalCount || totalCount<=0) return '';
+  const shown = Math.min(totalCount, 5);
+  const extra = totalCount - shown;
+  const starsRepeated = '<i class="ti ti-star" aria-hidden="true"></i>'.repeat(shown);
+  const extraTag = extra>0 ? `<span class="bbadge-count-extra">+${extra}</span>` : '';
+  return `<div class="bbadge-count-stars">${starsRepeated}${extraTag}</div>`;
+}
 function managerBadgeTotalCount(catId, empId, includingThisMonth){
   const base = (DB.managerBadgeTotals && DB.managerBadgeTotals[catId] && DB.managerBadgeTotals[catId][empId]) || 0;
   return base + (includingThisMonth ? 1 : 0);
@@ -2992,16 +3004,16 @@ function renderHomeManagerBadges(){
     // 공동 수상일 때는 사람마다 누적 횟수가 다를 수 있어 하나의 숫자로 뭉뚱그리지 않고 생략한다
     // (자세한 누적 횟수는 마우스오버 툴팁에서 확인 가능).
     const totalCount = (won && !isTie) ? managerBadgeTotalCount(cat.id, winners[0].empId, true) : 0;
-    const totalTag = totalCount>0 ? ` <span class="bbadge-total">×${totalCount}</span>` : '';
-    const subLabel = `${cat.label}${totalTag}`;
+    const countStarsHtml = bbadgeCountStarsHtml(totalCount);
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
         <div class="bbadge-flatcard ${won?'won':'locked'}">
           ${starsHtml}
           <span class="bbadge-flaticon"><i class="ti ${bbadgeTablerIcon(cat.svg)}" aria-hidden="true"></i></span>
+          ${countStarsHtml}
         </div>
         <div class="bbadge-branch">${mgrName}</div>
-        <div class="bbadge-title-label">${subLabel}</div>
+        <div class="bbadge-title-label">${cat.label}</div>
       </div>`;
   }).join('');
   // 카드를 따로 만들지 않고, 지점 배지 카드 안 좌측 영역(랭킹 패널보다 낮아 남는 여백)에
@@ -3107,15 +3119,16 @@ function renderHomeBranchBadges(){
       : `${r.cat.label}(${r.cat.desc}) · 이번 달은 아직 1위가 없습니다`;
     // 공동 수상이면 지점마다 누적 횟수가 달라질 수 있어 숫자 하나로 뭉뚱그리지 않고 생략한다.
     const totalCount = (won && !isTie) ? branchBadgeTotalCount(r.cat.id, winners[0].branchId, true) : 0;
-    const totalTag = totalCount>0 ? ` <span class="bbadge-total">×${totalCount}</span>` : '';
+    const countStarsHtml = bbadgeCountStarsHtml(totalCount);
     return `
       <div class="bbadge-item${won?' bbadge-won':''}" title="${tooltip}">
         <div class="bbadge-flatcard ${won?'won':'locked'}">
           ${starsHtml}
           <span class="bbadge-flaticon"><i class="ti ${bbadgeTablerIcon(r.cat.svg)}" aria-hidden="true"></i></span>
+          ${countStarsHtml}
         </div>
         <div class="bbadge-branch">${branchNm}</div>
-        <div class="bbadge-title-label">${r.cat.label}${totalTag}</div>
+        <div class="bbadge-title-label">${r.cat.label}</div>
       </div>`;
   }).join('');
   // 2026.09: 그랜드슬램 배지는 지점 배지 4x3 그리드에서 빼고(고정 12칸 유지), 대신 아래
@@ -3196,6 +3209,9 @@ function renderHomeBranchBadges(){
         .bbadge-item.bbadge-won .bbadge-branch{ color:var(--text); }
         .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:10px; }
         .bbadge-total{ font-size:8.5px; font-weight:700; color:var(--primary); white-space:nowrap; }
+        .bbadge-count-stars{ position:absolute; bottom:-6px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:6.5px; line-height:1; z-index:5; display:flex; align-items:center; gap:0.5px; }
+        .bbadge-count-stars i.ti-star{ color:var(--primary); font-size:6.5px; }
+        .bbadge-count-extra{ font-size:6.5px; font-weight:700; color:var(--primary); margin-left:1px; }
         .bbadge-outer{ display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; }
         .bbadge-leftcol{ flex:0 1 auto; min-width:300px; }
         .bbadge-medals{
