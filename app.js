@@ -5096,10 +5096,10 @@ function renderHomeNoticeTicker(){
   }
   return `
     <style>
-      .nb-ticker{ flex:0 1 50%; max-width:50%; min-width:160px; display:flex; align-items:center; gap:8px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:20px; padding:8px 8px 8px 12px; box-sizing:border-box; }
+      .nb-ticker{ flex:0 1 50%; max-width:50%; min-width:160px; display:flex; align-items:center; gap:8px; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:20px; padding:6px 8px 6px 12px; overflow:hidden; box-sizing:border-box; }
       .nb-ticker-label{ flex-shrink:0; font-size:13px; }
-      .nb-ticker-wrap{ flex:1 1 auto; overflow-x:hidden; overflow-y:visible; white-space:nowrap; position:relative; height:20px; }
-      .nb-ticker-track{ display:inline-flex; align-items:center; white-space:nowrap; position:absolute; left:0; top:50%; transform:translateY(-50%); line-height:1.4; }
+      .nb-ticker-wrap{ flex:1 1 auto; overflow:hidden; white-space:nowrap; position:relative; height:18px; }
+      .nb-ticker-track{ display:inline-flex; align-items:center; white-space:nowrap; position:absolute; left:0; top:50%; transform:translateY(-50%); line-height:1; }
       .nb-ticker-track.nb-ticker-scroll{ animation:nbTickerScroll 30s linear infinite; }
       .nb-ticker:hover .nb-ticker-track.nb-ticker-scroll{ animation-play-state:paused; }
       @keyframes nbTickerScroll{ 0%{ transform:translateX(0); } 100%{ transform:translateX(-50%); } }
