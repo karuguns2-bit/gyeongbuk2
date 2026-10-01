@@ -3221,7 +3221,7 @@ function renderHomeBranchBadges(){
         .bbadge-branch{ font-size:9.5px; font-weight:700; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:var(--text-sub); }
         .bbadge-item.bbadge-won .bbadge-branch{ color:var(--text); }
         .bbadge-title-label{ font-size:8.5px; font-weight:600; line-height:1.2; color:var(--text-sub); margin-top:1px; min-height:10px; }
-        .bbadge-prev-label{ font-size:7px; font-weight:500; color:var(--text-sub); line-height:1.1; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; opacity:0.85; }
+        .bbadge-prev-label{ font-size:7px; font-weight:700; color:var(--primary); line-height:1.1; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .bbadge-total{ font-size:8.5px; font-weight:700; color:var(--primary); white-space:nowrap; }
         .bbadge-count-stars{ white-space:nowrap; line-height:1; display:flex; align-items:center; gap:0.5px; }
         .bbadge-count-stars i.ti-star-filled{ color:#e23b3b; font-size:11px; animation:bbadgeStarBlink 1.4s ease-in-out infinite; }
