@@ -5020,7 +5020,7 @@ function renderNoticeBanner(){
 const HOME_QUICK_LINKS = [
   {label:'MSIS', url:'https://msis.lge.com/index.do'},
   {label:'뉴베스트', url:'https://newbest.lge.com/cm/portal/index.do'},
-  {label:'LG전자업무지원', url:'https://msis.lge.com/index.do'},
+  {label:'LG전자업무지원', url:'https://lg-sales.hiqri.ai/user/account/login'},
   {label:'급여조회', url:'https://m.hanbiza.com/'},
   {label:'배움마당', url:'https://edumadang.singlex.com/login/index.php'},
   {label:'연출물 신청', url:'https://lgevisual.com/login'}
