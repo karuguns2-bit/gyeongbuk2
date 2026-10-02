@@ -6419,6 +6419,21 @@ function matchBranchByInvStore(rawStore){
   if(INV_STORE_NAME_ALIASES[s]) return matchBranchByFileName(INV_STORE_NAME_ALIASES[s]);
   return matchBranchByFileName(s.replace(/^EM/i, ''));
 }
+// 2026-10: 재고조회 화면의 매장 필터/표/병합키(invRowKey)가 그동안 파일의 원본 표기(EM경산점,
+// TR비산점 등)를 그대로 썼는데, 같은 지점이라도 파일마다 표기가 조금만 달라지면 다른 매장으로
+// 쪼개져 보이고(지점별 재고가 부정확해 보이는 주원인), 매달 파일을 새로 올릴 때 매니저가 입력해둔
+// 상태/비고 등도 병합키가 어긋나 유실됐다. 업로드 파싱 시점에 이미 있는 matchBranchByInvStore()로
+// 정식 지점명으로 정규화해 이 문제를 근본적으로 없앤다 — 매칭 안 되는(신규/미등록) 매장명은
+// 데이터 유실을 막기 위해 원본 표기를 그대로 두고, lastInvUnmatchedStores에 모아 업로드 결과
+// 안내 문구로 관리자에게 알린다.
+let lastInvUnmatchedStores = [];
+function normalizeInvStoreName(rawStore){
+  const s = String(rawStore||'').trim();
+  const b = matchBranchByInvStore(s);
+  if(b) return b.name;
+  if(!lastInvUnmatchedStores.includes(s)) lastInvUnmatchedStores.push(s);
+  return s;
+}
 
 // "목표" 시트 안의 표 하나(구독목표 또는 판매 금액 목표)를 파싱한다. 표는
 // "섹션 제목" 행 -> "지점(명)/SR" 헤더 행 -> "N월" 월 헤더 행(여러 달이 나란히 있을 수 있음)
@@ -7715,15 +7730,18 @@ function parseInventorySheetRows(rows){
   Object.keys(INV_HEADER_ALIASES).forEach(key=>{
     colIndex[key] = header.findIndex(h=>INV_HEADER_ALIASES[key].includes(h));
   });
-  const toNum = v => (v===null || v===undefined || v==='') ? null : Number(v);
+  // 천단위 콤마가 섞인 텍스트 셀("1,234")도 숫자로 인식하도록 콤마를 먼저 제거한다
+  // (안 하면 Number()가 NaN을 반환해 수량/금액이 조용히 0으로 깔림).
+  const toNum = v => (v===null || v===undefined || v==='') ? null : Number(String(v).replace(/,/g,''));
   const toStr = v => (v===null || v===undefined) ? '' : String(v).trim();
   const out = [];
   for(let i=headerIdx+1;i<rows.length;i++){
     const row = rows[i];
     if(!row) continue;
-    const store = colIndex.store>=0 ? toStr(row[colIndex.store]) : '';
+    const rawStore = colIndex.store>=0 ? toStr(row[colIndex.store]) : '';
     const product = colIndex.product>=0 ? toStr(row[colIndex.product]) : '';
-    if(!store || !product) continue; // 점포명/상품명 없는 빈 행은 건너뜀
+    if(!rawStore || !product) continue; // 점포명/상품명 없는 빈 행은 건너뜀
+    const store = normalizeInvStoreName(rawStore);
     out.push({
       store, product,
       cat1: colIndex.cat1>=0 ? toStr(row[colIndex.cat1]) : '',
@@ -7905,6 +7923,7 @@ function handleInventoryFile(evt){
         }) || wb.SheetNames[0];
       }
 
+      lastInvUnmatchedStores = []; // 이번 업로드 기준으로 "지점명과 매칭 안 된 매장" 목록을 새로 집계
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[currentSheetName], {header:1, defval:null, raw:true});
       const parsedInventory = parseInventorySheetRows(rows);
       if(parsedInventory.length===0){ showUploadResult('inventoryUploadMsg', false, '재고 데이터를 인식하지 못했습니다. 파일에 "점포명"(또는 지점명/매장명)과 "상품명"(또는 제품명) 컬럼이 있는지 확인해 주세요.'); return; }
@@ -7949,12 +7968,15 @@ function handleInventoryFile(evt){
       // DB.inventoryClearanceCodes가 모두 최신 상태로 반영된 뒤에 실행해야 정확히 판정된다).
       const depletedCount = applyClearanceDepletion();
       const depletionMsg = depletedCount>0 ? ` / 소진집중 ${depletedCount}건 소진완료 자동 반영` : '';
+      // 지점명과 매칭 안 된(=정규화 안 된 원본 표기 그대로 저장된) 매장이 있으면 관리자가 바로
+      // 인지하고 별칭 등록/지점명 확인을 할 수 있도록 업로드 완료 문구에 함께 표시한다.
+      const unmatchedMsg = lastInvUnmatchedStores.length>0 ? ` / ⚠ 지점명 미매칭 ${lastInvUnmatchedStores.length}건(${lastInvUnmatchedStores.join(', ')}) - 등록된 지점명과 다릅니다. 확인 필요` : '';
       recordUploadLog('inventory', file);
       saveDB();
       logActivity('update', `${SESSION.name}님(관리자)이 [재고 조회] 데이터를 갱신했습니다`);
       // renderTab이 화면을 새로 그리므로(안내 문구 칸도 초기화됨) 반드시 먼저 호출한 뒤에 안내 문구를 넣는다.
       renderTab('systemAdmin');
-      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${otherTeamMsg}${clearanceMsg}${baselineMsg}${depletionMsg}`);
+      showUploadResult('inventoryUploadMsg', true, `"${currentSheetName}" 기준 재고 데이터 ${count}건 반영 완료${otherTeamMsg}${clearanceMsg}${baselineMsg}${depletionMsg}${unmatchedMsg}`);
     }catch(err){
       showUploadResult('inventoryUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
     }
@@ -10546,9 +10568,12 @@ function invStatusSelectStyle(status){ return INV_BADGE_STYLE[invStatusBadgeClas
 function invSaleStatusSelectStyle(saleStatus){ return INV_BADGE_STYLE[invSaleStatusBadgeClass(saleStatus)]; }
 function invTag(product){
   const p = product||'';
-  if(p.includes('(행)')) return '행사';
-  if(p.includes('(진)')) return '진열';
-  if(p.includes('(핸)')) return '핸디';
+  // 반각 괄호 "(행)" 외에 전각 괄호"（행）"나 괄호 안팎 공백이 섞인 표기도 놓치지 않도록
+  // 정규식으로 느슨하게 매칭한다(엄격한 문자열 포함 비교라 표기가 조금만 달라도 그 행이
+  // 재고조회 화면에서 통째로 빠져버렸던 문제).
+  if(/[\(（]\s*행\s*[\)）]/.test(p)) return '행사';
+  if(/[\(（]\s*진\s*[\)）]/.test(p)) return '진열';
+  if(/[\(（]\s*핸\s*[\)）]/.test(p)) return '핸디';
   return null;
 }
 function invFilterDefaults(){
