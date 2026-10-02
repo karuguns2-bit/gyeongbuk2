@@ -1076,6 +1076,29 @@ function migrateDB(){
     if(r.displayDate===undefined) r.displayDate = '';
     if(r.displaySoldOutDate===undefined) r.displaySoldOutDate = '';
   });
+  // 2026-10: 재고 매장명 정규화(normalizeInvStoreName) 적용 이전에 저장된 기존 재고 데이터는
+  // 매장명이 파일 원본 표기(EM경산점 등) 그대로 남아있다. 정규화 이후 새로 올라온 데이터와
+  // invRowKey(병합키)가 서로 달라져 "소진 진행 현황" 등 병합키 기준 통계가 어긋나 보이므로,
+  // 기존 데이터도 1회성으로 동일하게 정규화해 병합키를 맞춰준다(매칭 안 되는 매장명은
+  // 데이터 유실 방지를 위해 원본 표기를 그대로 둔다).
+  if(DB.inventory.length && !DB.__invStoreNamesMigrated){
+    DB.inventory.forEach(r=>{
+      const b = matchBranchByInvStore(r.store);
+      if(b) r.store = b.name;
+    });
+    DB.__invStoreNamesMigrated = true;
+  }
+  if(DB.inventoryClearanceBaseline && DB.inventoryClearanceBaseline.rows && !DB.inventoryClearanceBaseline.storeNamesMigrated){
+    const migratedRows = {};
+    Object.keys(DB.inventoryClearanceBaseline.rows).forEach(key=>{
+      const parts = key.split('||');
+      const b = matchBranchByInvStore(parts[0]||'');
+      if(b) parts[0] = b.name;
+      migratedRows[parts.join('||')] = DB.inventoryClearanceBaseline.rows[key];
+    });
+    DB.inventoryClearanceBaseline.rows = migratedRows;
+    DB.inventoryClearanceBaseline.storeNamesMigrated = true;
+  }
   if(!DB.notices) DB.notices = [];
   DB.notices.forEach(n=>{ if(!n.attachments) n.attachments = []; });
   if(!DB.noticeReads) DB.noticeReads = {};
