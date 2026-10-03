@@ -1178,6 +1178,11 @@ function migrateDB(){
     DB.subGradeIncentive = { byPeriod:{} };
     if(period && old.byBranchKey && Object.keys(old.byBranchKey).length>0) DB.subGradeIncentive.byPeriod[period] = old;
   }
+  // 2026-10: [지점별 인센티브(참고용)] 페이지를 "인센티브 수당안 매크로" 파일(일시불(당월)/
+  // 구독(당월)/Grade(당월)/추가 수당안(당월) 시트) 기준으로 전환하면서 새로 추가한 저장소.
+  // 지점·마케팅 카테고리별로 미리 집계해서 저장한다(원본 행을 그대로 저장하면 매달 수만 건이라
+  // DB가 과도하게 커짐). byPeriod는 YYYY-MM(파일의 년월일자 기준) 키로 월별 누적 보관.
+  if(!DB.incentiveMacroUpload) DB.incentiveMacroUpload = { byPeriod:{} };
   // 장기 미사용 시 자동 전환되는 스크린세이버 사용 여부 (관리자가 시스템 관리에서 설정, 기본값 사용함)
   if(DB.screensaverEnabled===undefined || DB.screensaverEnabled===null) DB.screensaverEnabled = true;
   // 모바일 상품권 취합 등록 일시 정지 여부 (관리자가 필요 시 켜고 끔, 기본값은 등록 가능)
@@ -4613,6 +4618,13 @@ function renderSystemAdmin(){
     </div>
 
 <div class="card">
+      <h3>💰 인센티브 수당안(매크로) 업로드${sysInfoIcon('"인센티브 수당안 매크로" 파일의 "일시불(당월)"/"구독(당월)"/"Grade(당월)"/"추가 수당안(당월)" 시트를 지점(혼매경북팀·이마트)별·마케팅 카테고리별로 집계해서, [지점별 인센티브(참고용)] 페이지에 그대로 반영합니다. 당월 데이터만 반영되고, 월별로 완전히 분리 저장됩니다.')}</h3>
+      <div class="small-note">${moUploadStatusHtml(DB.incentiveMacroUpload.byPeriod, d=>Object.keys(d.byBranch||{}).length+'개 지점')}</div>
+      <input type="file" id="incentiveMacroFileInput" accept=".xlsm,.xlsx,.xls" onchange="handleIncentiveMacroFile(event)">
+      <div id="incentiveMacroUploadMsg" class="small-note"></div>
+    </div>
+
+<div class="card">
       <h3>근무일정 업로드(배지우C)${sysInfoIcon('Shiftee 내보내기 .xlsx · 오늘 출근 현황에 반영 - Shiftee에서 내보낸 월별 근무일정 파일을 올리면 사번을 기준으로 자동 매칭되어, 홈 대시보드와 [전체 지점 현황]의 "오늘 출근 현황/근태"에 출퇴근시간·휴무·대체휴무가 실제 일정 그대로 표시됩니다. 지점별로 파일이 따로 있으면 순서에 상관없이 하나씩 올리면 됩니다 — 사번 단위로 합쳐지므로 먼저 올린 다른 지점 데이터는 지워지지 않습니다. 업로드할 때마다 2개월보다 오래된 옛 일정은 자동으로 정리됩니다.')}</h3>
       <input type="file" id="workScheduleFileInput" accept=".xlsx,.xls" onchange="handleWorkScheduleFile(event)">
       <div id="workScheduleUploadMsg" class="small-note"></div>
@@ -7701,6 +7713,9 @@ const INV_HEADER_ALIASES = {
 // 여러 영업팀 재고가 한 파일에 섞여 올라오는 "부가정보 데이터" 형식의 경우, 팀명 컬럼 기준으로
 // 우리 팀(혼매경북팀) 재고만 기본으로 보여준다(관리자가 "타영업팀 재고 함께보기"를 켜면 전체 표시).
 const INV_HOME_TEAM = '혼매경북팀';
+// [인센티브 수당안(매크로)] 파서에서 전자랜드 등 타채널 지점을 걸러내기 위한 상수(이 앱은
+// 이마트 채널 지점만 관리한다).
+const HOME_CHANNEL = '이마트';
 // 2026-09-04: 예전에는 파일에 섞여 있는 타영업팀 재고까지 전부 DB.inventory(모든 세션이 매번
 // 통째로 읽고 쓰는 공유 kpi_db 한 줄)에 그대로 저장했다 - 10개 팀 재고가 다 쌓이면서 그 한 줄이
 // 9MB+ 로 부풀어, 여러 매니저가 몰리는 시간대에 저장/불러오기가 통째로 타임아웃 나며 실행력
@@ -8623,6 +8638,170 @@ function resetSubGradeIncentiveForPeriod(){
   logActivity('update', `${SESSION.name}님(관리자)이 [구독 Grade 수당] ${goalsPeriodLabel(period)} 자료를 초기화했습니다.`);
   renderTab('systemAdmin');
   showUploadResult('subGradeUploadMsg', true, `${goalsPeriodLabel(period)} 자료를 초기화했습니다.`);
+}
+/* =========================================================================
+   인센티브 수당안(매크로) 업로드 — [지점별 인센티브(참고용)] 페이지의 데이터 원본.
+   파일의 "일시불(당월)"/"구독(당월)"/"Grade(당월)"/"추가 수당안(당월)" 시트(각 행에 지점명+
+   실판수량+수당이 들어있는 원본 데이터)를 혼매경북팀·이마트 기준으로 걸러 지점·마케팅
+   카테고리별로 집계한다. 같은 항목이 "마케팅" 컬럼에 영어/한글 두 가지 표기로 섞여 들어있는
+   경우(수당 제외 모델이라 VLOOKUP이 안 돼서 원본 Prod L1 영문이 그대로 남은 행들)가 있어,
+   MASTER 시트와 같은 한글 카테고리로 통일해서 보여주기 위한 보정 테이블을 둔다.
+   ========================================================================= */
+const INCENTIVE_MACRO_CATEGORY_MAP = {
+  'TV':'TV','세탁기':'세탁기','Washing Machine':'세탁기',
+  '냉장고':'냉장고','Refrigerator':'냉장고',
+  '에어컨':'에어컨','Airconditioner':'에어컨',
+  '청소기':'청소기','Vacuum Cleaner':'청소기',
+  '쿠킹/Dishwasher':'쿠킹/Dishwasher',
+  '워터케어':'정수기',
+  '에어케어':'에어케어',
+  'MNT':'모니터',
+  'NT':'PC','DT':'PC',
+  'CAC':'CAC',
+  '오디오':'오디오',
+  '의류관리기':'육성제품','신발관리기':'육성제품',
+};
+// MASTER 시트와 동일한 순서로 보여주기 위한 카테고리 표시 순서 (맵에 없는 값은 "기타"로 묶여
+// 맨 뒤에 추가된다).
+const INCENTIVE_MACRO_CATEGORY_ORDER = ['TV','세탁기','육성제품','냉장고','청소기','쿠킹/Dishwasher','오디오','에어컨','에어케어','정수기','PC','모니터','CAC'];
+function incMacroNormCategory(v){ return INCENTIVE_MACRO_CATEGORY_MAP[v] || v || '기타'; }
+function incMacroEnsureBranch(byBranch, name){
+  if(!byBranch[name]) byBranch[name] = { categories:{}, gradeAmt:0, extraAmt:0 };
+  return byBranch[name];
+}
+function incMacroEnsureCat(b, cat){
+  if(!b.categories[cat]) b.categories[cat] = { lumpQty:0, lumpAmt:0, subQty:0, subAmt:0 };
+  return b.categories[cat];
+}
+// 실제 XLSX.utils.sheet_to_json({header:1}) 결과를 그대로 받아 지점·카테고리별로 집계한다.
+// wb는 SheetJS 워크북 객체. 반환값: { period, byBranch, unmatchedStores }
+function parseIncentiveMacroWorkbook(wb){
+  const sheetRows = name => wb.Sheets[name] ? XLSX.utils.sheet_to_json(wb.Sheets[name], {header:1, defval:null, raw:true}) : [];
+  const byBranch = {};
+  const unmatchedStores = [];
+  function matchStore(raw){
+    const b = matchBranchByFileName(stripEmartPrefix(raw));
+    if(b) return b.name;
+    const s = String(raw||'').trim();
+    if(s && !unmatchedStores.includes(s)) unmatchedStores.push(s);
+    return null;
+  }
+  let maxDate = 0;
+
+  // "일시불(당월)" 시트: 0년월일자,1협력사,2채널,3팀,4지점명,...,12마케팅,...,16실판Q(일시불),18일시불 총 수당(당월)
+  const lump = sheetRows('일시불(당월)');
+  for(let i=2;i<lump.length;i++){
+    const row = lump[i];
+    if(!row) continue;
+    const channel=row[2], team=row[3], store=row[4], mk=row[12];
+    if(team!==INV_HOME_TEAM || channel!==HOME_CHANNEL) continue;
+    const branchName = matchStore(store);
+    if(!branchName) continue;
+    if(row[0]!=null && Number(row[0])>maxDate) maxDate = Number(row[0]);
+    const b = incMacroEnsureBranch(byBranch, branchName);
+    const cat = incMacroEnsureCat(b, incMacroNormCategory(mk));
+    cat.lumpQty += Number(row[16])||0;
+    cat.lumpAmt += Number(row[18])||0;
+  }
+
+  // "구독(당월)" 시트: 0날짜,1협력사,2채널명,3영업팀,4지점명,...,12마케팅,...,16Contract Qty(Include Only),18구독 총 수당(당월)
+  const sub = sheetRows('구독(당월)');
+  for(let i=2;i<sub.length;i++){
+    const row = sub[i];
+    if(!row) continue;
+    const channel=row[2], team=row[3], store=row[4], mk=row[12];
+    if(team!==INV_HOME_TEAM || channel!==HOME_CHANNEL) continue;
+    const branchName = matchStore(store);
+    if(!branchName) continue;
+    const b = incMacroEnsureBranch(byBranch, branchName);
+    const cat = incMacroEnsureCat(b, incMacroNormCategory(mk));
+    cat.subQty += Number(row[16])||0;
+    cat.subAmt += Number(row[18])||0;
+  }
+
+  // "Grade(당월)" 시트: 스바미/정수기/TV구독 3개 블록이 한 시트에 나란히 들어있다. 블록마다
+  // 협력사/팀/채널/지점명(또는 Customer Name) + 수당 컬럼 위치가 다르다.
+  const grade = sheetRows('Grade(당월)');
+  for(let i=3;i<grade.length;i++){
+    const row = grade[i];
+    if(!row) continue;
+    if(row[1]===INV_HOME_TEAM && row[2]===HOME_CHANNEL){ // 스바미: 0협력사,1팀,2채널,3지점명,7수당
+      const branchName = matchStore(row[3]);
+      if(branchName) incMacroEnsureBranch(byBranch, branchName).gradeAmt += Number(row[7])||0;
+    }
+    if(row[9]===INV_HOME_TEAM && row[10]===HOME_CHANNEL){ // 정수기: 8협력사,9팀,10채널,11CustomerName,15수당
+      const branchName = matchStore(row[11]);
+      if(branchName) incMacroEnsureBranch(byBranch, branchName).gradeAmt += Number(row[15])||0;
+    }
+    if(row[17]===INV_HOME_TEAM && row[18]===HOME_CHANNEL){ // TV구독: 16협력사,17팀,18채널,19CustomerName,22총수당
+      const branchName = matchStore(row[19]);
+      if(branchName) incMacroEnsureBranch(byBranch, branchName).gradeAmt += Number(row[22])||0;
+    }
+  }
+
+  // "추가 수당안(당월)" 시트: From,To,마케팅,제품군,세부 제품군,제품군&세부 제품군,모델명,채널,지점,일시불,구독
+  const extra = sheetRows('추가 수당안(당월)');
+  for(let i=3;i<extra.length;i++){
+    const row = extra[i];
+    if(!row) continue;
+    const channel = row[7], store = row[8];
+    if(channel!==HOME_CHANNEL) continue;
+    const branchName = matchStore(store);
+    if(!branchName) continue;
+    incMacroEnsureBranch(byBranch, branchName).extraAmt += (Number(row[9])||0) + (Number(row[10])||0);
+  }
+
+  let period = null;
+  if(maxDate>0){
+    const ym = Math.floor(maxDate/100);
+    period = `${String(ym).slice(0,4)}-${String(ym).slice(4,6)}`;
+  }
+  return { period, byBranch, unmatchedStores };
+}
+function incMacroBranchTotal(b){
+  let total = b.gradeAmt + b.extraAmt;
+  Object.values(b.categories).forEach(c=>{ total += c.lumpAmt + c.subAmt; });
+  return total;
+}
+function handleIncentiveMacroFile(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const raw = new Uint8Array(e.target.result);
+      const wb = XLSX.read(raw, {type:'array'});
+      const need = ['일시불(당월)','구독(당월)'];
+      const missing = need.filter(n=>!wb.SheetNames.includes(n));
+      if(missing.length>0){
+        showUploadResult('incentiveMacroUploadMsg', false, `"${missing.join(', ')}" 시트를 찾지 못했습니다. "인센티브 수당안 매크로" 파일이 맞는지 확인해 주세요.`);
+        return;
+      }
+      const parsed = parseIncentiveMacroWorkbook(wb);
+      const branchCount = Object.keys(parsed.byBranch).length;
+      if(branchCount===0){
+        showUploadResult('incentiveMacroUploadMsg', false, '우리 팀(혼매경북팀·이마트) 소속 지점의 데이터를 찾지 못했습니다.');
+        return;
+      }
+      if(!parsed.period){
+        showUploadResult('incentiveMacroUploadMsg', false, '시트의 "년월일자" 값을 읽지 못해 기준월을 알 수 없습니다.');
+        return;
+      }
+      if(!DB.incentiveMacroUpload.byPeriod) DB.incentiveMacroUpload.byPeriod = {};
+      DB.incentiveMacroUpload.byPeriod[parsed.period] = {
+        asOfDate: parsed.period, byBranch: parsed.byBranch,
+        uploadedAt: new Date().toISOString(), uploadedBy: SESSION.name, fileName: file.name
+      };
+      saveDB();
+      logActivity('update', `${SESSION.name}님(관리자)이 [인센티브 수당안(매크로)] ${goalsPeriodLabel(parsed.period)} 자료를 갱신했습니다(${branchCount}개 지점)`);
+      renderTab('systemAdmin');
+      const unmatchedMsg = parsed.unmatchedStores.length>0 ? ` / ⚠ 지점명 미매칭 ${parsed.unmatchedStores.length}건(${parsed.unmatchedStores.join(', ')})` : '';
+      showUploadResult('incentiveMacroUploadMsg', true, `${goalsPeriodLabel(parsed.period)} 기준 ${branchCount}개 지점 반영 완료${unmatchedMsg}`);
+    }catch(err){
+      showUploadResult('incentiveMacroUploadMsg', false, '파일을 읽는 중 오류가 발생했습니다: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
 }
 /* =========================================================================
    지표 한 눈에 보기 (METRICS OVERVIEW) — 관리자별/지점별 GROSS·구독·고수익 대시보드
@@ -10288,173 +10467,168 @@ function incGradeTableHtml(records, branchNameForDelete){
     </table>
     </div>`;
 }
+// 지점명(byBranch의 키)으로 DB.branches에서 branchId를 찾는다. 못 찾으면 null.
+function incMacroBranchIdByName(name){
+  const b = DB.branches.find(x=>x.name===name);
+  return b ? b.id : null;
+}
+// 그 지점의 담당 매니저(관리자 계정 제외, role==='staff') 이름을 찾는다.
+function incMacroManagerOfBranch(branchId){
+  const u = DB.users.find(x=>x.branchId===branchId && x.role==='staff');
+  return u ? u.name : null;
+}
+// 카테고리별 그리드(일시불 실판/구독 실판/수당 합계)를 그려주는 헬퍼.
+function incMacroCategoryGridHtml(categories){
+  const keys = Object.keys(categories||{});
+  const ordered = INCENTIVE_MACRO_CATEGORY_ORDER.filter(k=>keys.includes(k)).concat(keys.filter(k=>!INCENTIVE_MACRO_CATEGORY_ORDER.includes(k)));
+  if(ordered.length===0) return '<div class="muted" style="font-size:12.5px;">데이터 없음</div>';
+  const rows = ordered.map(cat=>{
+    const c = categories[cat];
+    const amt = (c.lumpAmt||0) + (c.subAmt||0);
+    return `<div style="font-size:12px;">${escapeHtml(cat)}</div>
+      <div style="font-size:12px;text-align:right;">${c.lumpQty||0}건</div>
+      <div style="font-size:12px;text-align:right;">${c.subQty||0}건</div>
+      <div style="font-size:12px;text-align:right;font-weight:700;">${moFmtWonRaw(amt)}</div>`;
+  }).join('<div style="grid-column:1/-1;border-top:1px solid #f2f2f4;"></div>');
+  return `<div style="display:grid;grid-template-columns:1.3fr 0.8fr 0.8fr 1fr;gap:5px 10px;margin-top:4px;">
+    <div class="muted" style="font-size:11px;font-weight:700;">마케팅</div>
+    <div class="muted" style="font-size:11px;font-weight:700;text-align:right;">일시불 실판</div>
+    <div class="muted" style="font-size:11px;font-weight:700;text-align:right;">구독 실판</div>
+    <div class="muted" style="font-size:11px;font-weight:700;text-align:right;">수당 합계</div>
+    ${rows}
+  </div>`;
+}
+// 지점 상세 카드(카테고리 그리드 + Grade/추가수당 + 합계) HTML.
+function incMacroBranchDetailHtml(branchName, b){
+  const branchId = incMacroBranchIdByName(branchName);
+  const manager = branchId ? incMacroManagerOfBranch(branchId) : null;
+  const total = incMacroBranchTotal(b);
+  const gradeRecords = incGradeRecordsForBranch(branchName);
+  return `
+    <div class="card" style="border-left:4px solid var(--primary);margin-bottom:10px;">
+      <div class="muted" style="font-size:12px;">${escapeHtml(branchName)}${manager?` · 관리자 ${escapeHtml(manager)}`:''} · 단위 원</div>
+      <h3 style="margin-top:4px;">마케팅 카테고리별 실판/인센티브</h3>
+      ${incMacroCategoryGridHtml(b.categories)}
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px 10px;margin-top:14px;font-size:11.5px;">
+        <div style="background:#f7f7f9;border-radius:8px;padding:8px 10px;">
+          <div class="muted">Grade 수당(스바미/정수기/TV구독)</div>
+          <div style="font-weight:800;font-size:14px;margin-top:2px;">${moFmtWonRaw(b.gradeAmt)}</div>
+        </div>
+        <div style="background:#f7f7f9;border-radius:8px;padding:8px 10px;">
+          <div class="muted">추가 수당안</div>
+          <div style="font-weight:800;font-size:14px;margin-top:2px;">${moFmtWonRaw(b.extraAmt)}</div>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <div class="muted" style="font-size:12px;">지점 인센티브 합계</div>
+        <div style="font-size:18px;font-weight:800;color:var(--primary);">${moFmtWonRaw(total)}</div>
+      </div>
+    </div>
+    <div class="card" style="margin-bottom:10px;">
+      <h3><i class="ti ti-trophy" aria-hidden="true"></i> ${escapeHtml(branchName)} 매니저별 구독 Grade 수당</h3>
+      ${incGradeTableHtml(gradeRecords, branchName)}
+    </div>`;
+}
 function renderIncentiveOverview(){
-  const moEntry = moDataFor();
-  if(!moEntry.rows || moEntry.rows.length===0){
+  const periods = Object.keys(DB.incentiveMacroUpload.byPeriod||{}).sort();
+  if(periods.length===0){
     return `
     <div class="inc-plain">
     <div class="page-title">지점별 인센티브(참고용)</div>
-    <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트 기준 지점별 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다.</div>
-    ${moPeriodSelectorHtml()}
-    <div class="card"><div class="muted">아직 업로드된 자료가 없습니다.${SESSION.role==='admin'?` [시스템관리] 페이지에서 "(인터비즈) 일일실적 현황" 파일을 업로드하면 표시됩니다. <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>
+    <div class="page-desc">"인센티브 수당안 매크로" 파일 기준 지점별 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다.</div>
+    <div class="card"><div class="muted">아직 업로드된 자료가 없습니다.${SESSION.role==='admin'?` [시스템관리] 페이지에서 "인센티브 수당안(매크로)" 파일을 업로드하면 표시됩니다. <button class="btn btn-sm" onclick="renderTab('systemAdmin')">시스템관리로 이동</button>`:''}</div></div>
     </div>`;
   }
-  const allRows = moEntry.rows;
-  const teamAgg = moAggregate(allRows);
-  const canBrowseAll = canSwitchBranch(); // 관리자·임원: 전 지점 상세 조회 가능
+  // 다른 두 페이지([지표 한 눈에 보기]/[구독 실적])와 월 선택 상태(state.moPeriod)를 공유하지만,
+  // 이 페이지의 자료가 그 달에 아직 없으면 이 페이지에서 가장 최신으로 올라온 달로 대신 보여준다.
+  const latest = periods[periods.length-1];
+  const period = periods.includes(moEffectivePeriod()) ? moEffectivePeriod() : latest;
+  const entry = DB.incentiveMacroUpload.byPeriod[period];
+  const byBranch = entry.byBranch || {};
+  const canBrowseAll = canSwitchBranch();
+
+  const periodPills = periods.length>1 ? `<div class="card" style="margin-bottom:16px;">
+    <div class="small-note" style="margin-bottom:8px;"><i class="ti ti-calendar" aria-hidden="true"></i> 조회할 달을 선택하세요.</div>
+    <div>${periods.slice().reverse().map(p=>`<span class="branch-pill ${p===period?'active':''}" onclick="setMoPeriod('${p}')">${goalsPeriodLabel(p)}${p===latest?' (최신)':''}</span>`).join('')}</div>
+  </div>` : '';
 
   const pageHeader = `
     <div class="inc-plain">
     <div class="page-title">지점별 인센티브(참고용)</div>
-    <div class="page-desc">[지표 한 눈에 보기] 업로드 파일의 "인센티브" 시트("◆ 지점별 인센티브" 표) 기준 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다. 기준일자 <b>${moEntry.asOfDate}</b>(D-1, 전일)</div>
-    ${moPeriodSelectorHtml()}`;
+    <div class="page-desc">"인센티브 수당안 매크로" 파일(${goalsPeriodLabel(period)} 당월분) 기준 참고 자료입니다. 실제 지급액과 차이가 있을 수 있습니다.</div>
+    ${periodPills}`;
 
   if(!canBrowseAll){
     // ---- 매니저(staff) 화면: 본인 지점 상세 + 전체(타 지점 포함) 합계 비교만 제공 ----
-    const myRow = allRows.find(r=>r.branchId===SESSION.branchId);
-    const rankTotalOf = allRows.length;
-    const rankExpected = myRow ? moRankOf(allRows.map(r=>({key:r.branchId, val:r.m.inc_expectedAmt})), x=>x.val, SESSION.branchId) : null;
-    const rankTpRate = myRow ? moRankOf(allRows.map(r=>({key:r.branchId, val:r.m.inc_tpRate})), x=>x.val, SESSION.branchId) : null;
-    if(!myRow){
-      return `${pageHeader}<div class="card"><div class="muted">소속 지점(${branchName(SESSION.branchId)})의 인센티브 자료를 찾지 못했습니다. 최신 파일이 반영됐는지 확인해 주세요.</div></div></div>`;
+    const myBranchName = branchName(SESSION.branchId);
+    const myB = byBranch[myBranchName];
+    if(!myB){
+      return `${pageHeader}<div class="card"><div class="muted">소속 지점(${escapeHtml(myBranchName)})의 인센티브 자료를 찾지 못했습니다. 최신 파일이 반영됐는지 확인해 주세요.</div></div></div>`;
     }
+    const allTotals = Object.values(byBranch).map(incMacroBranchTotal);
+    const teamTotal = allTotals.reduce((a,v)=>a+v,0);
+    const myTotal = incMacroBranchTotal(myB);
+    const rank = allTotals.slice().sort((a,b)=>b-a).indexOf(myTotal)+1;
     return `
       ${pageHeader}
-      <div class="card" style="border-left:4px solid var(--primary);margin-bottom:10px;">
-        <div class="muted" style="font-size:12px;">${escapeHtml(myRow.branchName)} · 단위 원</div>
-        <h3 style="margin-top:4px;">내 지점 인센티브 상세</h3>
-        <div style="margin-top:8px;">
-        ${incBranchDetailRowsHtml(myRow.m)}
-        </div>
-      </div>
-      <div class="card" style="margin-bottom:10px;">
-        <h3><i class="ti ti-trophy" aria-hidden="true"></i> 우리 지점 매니저별 구독 Grade 수당</h3>
-        ${incGradeTableHtml(incGradeRecordsForBranch(myRow.branchName), myRow.branchName)}
-      </div>
+      ${incMacroBranchDetailHtml(myBranchName, myB)}
       <div class="card ai-box">
         <div class="ai-title"><i class="ti ti-chart-bar" aria-hidden="true"></i> 타 지점 합계 대비 비교</div>
-        <div>경북팀 전체(${rankTotalOf}개 지점) 목표달성인센티브(예상) 합계 <b>${moFmtWonRaw(teamAgg.inc_expectedAmt)}</b> 중 우리 지점 <b>${moFmtWonRaw(myRow.m.inc_expectedAmt)}</b> (${rankExpected?`${rankExpected}위/${rankTotalOf}`:'-'})</div>
-        <div style="margin-top:6px;">경북팀 전체 총판 달성률 평균 <b>${moPct(teamAgg.g_tp_rate)}</b> 대비 우리 지점 총판 달성률 <b>${moPct(myRow.m.inc_tpRate)}</b> (${rankTpRate?`${rankTpRate}위/${rankTotalOf}`:'-'})</div>
-        <div class="small-note" style="margin-top:8px;">※ 개인정보 보호를 위해 다른 지점의 개별 상세 수치는 표시되지 않고, 전체 합계·평균만 비교용으로 제공됩니다.</div>
+        <div>경북팀 전체(${allTotals.length}개 지점) 인센티브 합계 <b>${moFmtWonRaw(teamTotal)}</b> 중 우리 지점 <b>${moFmtWonRaw(myTotal)}</b> (${rank}위/${allTotals.length})</div>
+        <div class="small-note" style="margin-top:8px;">※ 개인정보 보호를 위해 다른 지점의 개별 상세 수치는 표시되지 않고, 전체 합계만 비교용으로 제공됩니다.</div>
       </div>
       </div>
     `;
   }
+  // ---- 관리자/임원(admin/exec) 화면: 전 지점 조회 가능 ----
+  // 14개 지점을 그리드로 보여주고, 카드를 누르면 페이지 이동 없이 그리드 바로 아래에
+  // 그 지점의 상세(카테고리별 실판/수당 + Grade/추가수당 + 매니저별 Grade수당표)가 펼쳐진다.
+  const branchNames = Object.keys(byBranch);
+  const sortedBranches = branchNames.slice().sort((a,b)=>incMacroBranchTotal(byBranch[b])-incMacroBranchTotal(byBranch[a]));
+  const selBranchName = state.incOverviewBranch && branchNames.includes(state.incOverviewBranch) ? state.incOverviewBranch : (sortedBranches[0] || null);
 
-  // ---- 관리자/임원(admin/exec) 화면: 전 지점 조회 가능(canSwitchBranch()===true인 admin·exec만
-  // 이 분기에 들어온다). 매니저(staff)는 위쪽 !canBrowseAll 분기에서 본인 지점만 보게 되어 있다.
-  // 2026-09-29 개선: 지점을 클릭해서 "페이지 이동"하던 방식 대신, 14개 지점을 7X2 그리드로
-  // 한 번에 모두 보여준다(참고 파일의 stats5 + sr-grid 구조 반영). 다만 지점별 상세(제품수당
-  // 일시불/구독 그리드, 매니저별 구독 Grade 수당표)가 없어졌다는 지적을 반영해, 카드를 누르면
-  // 페이지 이동 없이 그리드 바로 아래에 그 지점의 상세가 펼쳐지도록 복원한다(그리드/표는 그대로 유지).
-  const managers = moManagerList();
-  const selManager = state.incOverviewManager && managers.includes(state.incOverviewManager) ? state.incOverviewManager : null;
-  const branchesInScope = moBranchesOf(selManager);
-  const agg = moAggregate(branchesInScope);
-  const scopeLabel = selManager ? `${selManager} 관리자` : '경북팀 전체';
-
-  const managerPills = `<span class="branch-pill ${!selManager?'active':''}" onclick="setIncOverviewManager(null)">전체</span>` +
-    managers.map(m=>`<span class="branch-pill ${m===selManager?'active':''}" onclick="setIncOverviewManager('${escapeHtml(m)}')">${escapeHtml(m)}</span>`).join('');
-
-  // 상단 요약 통계(stats5): 인센티브 합계 / 목표달성인센티브 / Grade 수당 / 제품수당 일시불 / 제품수당 구독
-  let totalSum=0, totalExpected=0, totalGrade=0, totalLump=0, totalSub=0;
-  branchesInScope.forEach(r=>{
-    const m = r.m;
-    totalExpected += m.inc_expectedAmt||0;
-    totalGrade += m.inc_gradeSum||0;
-    totalLump += incFlatSum(m);
-    totalSub += m.inc_subAllowanceTotal||0;
+  let totalSum=0, totalGrade=0, totalExtra=0, totalLump=0, totalSub=0;
+  branchNames.forEach(name=>{
+    const b = byBranch[name];
+    totalGrade += b.gradeAmt||0;
+    totalExtra += b.extraAmt||0;
+    Object.values(b.categories).forEach(c=>{ totalLump += c.lumpAmt||0; totalSub += c.subAmt||0; });
   });
-  totalSum = totalExpected + totalGrade + totalLump + totalSub;
+  totalSum = totalGrade + totalExtra + totalLump + totalSub;
   const statsHtml = `
-    <div class="stats stats5" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px;">
-      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">인센티브 합계</div><div style="font-size:18px;font-weight:800;color:var(--primary);margin-top:2px;">${moFmtWonRaw(totalSum)}</div><div class="muted" style="font-size:10.5px;margin-top:2px;">${branchesInScope.length}개 지점</div></div>
-      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">목표달성 인센티브</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalExpected)}</div></div>
-      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">Grade 수당</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalGrade)}</div></div>
+    <div class="stats stats5" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">
+      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">인센티브 합계</div><div style="font-size:18px;font-weight:800;color:var(--primary);margin-top:2px;">${moFmtWonRaw(totalSum)}</div><div class="muted" style="font-size:10.5px;margin-top:2px;">${branchNames.length}개 지점</div></div>
       <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">제품수당 일시불</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalLump)}</div></div>
       <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">제품수당 구독</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalSub)}</div></div>
+      <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">Grade+추가 수당</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalGrade+totalExtra)}</div></div>
     </div>`;
 
-  // 지점별 카드 그리드: 인센티브 합계 큰 순으로 정렬, 상위 3개는 붉은 테두리로 강조.
-  // 카드를 클릭하면(페이지 이동 없이) 그리드 바로 아래에 그 지점의 상세가 펼쳐진다 —
-  // 선택된 지점이 없으면 1위 지점을 기본으로 보여준다.
-  const sortedBranches = branchesInScope.slice().sort((a,b)=>incBranchTotal(b.m)-incBranchTotal(a.m));
-  const selBranch = state.incOverviewBranch && branchesInScope.some(r=>r.branchId===state.incOverviewBranch) ? state.incOverviewBranch : (sortedBranches[0] ? sortedBranches[0].branchId : null);
-  const selBranchRow = selBranch ? branchesInScope.find(r=>r.branchId===selBranch) : null;
   const branchCardsHtml = `<div class="mo-branch-grid">` +
-    sortedBranches.map((r,i)=>{
-      const m = r.m;
-      const total = incBranchTotal(m);
-      const isSel = r.branchId===selBranch;
+    sortedBranches.map((name,i)=>{
+      const b = byBranch[name];
+      const total = incMacroBranchTotal(b);
+      const branchId = incMacroBranchIdByName(name);
+      const manager = branchId ? incMacroManagerOfBranch(branchId) : null;
+      const isSel = name===selBranchName;
       const isTop3 = i<3;
-      return `<div class="card mo-branch-card" style="cursor:pointer;${isSel?'border-color:var(--primary);border-width:2px;background:#fff8f9;':(isTop3?'border-color:var(--primary);background:#fff8f9;':'')}" onclick="setIncOverviewBranch('${r.branchId}')">
-        <div style="font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.branchName)}</div>
-        <div class="muted" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(r.manager||'-')}</div>
+      return `<div class="card mo-branch-card" style="cursor:pointer;${isSel?'border-color:var(--primary);border-width:2px;background:#fff8f9;':(isTop3?'border-color:var(--primary);background:#fff8f9;':'')}" onclick="setIncOverviewBranch('${escapeHtml(name)}')">
+        <div style="font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</div>
+        <div class="muted" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(manager||'-')}</div>
         <div style="font-size:15px;font-weight:800;color:var(--primary);margin-top:3px;">${moFmtWonRaw(total)}</div>
-        <div style="display:flex;gap:3px;margin-top:4px;flex-wrap:wrap;">
-          <span class="badge" style="background:#f2f2f4;color:var(--text);font-size:9.5px;">총판${moPct(m.inc_tpRate)}</span>
-          <span class="badge" style="background:#f2f2f4;color:var(--text);font-size:9.5px;">지급${moPct(m.inc_payRate)}</span>
-        </div>
       </div>`;
     }).join('') +
     `</div>`;
 
-  const branchDetailHtml = selBranchRow ? `
-    <div class="card" style="border-left:4px solid var(--primary);margin-bottom:10px;">
-      <div class="muted" style="font-size:12px;">${escapeHtml(selBranchRow.branchName)} · 관리자 ${escapeHtml(selBranchRow.manager||'-')} · 단위 원</div>
-      <h3 style="margin-top:4px;">지점 인센티브 상세</h3>
-      <div style="margin-top:8px;">
-      ${incBranchDetailRowsHtml(selBranchRow.m)}
-      </div>
-    </div>
-    <div class="card" style="margin-bottom:10px;">
-      <h3><i class="ti ti-trophy" aria-hidden="true"></i> ${escapeHtml(selBranchRow.branchName)} 매니저별 구독 Grade 수당</h3>
-      ${incGradeTableHtml(incGradeRecordsForBranch(selBranchRow.branchName), selBranchRow.branchName)}
-    </div>` : '';
-
-  const expectedRankMap = {}; branchesInScope.slice().sort((a,b)=>(b.m.inc_expectedAmt||0)-(a.m.inc_expectedAmt||0)).forEach((x,i)=>{ expectedRankMap[x.branchId]=i+1; });
-  const trs = branchesInScope.map(r=>{
-    const m = r.m;
-    return `<tr>
-      <td>${escapeHtml(r.branchName)}</td><td class="muted">${escapeHtml(r.manager||'-')}</td>
-      <td>${moFmtWon(m.inc_target)}</td>
-      <td>${moFmtWon(m.inc_tp)}</td><td>${moPct(m.inc_tpRate)} ${pctBadge(m.inc_tpRate||0)}</td>
-      <td>${moFmtWon(m.inc_sp)}</td><td>${moPct(m.inc_payRate)}</td>
-      <td>${moYoy(m.inc_yoy)}</td><td>${moPct(m.inc_subRatio)}</td>
-      <td>${moFmtWonRaw(m.inc_gradeSum)}</td>
-      <td style="font-weight:700;">${moFmtWonRaw(m.inc_expectedAmt)} ${moBadgeRank(expectedRankMap[r.branchId], branchesInScope.length)}</td>
-    </tr>`;
-  }).join('');
+  const branchDetailHtml = selBranchName && byBranch[selBranchName] ? incMacroBranchDetailHtml(selBranchName, byBranch[selBranchName]) : '';
 
   return `
     ${pageHeader}
-    <div class="card" style="margin-bottom:10px;">
-      <div>${managerPills}</div>
-    </div>
     ${statsHtml}
     <div class="card" style="margin-bottom:10px;">
-      <h3><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 인센티브 카드 <small>${escapeHtml(scopeLabel)} · 인센티브 합계가 큰 순서 · 카드를 누르면 아래에 상세가 표시됩니다</small></h3>
+      <h3><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 인센티브 카드 <small>경북팀 전체 · 인센티브 합계가 큰 순서 · 카드를 누르면 아래에 상세가 표시됩니다</small></h3>
       ${branchCardsHtml}
     </div>
     ${branchDetailHtml}
-    <div class="card">
-      <h3><i class="ti ti-building-store" aria-hidden="true"></i> 지점별 인센티브 현황 <small>${escapeHtml(scopeLabel)} · 단위 원</small></h3>
-      <div style="overflow-x:auto;">
-      <table class="tbl-compact">
-        <thead><tr><th>지점</th><th>관리자</th><th>목표</th><th>총판</th><th>총판 달성률</th><th>실판</th><th>지급률</th><th>전년比</th><th>구독비중</th><th>Grade수당계</th><th>목표달성인센티브(예상)</th></tr></thead>
-        <tbody>
-          ${trs || '<tr><td colspan="11" class="muted">데이터 없음</td></tr>'}
-          <tr style="font-weight:700;background:var(--bg-soft,#f7f7f9);">
-            <td colspan="2">합계</td><td>${moFmtWon(agg.inc_target)}</td>
-            <td>${moFmtWon(agg.inc_tp)}</td><td>${moPct(agg.inc_tpRate)}</td>
-            <td>${moFmtWon(agg.inc_sp)}</td><td>${moPct(agg.inc_payRate)}</td>
-            <td>${moYoy(agg.inc_yoy)}</td><td>${moPct(agg.inc_subRatio)}</td>
-            <td>${moFmtWonRaw(agg.inc_gradeSum)}</td><td>${moFmtWonRaw(agg.inc_expectedAmt)}</td>
-          </tr>
-        </tbody>
-      </table>
-      </div>
-    </div>
     </div>
   `;
 }
