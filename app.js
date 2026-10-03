@@ -10789,7 +10789,11 @@ function invTag(product){
   return null;
 }
 function invFilterDefaults(){
-  return {store:'ALL', tag:'ALL', q:'', page:1, cat1List:[], statusList:[], saleStatusList:[], clearanceOnly:false};
+  // 2026-10: 매니저(staff)가 재고 조회에 처음 들어오면(또는 "초기화"를 누르면) 매번 "전체"
+  // 중에서 본인 지점을 다시 찾아야 하는 불편이 있어, 본인 소속 지점으로 바로 필터링된
+  // 상태로 보여준다. 관리자·임원은 전 지점을 봐야 하므로 그대로 "전체"가 기본값이다.
+  const defaultStore = (SESSION && SESSION.role==='staff' && SESSION.branchId) ? branchName(SESSION.branchId) : 'ALL';
+  return {store:defaultStore, tag:'ALL', q:'', page:1, cat1List:[], statusList:[], saleStatusList:[], clearanceOnly:false};
 }
 function toggleInvClearanceFilter(){
   if(!state.invFilter) state.invFilter = invFilterDefaults();
