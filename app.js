@@ -924,7 +924,18 @@ function isUserActivelyTyping(){
 
 function startDbPolling(){
   stopDbPolling();
-  dbPollTimer = setInterval(()=>{ pollDbForRemoteChanges(); checkForNewActivityNotifications(); }, 20000);
+  // 2026-10: Supabase Disk IO 예산 소진(서버 502/520 오류, 로딩 지연) 대응 — 요청 빈도를 낮췄다.
+  // 20초 -> 60초, 그리고 탭이 백그라운드(숨김)일 때는 DB 버전 확인을 건너뛴다(다시 보이는 순간 즉시 1회 확인).
+  dbPollTimer = setInterval(()=>{
+    if(!document.hidden) pollDbForRemoteChanges();
+    checkForNewActivityNotifications();
+  }, 60000);
+  if(!window.__dbVisHooked){
+    window.__dbVisHooked = true;
+    document.addEventListener('visibilitychange', function(){
+      if(!document.hidden && dbPollTimer) pollDbForRemoteChanges();
+    });
+  }
 }
 function stopDbPolling(){
   if(dbPollTimer){ clearInterval(dbPollTimer); dbPollTimer = null; }
@@ -962,23 +973,30 @@ let heartbeatTimer = null;
 function startHeartbeat(){
   stopHeartbeat();
   sendHeartbeat();
-  heartbeatTimer = setInterval(sendHeartbeat, 60000);
+  heartbeatTimer = setInterval(sendHeartbeat, 120000);
 }
 function stopHeartbeat(){
   if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer = null; }
 }
+let heartbeatCount = 0;
 async function sendHeartbeat(){
   if(!sbClient || !SESSION) return;
+  // 백그라운드 탭은 접속 신호를 보내지 않는다(쓰기 부하 감소).
+  if(document.hidden) return;
   try{
     await sbClient.from('activity_log').insert({ emp_id: SESSION.empId, name: SESSION.name, kind: 'heartbeat' });
-    const cutoff = new Date(Date.now() - 10*60*1000).toISOString();
-    await sbClient.from('activity_log').delete().eq('kind','heartbeat').lt('created_at', cutoff);
+    // 오래된 신호 정리(DELETE)는 매번이 아니라 5번에 1번만 — 쓰기 부하 감소.
+    heartbeatCount++;
+    if(heartbeatCount % 5 === 1){
+      const cutoff = new Date(Date.now() - 30*60*1000).toISOString();
+      await sbClient.from('activity_log').delete().eq('kind','heartbeat').lt('created_at', cutoff);
+    }
   }catch(e){ /* 접속 신호 실패는 조용히 무시 (핵심 기능 아님) */ }
 }
 async function fetchOnlineCount(){
   if(!sbClient) return null;
   try{
-    const cutoff = new Date(Date.now() - 2*60*1000).toISOString();
+    const cutoff = new Date(Date.now() - 5*60*1000).toISOString(); // 접속 신호 간격이 2분이라 5분 창으로 판정
     const { data, error } = await sbClient.from('activity_log').select('emp_id').eq('kind','heartbeat').gt('created_at', cutoff);
     if(error) throw error;
     return new Set((data||[]).map(r=>r.emp_id)).size;
@@ -4393,7 +4411,7 @@ function startHomeStatusWidget(){
   refreshHomeOnlineCount();
   refreshHomeNotifications();
   homeClockTimer = setInterval(updateHomeClock, 1000);
-  homeWidgetPollTimer = setInterval(()=>{ refreshHomeOnlineCount(); refreshHomeNotifications(); }, 30000);
+  homeWidgetPollTimer = setInterval(()=>{ if(document.hidden) return; refreshHomeOnlineCount(); refreshHomeNotifications(); }, 60000);
 }
 function stopHomeStatusWidget(){
   if(homeClockTimer){ clearInterval(homeClockTimer); homeClockTimer = null; }
