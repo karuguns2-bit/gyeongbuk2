@@ -4631,6 +4631,55 @@ function loginHistoryLabel(empId){
 function sysInfoIcon(html){
   return `<span class="sysadmin-info">i<span class="sysadmin-tip">${html}</span></span>`;
 }
+// 2026-10: Supabase Disk IO 예산 소진으로 로딩이 크게 느려진 사고(원인: kpi_db 한 행에 DB 전체를
+// 통째로 저장하는 구조 + 데이터 누적)를 계기로, 관리자가 직접 DB 크기를 미리 확인하고 경고를
+// 받을 수 있게 만든 카드. 서버 요청 없이 이미 메모리에 있는 DB 객체를 직렬화해서 키별 크기를 계산한다.
+const DB_SIZE_WARN_BYTES = 3 * 1024 * 1024;
+const DB_SIZE_LABELS = {
+  inventory:'재고', prospects:'가망고객', salesData:'판매 데이터', workSchedule:'근무일정',
+  schedule:'지점 일정', goals:'목표', policyQuizAttempts:'정책숙지도 응시', metricsOverview:'지표',
+  issueCases:'판매성공사례', competitivenessHistory:'경쟁력 이력', kakaoFriends:'카카오 플친',
+  incentiveMacroUpload:'인센티브 수당안', subGradeIncentive:'구독 Grade 수당', subSalesUpload:'구독 판매 업로드'
+};
+function fmtDbBytes(n){
+  if(n >= 1024*1024) return (n/1024/1024).toFixed(1) + 'MB';
+  return Math.round(n/1024) + 'KB';
+}
+function dbSizeCardHtml(){
+  let total = 0, rows = [];
+  try{
+    const enc = new TextEncoder();
+    Object.keys(DB||{}).forEach(k=>{
+      let sz = 0;
+      try{ sz = enc.encode(JSON.stringify(DB[k]) || '').length; }catch(e){ sz = 0; }
+      total += sz;
+      rows.push({k, sz});
+    });
+  }catch(e){ return ''; }
+  rows.sort((a,b)=> b.sz - a.sz);
+  const top = rows.slice(0,5);
+  const maxSz = top.length ? top[0].sz : 1;
+  const over = total >= DB_SIZE_WARN_BYTES;
+  const pct = Math.min(100, Math.round(total / DB_SIZE_WARN_BYTES * 100));
+  const topHtml = top.map(r=>`
+        <div style="display:grid;grid-template-columns:78px 1fr 46px;gap:6px;align-items:center;font-size:11px;margin-top:3px;">
+          <span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${escapeHtml(DB_SIZE_LABELS[r.k]||r.k)}</span>
+          <div style="height:5px;background:var(--bg);border-radius:3px;"><div style="width:${Math.max(2,Math.round(r.sz/maxSz*100))}%;height:100%;background:#888;border-radius:3px;"></div></div>
+          <span style="text-align:right;">${fmtDbBytes(r.sz)}</span>
+        </div>`).join('');
+  const badge = over
+    ? `<span style="font-size:11px;padding:1px 8px;border-radius:6px;background:#fdecea;color:#b3261e;">정리 필요</span>`
+    : `<span style="font-size:11px;padding:1px 8px;border-radius:6px;background:#e8f5e9;color:#1b5e20;">정상</span>`;
+  return `
+<div class="card"${over?' style="border-color:#b3261e;"':''}>
+      <h3>DB 용량 현황 ${badge}${sysInfoIcon(`앱 전체 데이터(서버 kpi_db 1행)의 현재 크기입니다. 접속·저장할 때마다 이 전체가 오가기 때문에 ${fmtDbBytes(DB_SIZE_WARN_BYTES)}를 넘으면 로딩이 느려지고 서버 부하가 커집니다. 용량이 큰 항목부터 정리(지난 달 데이터 등)를 검토하세요. 이 화면을 열 때마다 서버 요청 없이 계산됩니다.`)}</h3>
+      <div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:20px;font-weight:700;${over?'color:#b3261e;':''}">${fmtDbBytes(total)}</span><span class="muted">/ 경고 기준 ${fmtDbBytes(DB_SIZE_WARN_BYTES)}</span></div>
+      <div style="height:7px;background:var(--bg);border-radius:4px;overflow:hidden;margin:4px 0 6px;"><div style="width:${pct}%;height:100%;background:#A50034;"></div></div>
+      ${over ? `<div style="font-size:11px;color:#b3261e;margin-bottom:2px;">기준 초과 - 로딩이 느려질 수 있어요. 큰 항목부터 확인하세요.</div>` : ''}
+      ${topHtml}
+    </div>
+`;
+}
 function renderSystemAdmin(){
   if(!isSystemAdmin()){
     return `<div class="page-title">시스템 관리</div><div class="page-desc">관리자만 접근할 수 있는 화면입니다.</div>`;
@@ -4658,6 +4707,7 @@ function renderSystemAdmin(){
       <h3>계정 관리${sysInfoIcon('현재 등록된 매니저/사원 명단 - 전체 계정 목록 조회, 사번·이름·지점명·직책 수정, 비밀번호 초기화·변경, 접속 기록 확인은 별도 화면에서 처리합니다. 계정 수가 많아지면 이 화면이 길어져 다른 관리 항목을 찾기 어려워지는 것을 막기 위함입니다.')}</h3>
       <button class="btn btn-primary" onclick="renderTab('accountManagement')">계정관리 상세</button>
     </div>
+${dbSizeCardHtml()}
 
 <div class="card">
       <h3>📊 지표 업로드(박귀복C)${sysInfoIcon('"(인터비즈) 일일실적 현황" 파일("일일실적 현황" 파일 · MASTER/Gross(CC포함)/구독/고수익 시트 포함 .xlsb/.xlsx)을 그대로 올리면 됩니다. 파일명의 날짜를 기준일자(D-1, 전일)로 자동 인식하고, Gross(CC포함)/구독/고수익 시트에서 우리 팀 소속 지점(이마트 채널)만 자동으로 골라내어 [지표 한 눈에 보기] 페이지의 관리자별·지점별 GROSS 총판/실판, 구독, 고수익(HIGH-END) 비중 지표를 갱신합니다. 같은 달 안에서 다시 올리면 그 달 자료만 최신 값으로 갱신되고, 다른 달(예: 9월) 파일을 올리면 이전 달(8월) 자료는 지워지지 않고 그대로 보관되어 화면에서 달을 선택해 다시 볼 수 있습니다.<br>※ 파일 용량이 커서(약 20~30MB) 읽어오는 데 30초 이상 걸릴 수 있습니다. 업로드 중 메시지가 뜨면 창을 벗어나지 말고 잠시 기다려 주세요.')}</h3>
