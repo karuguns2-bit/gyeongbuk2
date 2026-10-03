@@ -6446,9 +6446,9 @@ function matchBranchByFileName(rawName){
 // [재고 조회] 업로드 파일의 매장명은 목표/구독 실적 등 다른 파일과 표기 규칙이 달라서
 // (예: "EM경산점"처럼 EM 접두어, 지점에 따라 "TR비산점"/"EM포항이동점"처럼 아예 다른 표기)
 // matchBranchByFileName() 하나로 처리할 수 없다. 확인된 예외만 명시적으로 매핑해두고
-// (지우님 확인: TR비산점=E/T비산점, EM포항이동점=이동점), 나머지는 EM 접두어만 뗀 뒤
-// 일반 지점명 매칭을 그대로 탄다.
-const INV_STORE_NAME_ALIASES = { 'TR비산점':'E/T비산점', 'EM포항이동점':'이동점' };
+// (지우님 확인: TR비산점=E/T비산점, EM포항이동점=이동점, SFM경산점=경산점, EM안동점=안동점),
+// 나머지는 EM 접두어만 뗀 뒤 일반 지점명 매칭을 그대로 탄다.
+const INV_STORE_NAME_ALIASES = { 'TR비산점':'E/T비산점', 'EM포항이동점':'이동점', 'SFM경산점':'경산점', 'EM안동점':'안동점' };
 function matchBranchByInvStore(rawStore){
   const s = String(rawStore||'').trim();
   if(INV_STORE_NAME_ALIASES[s]) return matchBranchByFileName(INV_STORE_NAME_ALIASES[s]);
@@ -10789,11 +10789,19 @@ function invTag(product){
   return null;
 }
 function invFilterDefaults(){
-  // 2026-10: 매니저(staff)가 재고 조회에 처음 들어오면(또는 "초기화"를 누르면) 매번 "전체"
-  // 중에서 본인 지점을 다시 찾아야 하는 불편이 있어, 본인 소속 지점으로 바로 필터링된
-  // 상태로 보여준다. 관리자·임원은 전 지점을 봐야 하므로 그대로 "전체"가 기본값이다.
-  const defaultStore = (SESSION && SESSION.role==='staff' && SESSION.branchId) ? branchName(SESSION.branchId) : 'ALL';
-  return {store:defaultStore, tag:'ALL', q:'', page:1, cat1List:[], statusList:[], saleStatusList:[], clearanceOnly:false};
+  return {store:'ALL', tag:'ALL', q:'', page:1, cat1List:[], statusList:[], saleStatusList:[], clearanceOnly:false};
+}
+// 2026-10: 매니저(staff)가 재고 조회에 "처음" 들어왔을 때만 본인 소속 지점으로 바로 필터링된
+// 상태로 보여준다(매번 "전체" 중에서 본인 지점을 다시 찾는 불편 해소). "초기화" 버튼은 이 기본값이
+// 아니라 진짜 중립 상태(invFilterDefaults, 전체)로 돌아가야 하므로 별도 함수로 분리했다 — 같이
+// 쓰면 매니저는 "초기화"를 눌러도 본인 지점으로 다시 돌아와 버려 아무 반응이 없는 것처럼 보인다.
+function invFilterInitialDefaults(){
+  const d = invFilterDefaults();
+  if(SESSION && SESSION.role==='staff' && SESSION.branchId){
+    const name = branchName(SESSION.branchId);
+    if(name && name!=='-') d.store = name;
+  }
+  return d;
 }
 function toggleInvClearanceFilter(){
   if(!state.invFilter) state.invFilter = invFilterDefaults();
@@ -10913,7 +10921,7 @@ function filterPresetBarHtml(pageKey){
   </div>`;
 }
 function renderInventory(){
-  if(!state.invFilter) state.invFilter = invFilterDefaults();
+  if(!state.invFilter) state.invFilter = invFilterInitialDefaults();
   const f = state.invFilter;
   if(!f.cat1List) f.cat1List = [];
   if(!f.statusList) f.statusList = [];
