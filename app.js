@@ -1925,6 +1925,7 @@ function enterApp(user, fromRestore){
   startScreensaverWatch();
   if(!fromRestore) logActivity('login');
   checkBranchScheduleAlarmForToday();
+  if(user.role==='admin') setTimeout(autoCleanupOldData, 5000);
 }
 // 로그인(또는 새로고침 세션 복원) 시, 오늘 날짜에 등록된 지점 스케줄이 있으면 알림 팝업을
 // 띄운다. 매니저(staff)는 본인 소속 지점 기준으로, 하루에 한 번만(localStorage로 표시 여부
@@ -8381,6 +8382,64 @@ function cleanupOldWorkSchedule(){
     if(Object.keys(dates).length===0) delete DB.workSchedule.byEmpDate[empId];
   });
   return removed;
+}
+// 2026-10: DB 용량 자동 정리 규칙(Supabase Disk IO 소진·로딩 지연 사고 이후 도입).
+// "당월 + 직전 1개월"만 남기고 그보다 오래된 지점 일정/근무일정/정책숙지도 응시 기록을 지운다.
+// 업로드 이력(workSchedule.uploads)은 화면에서 마지막 1건만 쓰므로 최근 20건만 보관한다.
+// 시스템 관리자가 로그인할 때 하루 1회만, 그리고 서버 최신 데이터와 동기화가 끝난 뒤에 실행한다
+// (동기화 전 오래된 캐시 상태에서 정리해 저장하면 다른 사람이 방금 올린 데이터를 덮어쓸 수 있음).
+function autoCleanupCutoffStr(){
+  const c = new Date();
+  c.setDate(1);
+  c.setMonth(c.getMonth()-1);
+  return `${c.getFullYear()}-${String(c.getMonth()+1).padStart(2,'0')}-01`;
+}
+function cleanupOldBranchSchedule(){
+  if(!DB.schedule) return 0;
+  const cutoffStr = autoCleanupCutoffStr();
+  let removed = 0;
+  Object.keys(DB.schedule).forEach(branchId=>{
+    const byEmp = DB.schedule[branchId];
+    if(!byEmp || typeof byEmp!=='object') return;
+    Object.keys(byEmp).forEach(empId=>{
+      const dates = byEmp[empId];
+      if(!dates || typeof dates!=='object') return;
+      Object.keys(dates).forEach(d=>{
+        if(/^\d{4}-\d{2}-\d{2}$/.test(d) && d < cutoffStr){ delete dates[d]; removed++; }
+      });
+      if(Object.keys(dates).length===0) delete byEmp[empId];
+    });
+  });
+  return removed;
+}
+function cleanupOldPolicyQuizAttempts(){
+  if(!Array.isArray(DB.policyQuizAttempts)) return 0;
+  const cutoffStr = autoCleanupCutoffStr();
+  const before = DB.policyQuizAttempts.length;
+  DB.policyQuizAttempts = DB.policyQuizAttempts.filter(a=> !a.weekStart || a.weekStart >= cutoffStr);
+  return before - DB.policyQuizAttempts.length;
+}
+function capWorkScheduleUploadLog(){
+  const u = DB.workSchedule && DB.workSchedule.uploads;
+  if(!Array.isArray(u) || u.length<=20) return 0;
+  const extra = u.length - 20;
+  DB.workSchedule.uploads = u.slice(-20);
+  return extra;
+}
+async function autoCleanupOldData(){
+  try{
+    if(!SESSION || !isSystemAdmin() || !dbReady) return;
+    const key = 'lg_kpi_auto_cleanup_day';
+    const today = todayStr();
+    try{ if(localStorage.getItem(key)===today) return; }catch(e){ /* 무시 */ }
+    if(dbRefreshInFlight){ try{ await dbRefreshInFlight; }catch(e){ /* 무시 */ } }
+    const n = cleanupOldWorkSchedule() + cleanupOldBranchSchedule() + cleanupOldPolicyQuizAttempts() + capWorkScheduleUploadLog();
+    try{ localStorage.setItem(key, today); }catch(e){ /* 무시 */ }
+    if(n>0){
+      await saveDB();
+      console.log('[자동 정리] 오래된 데이터 ' + n + '건 정리');
+    }
+  }catch(e){ console.error('자동 정리 실패:', e); }
 }
 // 자동 정리와 별도로, 관리자가 원할 때 바로 실행할 수 있는 보조 버튼용 함수.
 function manualCleanupWorkSchedule(){
