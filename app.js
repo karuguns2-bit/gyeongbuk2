@@ -10529,7 +10529,25 @@ function incMacroBranchDetailHtml(branchName, b){
       ${incGradeTableHtml(gradeRecords, branchName)}
     </div>`;
 }
+// 2026-10: [지점별 인센티브(참고용)] 페이지는 당분간 매니저(staff)에게는 점검 중 안내만
+// 보여주고(관리자가 데이터 정확도를 더 점검할 시간이 필요해서), 관리자·임원은 그대로 정상
+// 조회할 수 있게 한다. 내용은 그대로 그려서 반투명 처리만 하고, 위에 안내 카드를 올린다.
 function renderIncentiveOverview(){
+  const inner = renderIncentiveOverviewInner();
+  if(SESSION.role==='staff'){
+    return `<div style="position:relative;">
+      <div style="filter:blur(1px);opacity:0.35;pointer-events:none;user-select:none;">${inner}</div>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+        <div class="card" style="text-align:center;padding:18px 28px;box-shadow:0 2px 10px rgba(0,0,0,0.08);">
+          <i class="ti ti-tool" aria-hidden="true" style="font-size:26px;color:var(--primary);"></i>
+          <div style="font-size:14.5px;font-weight:700;margin-top:8px;">해당 페이지는 점검 중입니다.</div>
+        </div>
+      </div>
+    </div>`;
+  }
+  return inner;
+}
+function renderIncentiveOverviewInner(){
   const periods = Object.keys(DB.incentiveMacroUpload.byPeriod||{}).sort();
   if(periods.length===0){
     return `
@@ -10607,13 +10625,10 @@ function renderIncentiveOverview(){
     sortedBranches.map((name,i)=>{
       const b = byBranch[name];
       const total = incMacroBranchTotal(b);
-      const branchId = incMacroBranchIdByName(name);
-      const manager = branchId ? incMacroManagerOfBranch(branchId) : null;
       const isSel = name===selBranchName;
       const isTop3 = i<3;
       return `<div class="card mo-branch-card" style="cursor:pointer;${isSel?'border-color:var(--primary);border-width:2px;background:#fff8f9;':(isTop3?'border-color:var(--primary);background:#fff8f9;':'')}" onclick="setIncOverviewBranch('${escapeHtml(name)}')">
         <div style="font-size:11.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(name)}</div>
-        <div class="muted" style="font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(manager||'-')}</div>
         <div style="font-size:15px;font-weight:800;color:var(--primary);margin-top:3px;">${moFmtWonRaw(total)}</div>
       </div>`;
     }).join('') +
