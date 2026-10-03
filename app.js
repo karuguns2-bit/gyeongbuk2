@@ -648,7 +648,51 @@ let dbReady = false;
 let dbPollTimer = null;
 
 function cacheDBLocally(){
-  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(DB)); }catch(e){ /* 저장공간 부족 등은 무시 */ }
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+    // 캐시가 서버의 어느 버전 기준인지 함께 저장해 둔다(다음 접속 때 "캐시로 먼저 열기"에서 사용).
+    localStorage.setItem(STORAGE_KEY+'_ver', String(DB_VERSION));
+  }catch(e){ /* 저장공간 부족 등은 무시 */ }
+}
+// 2026-10: 새로고침 때마다 서버의 DB 전체(약 2.7MB)를 받을 때까지 로딩 화면에서 기다리던 문제를
+// 개선. 직전에 저장해 둔 로컬 캐시가 있으면 그걸로 즉시 화면을 열고, 서버에는 "버전 번호"만
+// 먼저 물어본다(몇 바이트). 서버 버전이 더 최신일 때만 전체를 받아 항목 단위로 병합한다
+// (pollDbForRemoteChanges와 동일한 병합 로직). 캐시가 없거나 버전 기록이 없으면 기존 방식 그대로.
+let dbRefreshInFlight = null;
+function loadDBFromCacheFast(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const ver = localStorage.getItem(STORAGE_KEY+'_ver');
+    if(!raw || ver===null || !sbClient) return false;
+    const parsed = JSON.parse(raw);
+    if(!parsed || !Array.isArray(parsed.users) || !parsed.users.length) return false;
+    DB = parsed;
+    DB_VERSION = Number(ver) || 0;
+    migrateDB();
+    DB_BASELINE = cloneDBSnapshot(DB);
+    dbReady = true;
+    return true;
+  }catch(e){ return false; }
+}
+function refreshDBFromServerInBackground(){
+  dbRefreshInFlight = (async function(){
+    try{
+      const { data, error } = await sbClient.from('kpi_db').select('version').eq('id',1).single();
+      if(error) throw error;
+      if(data && data.version > DB_VERSION){
+        const { data: full, error: err2 } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
+        if(err2) throw err2;
+        DB = mergeRemoteDB(DB_BASELINE, DB, full.data);
+        DB_VERSION = full.version;
+        migrateDB();
+        DB_BASELINE = cloneDBSnapshot(full.data);
+        cacheDBLocally();
+        if(SESSION && !isUserActivelyTyping()) renderTab(state.tab);
+      }
+    }catch(e){ console.error('백그라운드 DB 확인 실패(캐시 유지):', e); }
+    finally{ dbRefreshInFlight = null; }
+  })();
+  return dbRefreshInFlight;
 }
 function cloneDBSnapshot(obj){
   try{ return JSON.parse(JSON.stringify(obj)); }catch(e){ return obj; }
@@ -1890,7 +1934,16 @@ function handleLogin(){
   const id = document.getElementById('loginId').value.trim();
   const pw = document.getElementById('loginPw').value.trim();
   const user = DB.users.find(u=>u.empId===id && u.pw===pw);
-  if(!user){ err.textContent='사번 또는 비밀번호가 올바르지 않습니다.'; return; }
+  if(!user){
+    // 캐시로 먼저 열린 직후라 서버 최신 계정 정보(비밀번호 변경 등)가 아직 반영 전일 수 있다 —
+    // 백그라운드 확인이 진행 중이면 끝난 뒤 한 번 더 판단한다.
+    if(dbRefreshInFlight){
+      err.textContent='계정 정보를 확인하는 중입니다...';
+      dbRefreshInFlight.then(()=> handleLogin());
+      return;
+    }
+    err.textContent='사번 또는 비밀번호가 올바르지 않습니다.'; return;
+  }
   err.textContent='';
   // 아이디 저장 체크 여부에 따라 다음 접속 시 자동으로 채워지도록 저장/삭제한다.
   const rememberChecked = !!(document.getElementById('loginRememberId') && document.getElementById('loginRememberId').checked);
@@ -18110,12 +18163,14 @@ document.addEventListener('keydown', function(e){
 });
 
 (async function initApp(){
-  await loadDB();
+  const usedCache = loadDBFromCacheFast();
+  if(!usedCache) await loadDB();
   updateInventoryNavLabel();
   // 새로고침해도 로그인 상태가 유지되도록, 저장된 세션이 있으면 로그인 화면을 건너뛰고 바로 복원한다.
   const restored = restoreSessionIfAny();
   if(!restored) applyRememberedLoginId();
   const overlay = document.getElementById('loginLoadingOverlay');
   if(overlay) overlay.style.display = 'none';
+  if(usedCache) refreshDBFromServerInBackground();
 })();
 document.getElementById('loginPw').addEventListener('keydown', e=>{ if(e.key==='Enter') handleLogin(); });
