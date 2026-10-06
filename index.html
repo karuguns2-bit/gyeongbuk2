@@ -465,14 +465,16 @@ window.addEventListener('load', function(){
   .page-desc{color:var(--text-sub);font-size:13.5px;margin:0 0 22px;line-height:1.6;}
 
   .grid{display:grid;gap:16px;}
-  .grid-3{grid-template-columns:repeat(3,1fr);}
-  .grid-2{grid-template-columns:repeat(2,1fr);}
-  .grid-4{grid-template-columns:repeat(4,1fr);}
-  .grid-5{grid-template-columns:repeat(5,1fr);}
-  .grid-6{grid-template-columns:repeat(6,1fr);}
-  .grid-7{grid-template-columns:repeat(7,1fr);}
-  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4,.grid-5,.grid-6,.grid-7{grid-template-columns:repeat(2,1fr);}}
-  .sysadmin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:start;}
+  canvas{max-width:100%;}
+  .card,.grid > *{min-width:0;}
+  .grid-3{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .grid-2{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .grid-4{grid-template-columns:repeat(4,minmax(0,1fr));}
+  .grid-5{grid-template-columns:repeat(5,minmax(0,1fr));}
+  .grid-6{grid-template-columns:repeat(6,minmax(0,1fr));}
+  .grid-7{grid-template-columns:repeat(7,minmax(0,1fr));}
+  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4,.grid-5,.grid-6,.grid-7{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  .sysadmin-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;align-items:start;}
   .sysadmin-grid .sysadmin-span2{grid-column:span 2;}
   /* 카드마다 내용 길이가 달라 stretch만으로는 빈 여백이 생겨서, 아예 높이를 고정하고
      내용이 넘치는 카드만 안쪽에서 스크롤되게 한다(2026.09) - 진짜 균일한 크기 배치. */
@@ -484,7 +486,7 @@ window.addEventListener('load', function(){
   .sysadmin-grid .card:not(.sysadmin-span2) .form-row select{width:100%;}
   .sysadmin-grid .small-note{margin-top:4px;font-size:11px;}
   .sysadmin-grid .muted{font-size:11px;}
-  @media(max-width:1000px){.sysadmin-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:1000px){.sysadmin-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media(max-width:640px){.sysadmin-grid{grid-template-columns:1fr;}.sysadmin-grid .sysadmin-span2{grid-column:1/-1;}}
   /* 시스템 관리 카드 제목 옆 부가설명 ⓘ 아이콘 - 평소엔 숨기고 마우스오버 시에만 말풍선으로 표시 */
   .sysadmin-info{
@@ -556,10 +558,10 @@ window.addEventListener('load', function(){
   .mo-plain .stat-tile-blue,.mo-plain .stat-tile-pink,.mo-plain .stat-tile-purple,
   .mo-plain .stat-tile-green,.mo-plain .stat-tile-amber{background:#fff;color:var(--text);}
   .mo-plain .badge.good,.mo-plain .badge.warn,.mo-plain .badge.bad{background:#f2f2f4;color:var(--text);}
-  .mo-branch-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .mo-branch-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;}
   .mo-branch-card{padding:7px 8px;}
-  @media(max-width:1100px){.mo-branch-grid{grid-template-columns:repeat(4,1fr);}}
-  @media(max-width:640px){.mo-branch-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:1100px){.mo-branch-grid{grid-template-columns:repeat(4,minmax(0,1fr));}}
+  @media(max-width:640px){.mo-branch-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media(max-width:900px){.mo-chart-row{grid-template-columns:1fr !important;}}
   /* 2026.09: 목표 관리(MSIS기준) 전용 - 파스텔 배경 제거하고 흰 바탕+검은 글씨,
      강조 수치/그래프는 붉은색(--primary) 하나로 통일. */

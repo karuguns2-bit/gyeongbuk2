@@ -3299,7 +3299,7 @@ function renderHomeBranchBadges(){
           <button type="button" class="bbadge-rank-tab${rankMode==='year'?' active':''}" onclick="setBranchBadgeRankMode('year')">${rankYear}년 누적</button>
         </div>
       </div>
-      <div class="bbadge-rank-grid" style="grid-template-columns:repeat(${rankCols},1fr);grid-template-rows:repeat(${rankRows},1fr);">${rankRowsHtml}</div>
+      <div class="bbadge-rank-grid" style="grid-template-columns:repeat(${rankCols},minmax(0,1fr));grid-template-rows:repeat(${rankRows},minmax(0,1fr));">${rankRowsHtml}</div>
     </div>`;
   return `
     <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:8px 10px;">
@@ -3330,7 +3330,7 @@ function renderHomeBranchBadges(){
         .bbadge-outer{ display:flex; align-items:stretch; gap:6px; flex-wrap:wrap; }
         .bbadge-leftcol{ flex:0 1 auto; min-width:300px; }
         .bbadge-medals{
-          display:grid; grid-template-columns:repeat(4,1fr); gap:6px 4px;
+          display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px 4px;
           padding:2px 2px 0;
         }
         .bbadge-rankpanel{ flex:1 1 220px; margin-top:0; background:var(--bg-soft,#f7f7f9); border:1px solid var(--border); border-radius:9px; padding:5px 6px; display:flex; flex-direction:column; }
@@ -3747,8 +3747,8 @@ function renderHomeScheduleModalBody(branchId){
         <div style="font-weight:700;font-size:13px;">${y}년 ${m}월</div>
         <button type="button" class="btn btn-sm" onclick="shiftHomeSchedMonth(1)">▶</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:2px;">${weekDayHeaders}</div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;">${cells.join('')}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;margin-bottom:2px;">${weekDayHeaders}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;">${cells.join('')}</div>
       <div style="margin-top:8px;font-size:11.5px;font-weight:700;">${selDate} 일정</div>
       ${listHtml}
       ${formHtml}
@@ -3913,7 +3913,7 @@ function renderHomeIncentiveRefWidget(branchId){
     <div class="card" style="padding:10px 12px;height:100%;display:flex;flex-direction:column;box-sizing:border-box;">
       <h3 style="margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-coin" aria-hidden="true"></i> 인센티브 참고 <small>(${escapeHtml(row.branchName)})</small></h3>
       <div style="font-size:21px;font-weight:800;color:var(--primary);margin-top:3px;">${moFmtWonRaw(total)}</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(2,1fr);gap:7px;margin-top:8px;flex:1;min-height:0;">
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px;flex:1;min-height:0;">
         ${tileHtml('목표달성 인센티브', expectedAmt)}
         ${tileHtml('Grade수당 계', gradeSum)}
         ${tileHtml('일시불 수당 계', flatSum)}
@@ -4663,7 +4663,7 @@ function dbSizeCardHtml(){
   const over = total >= DB_SIZE_WARN_BYTES;
   const pct = Math.min(100, Math.round(total / DB_SIZE_WARN_BYTES * 100));
   const topHtml = top.map(r=>`
-        <div style="display:grid;grid-template-columns:78px 1fr 46px;gap:6px;align-items:center;font-size:11px;margin-top:3px;">
+        <div style="display:grid;grid-template-columns:78px minmax(0,1fr) 46px;gap:6px;align-items:center;font-size:11px;margin-top:3px;">
           <span style="overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${escapeHtml(DB_SIZE_LABELS[r.k]||r.k)}</span>
           <div style="height:5px;background:var(--bg);border-radius:3px;"><div style="width:${Math.max(2,Math.round(r.sz/maxSz*100))}%;height:100%;background:#888;border-radius:3px;"></div></div>
           <span style="text-align:right;">${fmtDbBytes(r.sz)}</span>
@@ -9505,7 +9505,7 @@ function renderMetricsOverview(){
         ${moChipsHtml(chips)}
         ${kpiCards}
       </div>
-      <div class="mo-chart-row" style="display:grid;grid-template-columns:repeat(${compareCardHtml?3:2},1fr);gap:10px;margin-top:10px;">
+      <div class="mo-chart-row" style="display:grid;grid-template-columns:repeat(${compareCardHtml?3:2},minmax(0,1fr));gap:10px;margin-top:10px;">
         ${compareCardHtml}
         <div class="card">
           <h3><i class="ti ti-trending-up" aria-hidden="true"></i> ${yoyRankTitle} <small>전년 동기 대비, %</small></h3>
@@ -10689,7 +10689,7 @@ function incMacroBranchDetailHtml(branchName, b){
       <div class="muted" style="font-size:12px;">${escapeHtml(branchName)}${manager?` · 관리자 ${escapeHtml(manager)}`:''} · 단위 원</div>
       <h3 style="margin-top:4px;">마케팅 카테고리별 실판/인센티브</h3>
       ${incMacroCategoryGridHtml(b.categories)}
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px 10px;margin-top:14px;font-size:11.5px;">
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px;margin-top:14px;font-size:11.5px;">
         <div style="background:#f7f7f9;border-radius:8px;padding:8px 10px;">
           <div class="muted">Grade 수당(스바미/정수기/TV구독)</div>
           <div style="font-weight:800;font-size:14px;margin-top:2px;">${moFmtWonRaw(b.gradeAmt)}</div>
@@ -10794,7 +10794,7 @@ function renderIncentiveOverviewInner(){
   });
   totalSum = totalGrade + totalExtra + totalLump + totalSub;
   const statsHtml = `
-    <div class="stats stats5" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px;">
+    <div class="stats stats5" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-bottom:10px;">
       <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">인센티브 합계</div><div style="font-size:18px;font-weight:800;color:var(--primary);margin-top:2px;">${moFmtWonRaw(totalSum)}</div><div class="muted" style="font-size:10.5px;margin-top:2px;">${branchNames.length}개 지점</div></div>
       <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">제품수당 일시불</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalLump)}</div></div>
       <div class="card" style="padding:10px 12px;"><div class="muted" style="font-size:11px;">제품수당 구독</div><div style="font-size:18px;font-weight:800;margin-top:2px;">${moFmtWonRaw(totalSub)}</div></div>
@@ -15874,8 +15874,8 @@ function eduScheduleCalendarHtml(cat){
         <div style="font-weight:700;font-size:14px;">${y}년 ${m}월</div>
         <button type="button" class="btn btn-sm" onclick="shiftEduCalMonth('${cat}',1)">▶</button>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;">${weekDayHeaders}</div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">${cells.join('')}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-bottom:3px;">${weekDayHeaders}</div>
+      <div style="display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;">${cells.join('')}</div>
       ${filterDate ? `<div class="small-note" style="margin-top:10px;"><i class="ti ti-bookmark" aria-hidden="true"></i> <b>${filterDate}</b> 일정만 보는 중 · <span style="color:var(--primary);cursor:pointer;text-decoration:underline;" onclick="toggleEduCalFilterDate('${cat}','${filterDate}')">전체 보기</span></div>` : `<div class="small-note" style="margin-top:10px;">날짜를 클릭하면 해당 날짜 일정만 볼 수 있습니다.</div>`}
     </div>`;
 }
@@ -16204,7 +16204,7 @@ function renderEduCompletionAll(){
       </div>`;
   }
   const summaryBarsHtml = `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start;margin-top:10px;">
+    <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start;margin-top:10px;">
       ${eduRateBarHtml('화상교육', videoDoneCount, total, sessionBreakdown.length>0 ? `
         <div style="display:flex;flex-direction:column;gap:3px;">
           ${sessionBreakdown.map(s=>`<div style="display:flex;justify-content:space-between;font-size:10.5px;${s.done<total?'color:var(--primary);':'color:var(--text-sub);'}"><span>${s.no}차 · ${escapeHtml(s.title)}</span><span>${s.done}/${total}</span></div>`).join('')}
@@ -17513,18 +17513,18 @@ function renderProspects(){
   }).join('') || `<tr><td colspan="${isAdmin?18:16}" class="muted">등록된 가망고객이 없습니다.</td></tr>`;
 
   const miniChartsHtml = miniCharts.some(c=>c.entries.length>0) ? `
-    <div style="flex:1.3;min-width:260px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+    <div style="flex:1.3 1 420px;min-width:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;">
       ${miniCharts.map(c=>`
-        <div>
+        <div style="min-width:0;">
           <div class="muted" style="font-size:11.5px;margin-bottom:4px;">${c.title}</div>
           ${c.entries.length>0
-            ? `<div style="position:relative;height:80px;background:#f8f7f5;border-radius:6px;padding:4px;box-sizing:border-box;"><canvas id="${c.id}"></canvas></div>
+            ? `<div style="position:relative;height:80px;background:#f8f7f5;border-radius:6px;padding:4px;box-sizing:border-box;overflow:hidden;min-width:0;"><canvas id="${c.id}"></canvas></div>
                <div class="muted" style="font-size:10px;margin-top:3px;">${c.entries.map(e=>`${e[0]} ${e[1]}건`).join(' · ')}</div>`
             : `<div class="muted" style="height:80px;background:#f8f7f5;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;">데이터 없음</div>`}
         </div>`).join('')}
     </div>` : '';
   const feedbackTextHtml = `
-    <div style="flex:1;min-width:220px;${miniChartsHtml ? 'border-left:1px solid var(--border);padding-left:14px;' : ''}">
+    <div style="flex:1 1 240px;min-width:0;${miniChartsHtml ? 'border-left:1px solid var(--border);padding-left:14px;' : ''}">
       ${feedback.map(l=>`<div style="margin-bottom:6px;">${l}</div>`).join('')}
     </div>`;
 

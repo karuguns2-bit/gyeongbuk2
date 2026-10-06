@@ -387,14 +387,16 @@ window.addEventListener('load', function(){
   .page-desc{color:var(--text-sub);font-size:13.5px;margin:0 0 22px;line-height:1.6;}
 
   .grid{display:grid;gap:16px;}
-  .grid-3{grid-template-columns:repeat(3,1fr);}
-  .grid-2{grid-template-columns:repeat(2,1fr);}
-  .grid-4{grid-template-columns:repeat(4,1fr);}
-  .grid-5{grid-template-columns:repeat(5,1fr);}
-  .grid-6{grid-template-columns:repeat(6,1fr);}
-  .grid-7{grid-template-columns:repeat(7,1fr);}
-  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4,.grid-5,.grid-6,.grid-7{grid-template-columns:repeat(2,1fr);}}
-  .sysadmin-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;align-items:start;}
+  canvas{max-width:100%;}
+  .card,.grid > *{min-width:0;}
+  .grid-3{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .grid-2{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .grid-4{grid-template-columns:repeat(4,minmax(0,1fr));}
+  .grid-5{grid-template-columns:repeat(5,minmax(0,1fr));}
+  .grid-6{grid-template-columns:repeat(6,minmax(0,1fr));}
+  .grid-7{grid-template-columns:repeat(7,minmax(0,1fr));}
+  @media(max-width:1000px){.grid-3,.grid-2{grid-template-columns:1fr;}.grid-4,.grid-5,.grid-6,.grid-7{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  .sysadmin-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;align-items:start;}
   .sysadmin-grid .sysadmin-span2{grid-column:span 2;}
   .sysadmin-grid .card{padding:12px 14px;display:flex;flex-direction:column;height:190px;overflow-y:auto;}
   .sysadmin-grid .card h3{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:13px;margin-bottom:8px;}
@@ -404,7 +406,7 @@ window.addEventListener('load', function(){
   .sysadmin-grid .card:not(.sysadmin-span2) .form-row select{width:100%;}
   .sysadmin-grid .small-note{margin-top:4px;font-size:11px;}
   .sysadmin-grid .muted{font-size:11px;}
-  @media(max-width:1000px){.sysadmin-grid{grid-template-columns:repeat(2,1fr);}}
+  @media(max-width:1000px){.sysadmin-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media(max-width:640px){.sysadmin-grid{grid-template-columns:1fr;}.sysadmin-grid .sysadmin-span2{grid-column:1/-1;}}
   .sysadmin-info{
     position:relative; display:inline-flex; align-items:center; justify-content:center;
@@ -468,7 +470,7 @@ window.addEventListener('load', function(){
   .mo-plain .stat-tile-blue,.mo-plain .stat-tile-pink,.mo-plain .stat-tile-purple,
   .mo-plain .stat-tile-green,.mo-plain .stat-tile-amber{background:#fff;color:var(--text);}
   .mo-plain .badge.good,.mo-plain .badge.warn,.mo-plain .badge.bad{background:#f2f2f4;color:var(--text);}
-  .mo-branch-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;}
+  .mo-branch-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;}
   .mo-branch-card{padding:7px 8px;}
   .mo-chart-row{grid-template-columns:1fr !important;}
   /* 2026.09: 목표 관리(MSIS기준) 전용 - 파스텔 배경 제거하고 흰 바탕+검은 글씨,
@@ -507,7 +509,7 @@ window.addEventListener('load', function(){
   .inc-plain .inc-kv{background:#f7f8fa;}
   .inc-plain .inc-kv-total{background:#fff;border:1.5px solid var(--primary);color:var(--text);}
   .inc-plain .inc-kv-total span:last-child{color:var(--primary);}
-  .inc-plain .stats5{grid-template-columns:repeat(2,1fr) !important;}
+  .inc-plain .stats5{grid-template-columns:repeat(2,minmax(0,1fr)) !important;}
   .inc-plain .mo-branch-card{border-color:var(--border);}
   /* 2026.09: 공지사항/각종자료/정보보고/이슈제품 판매 성공 사례/우수 활동 사례 공유 5개
      게시판 공통 - 파스텔 배경 제거하고 흰 바탕+검은 글씨로 통일, 여백도 촘촘하게. */
@@ -970,10 +972,10 @@ window.addEventListener('load', function(){
     /* 홈 대시보드 KPI/미니통계처럼 숫자+라벨만 있는 가벼운 3분할 카드는(표·차트가 들어가는
        무거운 grid-3와 달리) 모바일에서도 세로로 다 풀어헤치기보다 압축된 3열로 유지하는 편이
        "세로로 늘어나는" 느낌을 훨씬 줄여준다. 폰트/여백만 작게 줄여서 3열에 맞춘다. */
-    .stat-grid-3{ grid-template-columns:repeat(3,1fr) !important; gap:7px !important; }
+    .stat-grid-3{ grid-template-columns:repeat(3,minmax(0,1fr)) !important; gap:7px !important; }
     /* 지점별 경쟁력(MS) 카드가 함께 뜨는 4분할 행은 3분할과 같은 폭에 4개를 욱여넣으면 너무
        좁아지므로, 모바일에서만 2x2로 접어 가독성을 유지한다. */
-    .stat-grid-4{ grid-template-columns:repeat(2,1fr) !important; gap:7px !important; }
+    .stat-grid-4{ grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:7px !important; }
     .stat-grid-3 .card, .stat-grid-3 .stat-tile, .stat-grid-4 .card, .stat-grid-4 .stat-tile{ padding:9px 7px !important; }
     .stat-grid-3 .stat-tile-label, .stat-grid-4 .stat-tile-label{ font-size:9.5px !important; margin-bottom:3px !important; }
     .stat-grid-3 .stat-tile-num, .stat-grid-4 .stat-tile-num{ font-size:14px !important; line-height:1.15 !important; }
