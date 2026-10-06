@@ -17424,25 +17424,25 @@ function renderProspects(){
         <span class="branch-pill ${!state.prospectFilterBranchId?'active':''}" onclick="setProspectFilterBranch('')">전체 지점</span>
         ${DB.branches.map(b=>`<span class="branch-pill ${state.prospectFilterBranchId===b.id?'active':''}" onclick="setProspectFilterBranch('${b.id}')">${b.name}</span>`).join('')}
       </div>
-      <div class="form-row">
+      <div class="form-row" style="align-items:flex-start;">
         <div class="field" style="max-width:220px;">
-          <label>담당자</label>
-          <select id="prospectFilterEmp" onchange="setProspectFilterEmp(this.value)">
+          <label style="display:block;height:16px;line-height:16px;margin-bottom:4px;">담당자</label>
+          <select id="prospectFilterEmp" style="height:36px;box-sizing:border-box;" onchange="setProspectFilterEmp(this.value)">
             <option value="">전체 담당자</option>
             ${prospectRepOptions(state.prospectFilterBranchId).map(r=>`<option value="${r.empId}" ${state.prospectFilterEmpId===r.empId?'selected':''}>${escapeHtml(r.name)}</option>`).join('')}
           </select>
         </div>
         <div class="field">
-          <label>방문일자 조회 기간</label>
+          <label style="display:block;height:16px;line-height:16px;margin-bottom:4px;">방문일자 조회 기간</label>
           <div style="display:flex;align-items:center;gap:6px;">
-            <input type="date" id="prospectFilterDateFrom" value="${state.prospectFilterDateFrom||''}" onchange="setProspectFilterDate('from', this.value)" style="width:150px">
+            <input type="date" id="prospectFilterDateFrom" value="${state.prospectFilterDateFrom||''}" onchange="setProspectFilterDate('from', this.value)" style="width:150px;height:36px;box-sizing:border-box;">
             <span class="muted">~</span>
-            <input type="date" id="prospectFilterDateTo" value="${state.prospectFilterDateTo||''}" onchange="setProspectFilterDate('to', this.value)" style="width:150px">
+            <input type="date" id="prospectFilterDateTo" value="${state.prospectFilterDateTo||''}" onchange="setProspectFilterDate('to', this.value)" style="width:150px;height:36px;box-sizing:border-box;">
             ${(state.prospectFilterDateFrom || state.prospectFilterDateTo) ? `<button class="btn btn-sm" onclick="clearProspectFilterDate()">기간 초기화</button>` : ''}
           </div>
-          <div class="small-note" style="margin-top:4px;">달력 아이콘을 눌러 날짜를 선택하면 방문일자 기준으로 조회됩니다. 비워두면 전체 기간이 조회됩니다.</div>
         </div>
       </div>
+      <div class="small-note" style="margin-top:8px;">달력 아이콘을 눌러 날짜를 선택하면 방문일자 기준으로 조회됩니다. 비워두면 전체 기간이 조회됩니다.</div>
     </div>` : '';
 
   const rows = paging.items.map(p=>{
