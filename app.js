@@ -3299,7 +3299,7 @@ function renderHomeBranchBadges(){
           <button type="button" class="bbadge-rank-tab${rankMode==='year'?' active':''}" onclick="setBranchBadgeRankMode('year')">${rankYear}년 누적</button>
         </div>
       </div>
-      <div class="bbadge-rank-grid" style="grid-template-columns:repeat(${rankCols},minmax(0,1fr));grid-template-rows:repeat(${rankRows},minmax(0,1fr));">${rankRowsHtml}</div>
+      <div class="bbadge-rank-grid" style="grid-template-columns:repeat(${rankCols},minmax(0,1fr));grid-template-rows:repeat(${rankRows},1fr);">${rankRowsHtml}</div>
     </div>`;
   return `
     <div class="card" style="margin-bottom:0;overflow:visible;box-sizing:border-box;padding:8px 10px;">
