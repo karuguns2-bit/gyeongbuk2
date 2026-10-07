@@ -3891,7 +3891,8 @@ const HOME_WIDGET_DEFS = [
 // [지점별 인센티브(참고용)] 페이지의 계산 함수를 그대로 재사용해, 홈에서는 내 지점 합계와
 // 매니저별 구독 Grade 수당만 가볍게 보여준다(표시 전용 - 저장/수정 로직은 전혀 손대지 않음).
 function renderHomeIncentiveRefWidget(branchId){
-  const moEntry = moDataFor(incDefaultPeriod());
+  const incPeriod = incDefaultPeriod();
+  const moEntry = moDataFor(incPeriod);
   const row = (moEntry.rows||[]).find(r=>r.branchId===branchId);
   if(!row) return '';
   const m = row.m;
@@ -3899,7 +3900,7 @@ function renderHomeIncentiveRefWidget(branchId){
   // Grade수당 계: 인터비즈 파일의 "인센티브" 시트 Grade수당계 칸(inc_gradeSum)이 아직 전 지점
   // 0으로 올라오고 있어(2026-09 확인), 실제 시상금이 들어있는 매니저별 "구독 Grade 수당"
   // 업로드(별도 표, incGradeRecordsForBranch)의 gradeAmt 합계를 대신 쓴다.
-  const gradeRecords = incGradeRecordsForBranch(row.branchName);
+  const gradeRecords = incGradeRecordsForBranch(row.branchName, incPeriod);
   const gradeSum = (gradeRecords||[]).reduce((a,r)=>a+(r.gradeAmt||0),0);
   const flatSum = incFlatSum(m);
   const subSum = m.inc_subAllowanceTotal||0;
@@ -3911,7 +3912,7 @@ function renderHomeIncentiveRefWidget(branchId){
         </div>`;
   return `
     <div class="card" style="padding:10px 12px;height:100%;display:flex;flex-direction:column;box-sizing:border-box;">
-      <h3 style="margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-coin" aria-hidden="true"></i> 인센티브 참고 <small>(${escapeHtml(row.branchName)})</small></h3>
+      <h3 style="margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><i class="ti ti-coin" aria-hidden="true"></i> 인센티브 참고 <small>(${escapeHtml(row.branchName)} · ${Number(incPeriod.slice(5))}월)</small></h3>
       <div style="font-size:21px;font-weight:800;color:var(--primary);margin-top:3px;">${moFmtWonRaw(total)}</div>
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(2,minmax(0,1fr));gap:7px;margin-top:8px;flex:1;min-height:0;">
         ${tileHtml('목표달성 인센티브', expectedAmt)}
@@ -10600,8 +10601,8 @@ function incBranchDetailRowsHtml(m){
 }
 // 2026-08-25 추가: [구독 Grade 수당] 업로드 파일 기준, 지점 소속 매니저(직원) 개인별 구독 판매
 // Grade 시상금 명단을 보여준다. branchName은 metricsOverviewNormName으로 정규화해서 매칭한다.
-function incGradeRecordsForBranch(branchName){
-  const byBranchKey = subGradeDataFor().byBranchKey;
+function incGradeRecordsForBranch(branchName, period){
+  const byBranchKey = subGradeDataFor(period || incDefaultPeriod()).byBranchKey;
   if(!byBranchKey) return null;
   const entry = byBranchKey[metricsOverviewNormName(branchName)];
   return entry ? entry.records : null;
@@ -10611,7 +10612,7 @@ function incGradeRecordsForBranch(branchName){
 // metricsOverviewNormName으로 다시 정규화해 매칭한다.
 function removeSubGradeRecord(branchNameRaw, empId){
   if(SESSION.role!=='admin') return;
-  const byBranchKey = subGradeDataFor().byBranchKey;
+  const byBranchKey = subGradeDataFor(incDefaultPeriod()).byBranchKey;
   if(!byBranchKey) return;
   const key = metricsOverviewNormName(branchNameRaw);
   const entry = byBranchKey[key];
@@ -10754,7 +10755,7 @@ function renderIncentiveOverview(){
 
   const detailHtmlFor = row=>{
     const m = row.m;
-    const gradeRecords = incGradeRecordsForBranch(row.branchName);
+    const gradeRecords = incGradeRecordsForBranch(row.branchName, period);
     return `
       <div class="card" style="border-left:4px solid var(--primary);margin-bottom:10px;">
         <div class="muted" style="font-size:12px;">${escapeHtml(row.branchName)}${row.manager?` · 관리자 ${escapeHtml(row.manager)}`:''} · 단위 원</div>
