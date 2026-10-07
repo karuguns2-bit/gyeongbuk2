@@ -2476,7 +2476,7 @@ function renderTab(tab){
   if(tab==='suggestions') main.innerHTML = renderSuggestions();
   if(tab!=='suggestions') state.suggestionSubmitted = false;
   if(tab!=='mistakeNote') state.lastMistakeFeedback = null;
-  if(tab!=='policyQuiz'){ state.policyQuizStep = null; state.policyQuizQuestions = null; state.policyQuizResult = null; state.policyQuizViewWeek = null; }
+  if(tab!=='policyQuiz'){ state.policyQuizStep = null; state.policyQuizQuestions = null; state.policyQuizResult = null; state.policyQuizViewWeek = null; state.policyQuizAdminWeek = null; }
   if(tab!=='kakaoFriends'){ state.kakaoContestEditing = false; }
   if(tab!=='policyQuiz') state.policyQuizEditingId = null;
   if(tab!=='goals') state.goalsPeriod = null;
@@ -14990,14 +14990,64 @@ function isPolicyQuizPastDeadline(weekStart){
 }
 // 이번 주(현재) 문제은행을 반환한다. 아직 이번 주 문제은행이 없으면(=새 주가 시작됐는데
 // 관리자가 아직 문제를 등록하지 않은 경우) 빈 배열로 초기화해서 반환한다.
-function currentPolicyQuizBank(){
-  const week = currentPolicyQuizWeek();
+// 2026.10: 문제은행/응시기간은 "오늘이 속한 주 월요일"이 아니라 "응시 가능 기간(시작일~마감일)에
+// 오늘이 들어있는 주차"를 기준으로 찾는다. 그래야 다음 주 문제를 미리 등록하거나, 응시 기간이
+// 월요일을 넘겨도 문제가 사라져 보이지 않는다. 해당되는 주차가 없으면 이번 주 월요일을 쓴다.
+function policyQuizActiveWeek(){
+  const today = todayStr();
+  const meta = DB.policyQuizWeekMeta || {};
+  const banks = DB.policyQuizWeeklyBanks || {};
+  let best = null;
+  Object.keys(meta).forEach(w=>{
+    const m = meta[w] || {};
+    const start = m.startDate || w;
+    const end = m.deadline || addDaysStr(w, 6);
+    if(today >= start && today <= end && (banks[w]||[]).length>0){
+      if(!best || w > best) best = w;
+    }
+  });
+  return best || currentPolicyQuizWeek();
+}
+// 관리자가 문제를 등록/관리하는 대상 주차(화면에서 선택, 기본값은 현재 응시 주차).
+function policyQuizAdminWeek(){
+  return state.policyQuizAdminWeek || policyQuizActiveWeek();
+}
+function policyQuizAdminWeekOptions(){
+  const set = new Set([currentPolicyQuizWeek(), addDaysStr(currentPolicyQuizWeek(), 7), policyQuizActiveWeek()]);
+  Object.keys(DB.policyQuizWeeklyBanks||{}).forEach(w=>{ if((DB.policyQuizWeeklyBanks[w]||[]).length>0) set.add(w); });
+  Object.keys(DB.policyQuizWeekMeta||{}).forEach(w=>set.add(w));
+  return Array.from(set).sort().reverse();
+}
+function policyQuizAdminWeekOptionLabel(w){
+  const m = (DB.policyQuizWeekMeta||{})[w];
+  return (m && m.label) ? `${m.label} (${w}~)` : `${w} 주`;
+}
+function setPolicyQuizAdminWeek(week){
+  state.policyQuizAdminWeek = week;
+  renderTab('policyQuiz');
+}
+// 문제 작성 팝업에서 대상 주차를 바꾸면 그 주차에 이미 저장된 표시이름/시작일/마감일을 채워 넣는다.
+function pqOnTargetWeekChange(week){
+  const m = (DB.policyQuizWeekMeta||{})[week] || {};
+  const set = (id,v)=>{ const el=document.getElementById(id); if(el) el.value = v||''; };
+  set('pqWeekLabelInput', m.label); set('pqWeekStartInput', m.startDate); set('pqWeekDeadlineInput', m.deadline);
+}
+// 읽기 전용 조회: 문제함이 없으면 빈 배열을 "반환만" 하고 DB에는 만들지 않는다.
+// (예전에는 페이지를 여는 것만으로 빈 문제함이 DB에 생성돼, 그 사용자가 다른 저장을 할 때
+// 관리자가 등록한 문제를 빈 목록으로 덮어쓰는 문제가 있었다.)
+function currentPolicyQuizBank(week){
+  week = week || policyQuizActiveWeek();
+  const banks = DB.policyQuizWeeklyBanks || {};
+  return banks[week] || [];
+}
+// 관리자가 문제를 등록/삭제할 때만 문제함을 실제로 만든다.
+function ensurePolicyQuizBank(week){
   if(!DB.policyQuizWeeklyBanks) DB.policyQuizWeeklyBanks = {};
   if(!DB.policyQuizWeeklyBanks[week]) DB.policyQuizWeeklyBanks[week] = [];
   return DB.policyQuizWeeklyBanks[week];
 }
 function myLatestPolicyQuizAttempt(empId, week){
-  week = week || currentPolicyQuizWeek();
+  week = week || policyQuizActiveWeek();
   const attempts = DB.policyQuizAttempts
     .filter(a=>a.empId===empId && a.weekStart===week)
     .sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
@@ -15008,14 +15058,14 @@ function policyQuizWeeksWithData(){
 }
 function latestPolicyQuizWeekWithData(){
   const weeks = policyQuizWeeksWithData();
-  return weeks.length ? weeks[0] : currentPolicyQuizWeek();
+  return weeks.length ? weeks[0] : policyQuizActiveWeek();
 }
 function setPolicyQuizViewWeek(week){
   state.policyQuizViewWeek = week;
   renderTab('policyQuiz');
 }
 function policyQuizStats(week){
-  week = week || currentPolicyQuizWeek();
+  week = week || policyQuizActiveWeek();
   const staffList = DB.users.filter(u=>u.role==='staff');
   const total = staffList.length;
   const results = staffList.map(u=>{
@@ -15029,7 +15079,7 @@ function policyQuizStats(week){
   return { week, total, attemptedCount, notAttemptedCount, rate, avgScore, results };
 }
 function startPolicyQuiz(){
-  const week = currentPolicyQuizWeek();
+  const week = policyQuizActiveWeek();
   if(isPolicyQuizBeforeStart(week)){
     alert(`이번 주(${policyQuizWeekLabel(week)}) 응시는 ${policyQuizWeekStartDate(week)}부터 시작됩니다.`);
     return;
@@ -15050,7 +15100,7 @@ function startPolicyQuiz(){
   renderTab('policyQuiz');
 }
 function submitPolicyQuiz(){
-  const __week = currentPolicyQuizWeek();
+  const __week = policyQuizActiveWeek();
   if(isPolicyQuizPastDeadline(__week)){
     alert(`이번 주(${policyQuizWeekLabel(__week)}) 응시 기간이 종료되어 제출할 수 없습니다.`);
     state.policyQuizStep = null;
@@ -15080,7 +15130,7 @@ function submitPolicyQuiz(){
   const attempt = {
     id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
     empId: SESSION.empId, name: SESSION.name, branchId: SESSION.branchId,
-    weekStart: currentPolicyQuizWeek(), score, detail,
+    weekStart: __week, score, detail,
     createdAt: new Date().toISOString()
   };
   DB.policyQuizAttempts.push(attempt);
@@ -15184,7 +15234,7 @@ function readPolicyQuizDraftRow(row){
 }
 function addPolicyQuizQuestion(){
   if(SESSION.role!=='admin') return;
-  const week = currentPolicyQuizWeek();
+  const week = (document.getElementById('pqWeekTargetInput')||{}).value || policyQuizAdminWeek();
   const label = (document.getElementById('pqWeekLabelInput')||{}).value || '';
   const startDate = (document.getElementById('pqWeekStartInput')||{}).value || '';
   const deadline = (document.getElementById('pqWeekDeadlineInput')||{}).value || '';
@@ -15200,7 +15250,8 @@ function addPolicyQuizQuestion(){
   }
   if(!DB.policyQuizWeekMeta) DB.policyQuizWeekMeta = {};
   DB.policyQuizWeekMeta[week] = { label: label.trim() || null, startDate: startDate || null, deadline: deadline || null };
-  const bank = currentPolicyQuizBank();
+  const bank = ensurePolicyQuizBank(week);
+  state.policyQuizAdminWeek = week;
   questions.forEach(q=>{
     bank.push(Object.assign({ id: 'pq_' + Date.now() + '_' + Math.random().toString(36).slice(2,7) }, q));
   });
@@ -15219,7 +15270,7 @@ function cancelEditPolicyQuizQuestion(){
 }
 function savePolicyQuizQuestion(id){
   if(SESSION.role!=='admin') return;
-  const q = currentPolicyQuizBank().find(x=>x.id===id);
+  const q = currentPolicyQuizBank(policyQuizAdminWeek()).find(x=>x.id===id);
   if(!q) return;
   const text = document.getElementById('pqEditText_' + id).value.trim();
   const options = readQuizOptionInputs('pqEditOpt_' + id + '_');
@@ -15236,14 +15287,15 @@ function savePolicyQuizQuestion(id){
 function deletePolicyQuizQuestion(id){
   if(SESSION.role!=='admin') return;
   if(!confirm('이 문제를 삭제하시겠습니까?')) return;
-  const week = currentPolicyQuizWeek();
-  DB.policyQuizWeeklyBanks[week] = currentPolicyQuizBank().filter(q=>q.id!==id);
+  const week = policyQuizAdminWeek();
+  DB.policyQuizWeeklyBanks[week] = currentPolicyQuizBank(week).filter(q=>q.id!==id);
   saveDB();
   renderTab('policyQuiz');
 }
 function renderPolicyQuiz(){
   const isAdmin = SESSION.role==='admin';
-  const currentWeek = currentPolicyQuizWeek();
+  const currentWeek = policyQuizActiveWeek();
+  const adminWeek = isAdmin ? policyQuizAdminWeek() : currentWeek;
   const viewWeek = state.policyQuizViewWeek || latestPolicyQuizWeekWithData();
   const isLatestRegistered = viewWeek === latestPolicyQuizWeekWithData();
   const stats = policyQuizStats(viewWeek);
@@ -15284,11 +15336,12 @@ function renderPolicyQuiz(){
         </table>
       </div>`;
 
-    const weekMeta = (DB.policyQuizWeekMeta||{})[currentWeek] || {};
-    const weekPastDeadline = isPolicyQuizPastDeadline(currentWeek);
-    const weekBeforeStart = isPolicyQuizBeforeStart(currentWeek);
+    const weekMeta = (DB.policyQuizWeekMeta||{})[adminWeek] || {};
+    const weekPastDeadline = isPolicyQuizPastDeadline(adminWeek);
+    const weekBeforeStart = isPolicyQuizBeforeStart(adminWeek);
+    const adminWeekOpts = policyQuizAdminWeekOptions();
 
-    const bank = currentPolicyQuizBank();
+    const bank = currentPolicyQuizBank(adminWeek);
     const bankRows = bank.map((q,idx)=>{
       if(state.policyQuizEditingId === q.id){
         const optRows = [0,1,2,3].map(i=>`<input id="pqEditOpt_${q.id}_${i+1}" value="${escapeHtml((q.options||[])[i]||'')}" placeholder="보기 ${i+1}" style="width:100%;margin-bottom:4px;">`).join('');
@@ -15329,6 +15382,11 @@ function renderPolicyQuiz(){
 
     const pqWriteModalBody = `
       <div class="form-row">
+        <div class="field" style="min-width:220px;"><label>등록할 주차 (시작일~마감일에 맞는 주차를 선택)</label>
+          <select id="pqWeekTargetInput" onchange="pqOnTargetWeekChange(this.value)" style="width:100%;">${adminWeekOpts.map(w=>`<option value="${w}" ${w===adminWeek?'selected':''}>${escapeHtml(policyQuizAdminWeekOptionLabel(w))}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div class="form-row">
         <div class="field" style="min-width:220px;"><label>주차 표시 이름</label><input id="pqWeekLabelInput" value="${escapeHtml(weekMeta.label||'')}" placeholder="예: 26년 8월3주차" style="width:100%;"></div>
       </div>
       <div class="form-row">
@@ -15349,7 +15407,8 @@ function renderPolicyQuiz(){
 
     questionBankSection = `
       <div class="card" style="margin-bottom:16px;">
-        <h3>${policyQuizWeekLabel(currentWeek)} 문제 은행 관리 (관리자 전용) — 총 ${bank.length}문제, 응시 시 무작위 ${Math.min(5,bank.length)}문제 출제</h3>
+        <h3>${policyQuizWeekLabel(adminWeek)} 문제 은행 관리 (관리자 전용) — 총 ${bank.length}문제, 응시 시 무작위 ${Math.min(5,bank.length)}문제 출제</h3>
+        <div style="margin-top:6px;"><select onchange="setPolicyQuizAdminWeek(this.value)">${adminWeekOpts.map(w=>`<option value="${w}" ${w===adminWeek?'selected':''}>${escapeHtml(policyQuizAdminWeekOptionLabel(w))}</option>`).join('')}</select></div>
         <table style="margin-top:12px;">
           <thead><tr><th>#</th><th>문제</th><th>정답</th><th></th></tr></thead>
           <tbody>${bankRows}</tbody>
