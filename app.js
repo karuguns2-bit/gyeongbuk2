@@ -5212,7 +5212,8 @@ const HOME_QUICK_LINKS = [
   {label:'LG전자업무지원', url:'https://lg-sales.hiqri.ai/user/account/login'},
   {label:'급여조회', url:'https://m.hanbiza.com/'},
   {label:'배움마당', url:'https://edumadang.singlex.com/login/index.php'},
-  {label:'연출물 신청', url:'https://lgevisual.com/login'}
+  {label:'연출물 신청', url:'https://lgevisual.com/login'},
+  {label:'구독 POP제작', url:'https://lgeup.com/9pop'}
 ];
 function homeQuickLinksHtml(){
   const btns = HOME_QUICK_LINKS.map(l=>`
