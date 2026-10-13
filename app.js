@@ -647,11 +647,224 @@ let DB_BASELINE = null;
 let dbReady = false;
 let dbPollTimer = null;
 
+/* =========================================================================
+   외부 저장 키(kpi_blob) - 재고(inventory)와 가망고객(prospects)은 용량이 커서 공유 DB 본체
+   (kpi_db)에서 분리해 별도 테이블(kpi_blob)에 압축(gzip) 저장한다(2026-10).
+   - 메모리 상의 DB.inventory / DB.prospects 는 예전과 완전히 똑같은 배열이라, 화면/로직 코드는
+     전혀 바뀌지 않는다. 달라지는 건 "서버에 저장/불러오는 방식"뿐이다.
+   - 재고는 'inventory' 한 덩어리, 가망고객은 등록월별('prospects:2026-07' ...)로 나눠 저장한다.
+   - 저장 시 "마지막으로 서버와 일치했던 내용(BLOB_STR)"과 달라진 덩어리만 올리고, 버전이 어긋나면
+     id 단위 3-way 병합(mergeIdArray)을 한 뒤 다시 시도한다 - 본체(kpi_db)와 같은 안전장치.
+   - 예전 방식으로 본체에 같이 들어있던 데이터(legacy)는 처음 접속할 때 자동으로 읽어서
+     kpi_blob으로 옮기고, 이후 본체 저장 때 본체에서는 빠진다.
+   ========================================================================= */
+const EXT_KEYS = ['inventory','prospects'];
+let BLOB_VER = {};   // 덩어리 id -> 서버 버전(서버와 마지막으로 동기화된 시점)
+let BLOB_STR = {};   // 덩어리 id -> 마지막 동기화 시점의 JSON 문자열(변경 감지 + 3-way 병합 기준점)
+let BLOB_LEGACY_DIRTY = false; // 본체에 남아있던 옛 데이터를 읽어 와서 아직 kpi_blob에 못 옮긴 상태
+function stripExtKeys(obj){
+  if(!obj || typeof obj!=='object') return obj;
+  const out = {};
+  Object.keys(obj).forEach(k=>{ if(!EXT_KEYS.includes(k)) out[k] = obj[k]; });
+  return out;
+}
+function dbForMain(){ return stripExtKeys(DB); }
+function prospectMonthKey(p){
+  const s = (p && (p.createdAt || p.visitDate)) || '';
+  return /^\d{4}-\d{2}/.test(String(s)) ? String(s).slice(0,7) : 'misc';
+}
+function dbToBlobMap(db){
+  const out = { inventory: Array.isArray(db.inventory) ? db.inventory : [] };
+  (Array.isArray(db.prospects) ? db.prospects : []).forEach(p=>{
+    const k = 'prospects:' + prospectMonthKey(p);
+    (out[k] = out[k] || []).push(p);
+  });
+  return out;
+}
+function currentBlobArray(id){
+  const m = dbToBlobMap(DB);
+  return m[id] || [];
+}
+function applyBlobArray(id, arr){
+  if(id==='inventory'){ DB.inventory = arr; return; }
+  if(id.indexOf('prospects:')===0){
+    const mk = id.slice('prospects:'.length);
+    DB.prospects = (DB.prospects||[]).filter(p=> prospectMonthKey(p)!==mk).concat(arr);
+  }
+}
+function resetBlobStrFromDB(){
+  BLOB_STR = {};
+  const m = dbToBlobMap(DB);
+  Object.keys(BLOB_VER).forEach(id=>{ BLOB_STR[id] = JSON.stringify(m[id] || []); });
+}
+// ---- 압축/해제 (gzip + base64). 압축을 지원하지 않는 아주 오래된 브라우저는 압축 없이(json) 저장하고,
+// 해제를 지원하지 않는 브라우저는 pako 라이브러리를 필요할 때만 내려받아 해제한다.
+async function blobGzipToB64(str){
+  const stream = new Blob([str]).stream().pipeThrough(new CompressionStream('gzip'));
+  const buf = new Uint8Array(await new Response(stream).arrayBuffer());
+  let bin = ''; const CH = 0x8000;
+  for(let i=0;i<buf.length;i+=CH) bin += String.fromCharCode.apply(null, buf.subarray(i, i+CH));
+  return btoa(bin);
+}
+function blobLoadPako(){
+  if(window.pako) return Promise.resolve(window.pako);
+  return new Promise((resolve, reject)=>{
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js';
+    s.onload = ()=> window.pako ? resolve(window.pako) : reject(new Error('pako 로드 실패'));
+    s.onerror = ()=> reject(new Error('pako 로드 실패'));
+    document.head.appendChild(s);
+  });
+}
+async function blobGunzipFromB64(b64){
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+  if(typeof DecompressionStream!=='undefined'){
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+    return await new Response(stream).text();
+  }
+  const pako = await blobLoadPako();
+  return pako.ungzip(buf, { to:'string' });
+}
+async function blobEncode(arr){
+  const json = JSON.stringify(arr);
+  if(typeof CompressionStream!=='undefined'){
+    try{ return { enc:'gz64', payload: await blobGzipToB64(json) }; }catch(e){ /* 압축 실패 시 json으로 */ }
+  }
+  return { enc:'json', payload: json };
+}
+// 읽기에 실패하면 반드시 예외를 던진다 - "빈 목록"으로 착각하고 이후 저장으로 덮어쓰는 사고를 막기 위함.
+async function blobDecode(row){
+  const text = row.enc==='gz64' ? await blobGunzipFromB64(row.payload) : row.payload;
+  const arr = JSON.parse(text);
+  if(!Array.isArray(arr)) throw new Error('kpi_blob 형식 오류: ' + row.id);
+  return arr;
+}
+function mergeBlobArrays(baseArr, localArr, remoteArr){
+  if(isIdKeyedArray(localArr) || isIdKeyedArray(remoteArr) || isIdKeyedArray(baseArr)){
+    return mergeIdArray(baseArr, localArr, remoteArr);
+  }
+  const localChanged = JSON.stringify(localArr) !== JSON.stringify(baseArr);
+  return localChanged ? localArr : remoteArr;
+}
+// 서버의 해당 덩어리를 받아와 내 로컬 변경분과 3-way 병합한 뒤 DB에 반영한다.
+async function mergeBlobFromRow(row){
+  const remoteArr = await blobDecode(row);
+  const id = row.id;
+  const localArr = currentBlobArray(id);
+  const localStr = JSON.stringify(localArr);
+  const hasBase = BLOB_STR[id] !== undefined;
+  const baseArr = hasBase ? JSON.parse(BLOB_STR[id]) : [];
+  if(hasBase && localStr === BLOB_STR[id]){
+    applyBlobArray(id, remoteArr);              // 내가 바꾼 게 없으면 서버 값 그대로
+  }else{
+    applyBlobArray(id, mergeBlobArrays(baseArr, localArr, remoteArr));
+  }
+  BLOB_VER[id] = row.version;
+  BLOB_STR[id] = JSON.stringify(remoteArr);
+}
+async function fetchAllBlobRows(){
+  const { data, error } = await sbClient.from('kpi_blob').select('id,enc,payload,version');
+  if(error) throw error;
+  return data || [];
+}
+// 접속 직후(전체 로드) - 서버의 모든 덩어리로 DB.inventory / DB.prospects 를 채운다.
+async function hydrateFromBlobRows(rows){
+  BLOB_VER = {}; BLOB_STR = {};
+  const sorted = rows.slice().sort((a,b)=> a.id < b.id ? -1 : 1);
+  const decoded = await Promise.all(sorted.map(r=> blobDecode(r)));
+  let inv = []; const pros = [];
+  sorted.forEach((r, i)=>{
+    BLOB_VER[r.id] = r.version;
+    BLOB_STR[r.id] = JSON.stringify(decoded[i]);
+    if(r.id==='inventory') inv = decoded[i];
+    else if(r.id.indexOf('prospects:')===0) decoded[i].forEach(x=> pros.push(x));
+  });
+  DB.inventory = inv;
+  DB.prospects = pros;
+}
+// 본체(kpi_db)에 예전 방식으로 같이 들어있던 재고/가망고객을 읽어 DB에 합친다(마이그레이션 + 아직
+// 새 버전으로 새로고침하지 않은 사용자가 본체에 남긴 새 등록 건 구제). 이미 있는 id는 건드리지 않는다.
+function pickLegacyExt(mainData){
+  const out = {};
+  EXT_KEYS.forEach(k=>{ if(mainData && Array.isArray(mainData[k]) && mainData[k].length) out[k] = mainData[k]; });
+  return out;
+}
+function absorbLegacyExt(legacy){
+  let any = false;
+  EXT_KEYS.forEach(k=>{
+    const leg = legacy && legacy[k];
+    if(!Array.isArray(leg) || !leg.length) return;
+    if(!Array.isArray(DB[k])) DB[k] = [];
+    if(DB[k].length===0){ DB[k] = leg.slice(); any = true; return; }
+    const have = new Set(DB[k].map(x=> x && x.id).filter(v=> v!=null));
+    leg.forEach(x=>{
+      if(x && x.id!=null && !have.has(x.id)){ DB[k].push(x); have.add(x.id); any = true; }
+    });
+  });
+  if(any) BLOB_LEGACY_DIRTY = true;
+  return any;
+}
+// 서버 덩어리 버전을 가볍게 확인해, 바뀐 것만 받아와 병합한다. 바뀐 게 있으면 true.
+async function syncBlobsFromServer(){
+  const { data, error } = await sbClient.from('kpi_blob').select('id,version');
+  if(error) throw error;
+  const changed = (data||[]).filter(r=> BLOB_VER[r.id] !== r.version).map(r=> r.id);
+  if(!changed.length) return false;
+  const { data: rows, error: err2 } = await sbClient.from('kpi_blob').select('id,enc,payload,version').in('id', changed);
+  if(err2) throw err2;
+  for(const row of (rows||[])) await mergeBlobFromRow(row);
+  return true;
+}
+// 저장 - 마지막 동기화 이후 내용이 달라진 덩어리만 올린다.
+const PUSH_BLOB_MAX_TRIES = 25;
+async function pushOneBlob(id){
+  for(let attempt=0; attempt<=PUSH_BLOB_MAX_TRIES; attempt++){
+    const arr = currentBlobArray(id);
+    const str = JSON.stringify(arr);
+    if(BLOB_STR[id] === str || (BLOB_STR[id]===undefined && arr.length===0)) return;
+    const enc = await blobEncode(arr);
+    const known = BLOB_VER[id] !== undefined;
+    let ok = false;
+    if(!known){
+      const { error } = await sbClient.from('kpi_blob').insert({ id, enc: enc.enc, payload: enc.payload, version: 1 });
+      if(!error){ BLOB_VER[id] = 1; BLOB_STR[id] = str; ok = true; }
+    }else{
+      const expected = BLOB_VER[id];
+      const { data, error } = await sbClient.from('kpi_blob')
+        .update({ enc: enc.enc, payload: enc.payload, version: expected + 1, updated_at: new Date().toISOString() })
+        .eq('id', id).eq('version', expected).select('version');
+      if(error) throw error;
+      if(data && data.length){ BLOB_VER[id] = expected + 1; BLOB_STR[id] = str; ok = true; }
+    }
+    if(ok) return;
+    // 다른 사용자가 먼저 저장(또는 먼저 생성)함 - 서버 최신본을 받아 병합한 뒤 다시 시도
+    const { data: rows, error: e2 } = await sbClient.from('kpi_blob').select('id,enc,payload,version').eq('id', id);
+    if(e2) throw e2;
+    if(rows && rows.length) await mergeBlobFromRow(rows[0]);
+    await new Promise(resolve=> setTimeout(resolve, 100 + Math.random()*300));
+  }
+  throw new Error('kpi_blob 저장 재시도 한도 초과: ' + id);
+}
+async function pushBlobsIfChanged(){
+  const m = dbToBlobMap(DB);
+  const ids = new Set([...Object.keys(m), ...Object.keys(BLOB_STR)]);
+  for(const id of ids){
+    const arr = m[id] || [];
+    const str = JSON.stringify(arr);
+    if(BLOB_STR[id] === str) continue;
+    if(BLOB_STR[id]===undefined && arr.length===0) continue;
+    await pushOneBlob(id);
+  }
+}
+
 function cacheDBLocally(){
   try{
     localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
     // 캐시가 서버의 어느 버전 기준인지 함께 저장해 둔다(다음 접속 때 "캐시로 먼저 열기"에서 사용).
     localStorage.setItem(STORAGE_KEY+'_ver', String(DB_VERSION));
+    localStorage.setItem(STORAGE_KEY+'_blobver', JSON.stringify(BLOB_VER));
   }catch(e){ /* 저장공간 부족 등은 무시 */ }
 }
 // 2026-10: 새로고침 때마다 서버의 DB 전체(약 2.7MB)를 받을 때까지 로딩 화면에서 기다리던 문제를
@@ -663,11 +876,18 @@ function loadDBFromCacheFast(){
   try{
     const raw = localStorage.getItem(STORAGE_KEY);
     const ver = localStorage.getItem(STORAGE_KEY+'_ver');
-    if(!raw || ver===null || !sbClient) return false;
+    // 재고/가망고객 분리 저장(kpi_blob) 이전 버전의 캐시(_blobver 기록 없음)는 기준점이 없어 쓸 수 없다 -
+    // 한 번만 서버에서 전체를 다시 받아 새 방식으로 시작한다.
+    const bv = localStorage.getItem(STORAGE_KEY+'_blobver');
+    if(!raw || ver===null || bv===null || !sbClient) return false;
     const parsed = JSON.parse(raw);
     if(!parsed || !Array.isArray(parsed.users) || !parsed.users.length) return false;
+    try{ BLOB_VER = JSON.parse(bv) || {}; }catch(e){ return false; }
     DB = parsed;
     DB_VERSION = Number(ver) || 0;
+    if(!Array.isArray(DB.inventory)) DB.inventory = [];
+    if(!Array.isArray(DB.prospects)) DB.prospects = [];
+    resetBlobStrFromDB();
     migrateDB();
     DB_BASELINE = cloneDBSnapshot(DB);
     dbReady = true;
@@ -679,23 +899,40 @@ function refreshDBFromServerInBackground(){
     try{
       const { data, error } = await sbClient.from('kpi_db').select('version').eq('id',1).single();
       if(error) throw error;
+      let changed = false;
       if(data && data.version > DB_VERSION){
         const { data: full, error: err2 } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
         if(err2) throw err2;
         DB = mergeRemoteDB(DB_BASELINE, DB, full.data);
+        absorbLegacyExt(pickLegacyExt(full.data));
         DB_VERSION = full.version;
-        migrateDB();
         DB_BASELINE = cloneDBSnapshot(full.data);
+        changed = true;
+      }
+      if(await syncBlobsFromServer()) changed = true;
+      if(changed){
+        migrateDB();
         cacheDBLocally();
         if(SESSION && !isUserActivelyTyping()) renderTab(state.tab);
+        scheduleLegacyBlobMigration();
       }
     }catch(e){ console.error('백그라운드 DB 확인 실패(캐시 유지):', e); }
     finally{ dbRefreshInFlight = null; }
   })();
   return dbRefreshInFlight;
 }
+// DB_BASELINE(본체 3-way 병합 기준점)에는 재고/가망고객(kpi_blob에 따로 저장)을 넣지 않는다.
 function cloneDBSnapshot(obj){
-  try{ return JSON.parse(JSON.stringify(obj)); }catch(e){ return obj; }
+  try{ return JSON.parse(JSON.stringify(stripExtKeys(obj))); }catch(e){ return obj; }
+}
+// 옛 방식으로 본체에 남아있던 재고/가망고객을 kpi_blob으로 옮기는 저장을 한 번 실행한다(관리자 접속 시).
+// 일반 매니저는 어떤 저장이든 하는 순간 같은 처리가 자연스럽게 함께 이뤄진다.
+function scheduleLegacyBlobMigration(){
+  if(!BLOB_LEGACY_DIRTY) return;
+  setTimeout(()=>{
+    if(!BLOB_LEGACY_DIRTY) return;
+    if(SESSION && SESSION.role==='admin'){ BLOB_LEGACY_DIRTY = false; saveDB(true); }
+  }, 2500 + Math.random()*3000);
 }
 
 /* -------------------------------------------------------------------------
@@ -753,6 +990,8 @@ function mergeRemoteDB(baseline, local, remote){
   const keys = new Set([...Object.keys(remote||{}), ...Object.keys(local||{})]);
   keys.forEach(key=>{
     const localVal = local ? local[key] : undefined;
+    // 재고/가망고객은 kpi_blob에서 따로 병합한다 - 본체 병합에서는 내 로컬 값을 그대로 둔다.
+    if(EXT_KEYS.includes(key)){ if(localVal!==undefined) merged[key] = localVal; return; }
     const remoteVal = remote ? remote[key] : undefined;
     const baseVal = baseline ? baseline[key] : undefined;
     if(isIdKeyedArray(localVal) || isIdKeyedArray(remoteVal) || isIdKeyedArray(baseVal)){
@@ -771,12 +1010,17 @@ async function loadDB(){
       const { data, error } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
       if(error) throw error;
       if(data && data.data && Object.keys(data.data).length > 0){
+        const blobRows = await fetchAllBlobRows();   // 읽기 실패 시 예외 -> 아래 catch(빈 목록으로 착각해 덮어쓰지 않음)
+        const legacy = pickLegacyExt(data.data);
         DB = data.data;
         DB_VERSION = data.version || 0;
+        await hydrateFromBlobRows(blobRows);
+        absorbLegacyExt(legacy);
         migrateDB();
         DB_BASELINE = cloneDBSnapshot(DB);
         cacheDBLocally();
         dbReady = true;
+        scheduleLegacyBlobMigration();
         return;
       }
       // 테이블은 있지만 아직 데이터가 비어있는 최초 상태 -> 시드 데이터로 초기화 후 최초 저장
@@ -862,9 +1106,11 @@ async function pushDBToServer(retryCount){
   const expectedVersion = DB_VERSION;
   const newVersion = expectedVersion + 1;
   try{
+    // 재고/가망고객은 본체와 따로(kpi_blob) 저장 - 마지막 동기화 이후 달라진 덩어리만 올린다.
+    await pushBlobsIfChanged();
     const { data, error } = await sbClient
       .from('kpi_db')
-      .update({ data: DB, version: newVersion, updated_at: new Date().toISOString() })
+      .update({ data: dbForMain(), version: newVersion, updated_at: new Date().toISOString() })
       .eq('id', 1)
       .eq('version', expectedVersion)
       .select('version');
@@ -879,8 +1125,10 @@ async function pushDBToServer(retryCount){
         const { data: latest, error: verErr } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
         if(verErr || !latest) throw verErr || new Error('최신 데이터 없음');
         const merged = mergeRemoteDB(DB_BASELINE, DB, latest.data);
-        if(JSON.stringify(merged) !== JSON.stringify(latest.data)) logSaveConflict(merged, latest.data);
+        const mergedMain = stripExtKeys(merged), latestMain = stripExtKeys(latest.data);
+        if(JSON.stringify(mergedMain) !== JSON.stringify(latestMain)) logSaveConflict(mergedMain, latestMain);
         DB = merged;
+        absorbLegacyExt(pickLegacyExt(latest.data));
         DB_VERSION = latest.version;
         DB_BASELINE = cloneDBSnapshot(latest.data);
         if(SESSION && !isUserActivelyTyping()) renderTab(state.tab);
@@ -892,6 +1140,7 @@ async function pushDBToServer(retryCount){
     }
     DB_VERSION = newVersion;
     DB_BASELINE = cloneDBSnapshot(DB);
+    BLOB_LEGACY_DIRTY = false;
     cacheDBLocally();
     return true;
   }catch(e){
@@ -924,6 +1173,7 @@ function isUserActivelyTyping(){
 
 function startDbPolling(){
   stopDbPolling();
+  scheduleLegacyBlobMigration();
   // 2026-10: Supabase Disk IO 예산 소진(서버 502/520 오류, 로딩 지연) 대응 — 요청 빈도를 낮췄다.
   // 20초 -> 60초, 그리고 탭이 백그라운드(숨김)일 때는 DB 버전 확인을 건너뛴다(다시 보이는 순간 즉시 1회 확인).
   dbPollTimer = setInterval(()=>{
@@ -945,14 +1195,21 @@ async function pollDbForRemoteChanges(){
   try{
     const { data, error } = await sbClient.from('kpi_db').select('version').eq('id',1).single();
     if(error) throw error;
+    let changed = false;
     if(data && data.version > DB_VERSION){
       const { data: full, error: err2 } = await sbClient.from('kpi_db').select('data,version').eq('id',1).single();
       if(err2) throw err2;
       // 폴링 시점에 화면에 아직 저장 전인 로컬 변경이 남아있을 수 있으므로(예: 여러 장 사진
       // 업로드 처리 중) 통째로 덮어쓰지 않고 저장 충돌 때와 동일하게 항목 단위로 병합한다.
       DB = mergeRemoteDB(DB_BASELINE, DB, full.data);
+      absorbLegacyExt(pickLegacyExt(full.data));
       DB_VERSION = full.version;
       DB_BASELINE = cloneDBSnapshot(full.data);
+      changed = true;
+    }
+    // 재고/가망고객(kpi_blob)은 별도 버전으로 확인한다(아주 가벼운 조회).
+    if(await syncBlobsFromServer()) changed = true;
+    if(changed){
       cacheDBLocally();
       if(!isUserActivelyTyping()){
         renderTab(state.tab);
@@ -4957,7 +5214,8 @@ function deleteSystemUser(empId){
 // (사진 첨부 누적으로 DB가 커지면서 저장/불러오기가 느려지거나 실패했던 문제 재발 방지 - 2026.08)
 function dbCapacityGaugeHtml(){
   let sizeKB = 0;
-  try{ sizeKB = Math.round(JSON.stringify(DB).length / 1024); }catch(e){ return ''; }
+  // 재고/가망고객은 kpi_blob에 따로(압축) 저장되므로 공유 DB 본체 용량만 잰다.
+  try{ sizeKB = Math.round(JSON.stringify(dbForMain()).length / 1024); }catch(e){ return ''; }
   const sizeLabel = sizeKB >= 1024 ? `${(sizeKB/1024).toFixed(1)}MB` : `${sizeKB}KB`;
   let level, color, msg;
   if(sizeKB < 5000){ level='good'; color='var(--good, #2e8b57)'; msg='정상'; }
