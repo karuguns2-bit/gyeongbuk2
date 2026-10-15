@@ -658,7 +658,9 @@ let dbPollTimer = null;
    - 예전 방식으로 본체에 같이 들어있던 데이터(legacy)는 처음 접속할 때 자동으로 읽어서
      kpi_blob으로 옮기고, 이후 본체 저장 때 본체에서는 빠진다.
    ========================================================================= */
-const EXT_KEYS = ['inventory','prospects'];
+// salesData(판매 실적 상세)는 id가 없는 배열이라 통째로 한 덩어리('salesData')로 저장하고, 병합은
+// "내가 바꿨으면 내 것, 아니면 서버 것" 방식(관리자 업로드로만 바뀌는 데이터라 기존과 동일한 동작).
+const EXT_KEYS = ['inventory','prospects','salesData'];
 let BLOB_VER = {};   // 덩어리 id -> 서버 버전(서버와 마지막으로 동기화된 시점)
 let BLOB_STR = {};   // 덩어리 id -> 마지막 동기화 시점의 JSON 문자열(변경 감지 + 3-way 병합 기준점)
 let BLOB_LEGACY_DIRTY = false; // 본체에 남아있던 옛 데이터를 읽어 와서 아직 kpi_blob에 못 옮긴 상태
@@ -674,7 +676,10 @@ function prospectMonthKey(p){
   return /^\d{4}-\d{2}/.test(String(s)) ? String(s).slice(0,7) : 'misc';
 }
 function dbToBlobMap(db){
-  const out = { inventory: Array.isArray(db.inventory) ? db.inventory : [] };
+  const out = {
+    inventory: Array.isArray(db.inventory) ? db.inventory : [],
+    salesData: Array.isArray(db.salesData) ? db.salesData : []
+  };
   (Array.isArray(db.prospects) ? db.prospects : []).forEach(p=>{
     const k = 'prospects:' + prospectMonthKey(p);
     (out[k] = out[k] || []).push(p);
@@ -687,6 +692,7 @@ function currentBlobArray(id){
 }
 function applyBlobArray(id, arr){
   if(id==='inventory'){ DB.inventory = arr; return; }
+  if(id==='salesData'){ DB.salesData = arr; return; }
   if(id.indexOf('prospects:')===0){
     const mk = id.slice('prospects:'.length);
     DB.prospects = (DB.prospects||[]).filter(p=> prospectMonthKey(p)!==mk).concat(arr);
@@ -774,15 +780,17 @@ async function hydrateFromBlobRows(rows){
   BLOB_VER = {}; BLOB_STR = {};
   const sorted = rows.slice().sort((a,b)=> a.id < b.id ? -1 : 1);
   const decoded = await Promise.all(sorted.map(r=> blobDecode(r)));
-  let inv = []; const pros = [];
+  let inv = [], sales = []; const pros = [];
   sorted.forEach((r, i)=>{
     BLOB_VER[r.id] = r.version;
     BLOB_STR[r.id] = JSON.stringify(decoded[i]);
     if(r.id==='inventory') inv = decoded[i];
+    else if(r.id==='salesData') sales = decoded[i];
     else if(r.id.indexOf('prospects:')===0) decoded[i].forEach(x=> pros.push(x));
   });
   DB.inventory = inv;
   DB.prospects = pros;
+  DB.salesData = sales;
 }
 // 본체(kpi_db)에 예전 방식으로 같이 들어있던 재고/가망고객을 읽어 DB에 합친다(마이그레이션 + 아직
 // 새 버전으로 새로고침하지 않은 사용자가 본체에 남긴 새 등록 건 구제). 이미 있는 id는 건드리지 않는다.
@@ -887,6 +895,7 @@ function loadDBFromCacheFast(){
     DB_VERSION = Number(ver) || 0;
     if(!Array.isArray(DB.inventory)) DB.inventory = [];
     if(!Array.isArray(DB.prospects)) DB.prospects = [];
+    if(!Array.isArray(DB.salesData)) DB.salesData = [];
     resetBlobStrFromDB();
     migrateDB();
     DB_BASELINE = cloneDBSnapshot(DB);
@@ -1231,6 +1240,7 @@ function startHeartbeat(){
   stopHeartbeat();
   sendHeartbeat();
   setTimeout(pruneActivityLogIfNeeded, 8000);
+  setTimeout(()=>{ migrateInlineRichImages().catch(()=>{}); }, 12000);
   heartbeatTimer = setInterval(sendHeartbeat, 120000);
 }
 function stopHeartbeat(){
@@ -5304,6 +5314,57 @@ async function optimizeDbImages(){
 // 있었다 — 무료 요금제 한도(월 5GB)를 넘겨 서비스가 막히는 사고(2026-09)의 핵심 원인.
 // 이 함수는 남아있는 base64 첨부파일을 전부 Storage로 옮기고 DB에는 주소만 남겨서, DB 자체의
 // 크기(=매번 오가는 트래픽량)를 근본적으로 줄인다.
+// 공지/정보/사례 등 리치 에디터 본문에 "붙여넣기"로 들어온 이미지는 <img src="data:image/...base64...">
+// 형태로 본문 HTML 안에 통째로 박혀 DB를 크게 키운다(실제로 공지 1건이 이미지 1장 때문에 214KB였다).
+// 이런 이미지를 Storage로 올리고 본문에는 주소만 남긴다. 관리자가 접속할 때 자동으로 실행되며,
+// 이미 Storage 주소인 이미지나 4KB 미만의 작은 아이콘은 건드리지 않는다. 업로드에 실패한 이미지는
+// 원래대로 그대로 둔다(내용 손실 없음).
+const INLINE_IMG_SCAN_KEYS = ['notices','infoReports','bestPractices','issueCases','suggestions'];
+const INLINE_IMG_RE = /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+\/=]+/g;
+let inlineImgMigrationRan = false;
+async function migrateInlineRichImages(force){
+  if(!sbClient || !SESSION || SESSION.role!=='admin') return 0;
+  if(inlineImgMigrationRan && !force) return 0;
+  inlineImgMigrationRan = true;
+  const jobs = [];
+  INLINE_IMG_SCAN_KEYS.forEach(k=>{
+    (DB[k]||[]).forEach(item=>{
+      if(!item || typeof item!=='object') return;
+      Object.keys(item).forEach(f=>{
+        const v = item[f];
+        if(typeof v==='string' && v.length>4000 && v.indexOf('data:image')>=0) jobs.push({item, f});
+      });
+    });
+  });
+  if(!jobs.length) return 0;
+  let changed = 0;
+  const cache = new Map();
+  for(const j of jobs){
+    let html = j.item[j.f];
+    const uris = Array.from(new Set(html.match(INLINE_IMG_RE) || []));
+    for(const uri of uris){
+      if(uri.length < 4000) continue;
+      let url = cache.get(uri);
+      if(!url){
+        try{
+          const m = /^data:([^;]+);base64,/i.exec(uri);
+          const ct = m ? m[1] : 'image/png';
+          const sub = (ct.split('/')[1]||'png').split('+')[0].replace(/[^a-zA-Z0-9]/g,'').slice(0,10) || 'png';
+          const blob = await (await fetch(uri)).blob();
+          url = await uploadBlobToStorage(blob, 'inline.'+sub, ct);
+        }catch(e){ url = null; }
+        if(url) cache.set(uri, url);
+      }
+      if(url){ html = html.split(uri).join(url); changed++; }
+    }
+    j.item[j.f] = html;
+  }
+  if(changed){
+    await saveDB(true);
+    if(state && state.tab) { try{ if(!isUserActivelyTyping()) renderTab(state.tab); }catch(e){} }
+  }
+  return changed;
+}
 async function migrateDbImagesToStorage(){
   if(!isSystemAdmin()) return;
   if(!sbClient){ alert('서버 연결이 안 되어 있어 지금은 이전할 수 없습니다.'); return; }
