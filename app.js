@@ -1230,10 +1230,26 @@ let heartbeatTimer = null;
 function startHeartbeat(){
   stopHeartbeat();
   sendHeartbeat();
+  setTimeout(pruneActivityLogIfNeeded, 8000);
   heartbeatTimer = setInterval(sendHeartbeat, 120000);
 }
 function stopHeartbeat(){
   if(heartbeatTimer){ clearInterval(heartbeatTimer); heartbeatTimer = null; }
+}
+// 접속 기록(activity_log) 용량 관리 - 오래된 저장 충돌 로그(conflict, 30일 초과)와 게시/자료갱신 알림
+// 기록(post/update, 60일 초과)을 관리자가 접속할 때 하루 1회 정리한다. 로그인 기록(login)은 "앱사랑꾼"
+// 배지와 접속 통계에 쓰이므로 지우지 않는다. 정리 실패는 조용히 무시(핵심 기능 아님).
+async function pruneActivityLogIfNeeded(){
+  if(!sbClient || !SESSION || SESSION.role!=='admin') return;
+  try{
+    const today = todayStr();
+    if(localStorage.getItem('actLogPrunedOn')===today) return;
+    const cutConflict = new Date(Date.now() - 30*86400000).toISOString();
+    const cutNotice = new Date(Date.now() - 60*86400000).toISOString();
+    await sbClient.from('activity_log').delete().eq('kind','conflict').lt('created_at', cutConflict);
+    await sbClient.from('activity_log').delete().in('kind',['post','update']).lt('created_at', cutNotice);
+    localStorage.setItem('actLogPrunedOn', today);
+  }catch(e){ /* 무시 */ }
 }
 let heartbeatCount = 0;
 async function sendHeartbeat(){
