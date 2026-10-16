@@ -12040,9 +12040,10 @@ function submitExecPhoto(){
   const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
   if(!week){ alert('실행 주차를 선택해 주세요.'); return; }
   if(files.length===0){ alert('파일을 선택해 주세요.'); return; }
-  const oversized = files.find(f=>f.size > 5*1024*1024);
+  // 사진은 등록 시 자동으로 줄이므로 원본 크기 제한은 사진이 아닌 파일(PPT/엑셀 등)에만 적용한다.
+  const oversized = files.find(f=>f.size > 5*1024*1024 && !(f.type||'').startsWith('image/') && !isHeicFile(f));
   if(oversized){ alert(`"${oversized.name}" 파일은 5MB 이하로 업로드해 주세요.`); return; }
-  Promise.all(files.map(readFileAsDataUrl)).then(async uploaded=>{
+  Promise.all(files.map(f=>readFileAsDataUrl(f,'photo'))).then(async uploaded=>{
     DB.execPhotos.push({
       id: 'ep_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       branchId, week, photos: uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name})),
@@ -12089,9 +12090,9 @@ function saveEditExecPhoto(id){
     renderTab('collectPhoto');
   }
   if(files.length>0){
-    const oversized = files.find(f=>f.size > 5*1024*1024);
+    const oversized = files.find(f=>f.size > 5*1024*1024 && !(f.type||'').startsWith('image/') && !isHeicFile(f));
     if(oversized){ alert(`"${oversized.name}" 파일은 5MB 이하로 업로드해 주세요.`); return; }
-    Promise.all(files.map(readFileAsDataUrl)).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+    Promise.all(files.map(f=>readFileAsDataUrl(f,'photo'))).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
   } else {
     finalize(null);
   }
@@ -13436,10 +13437,132 @@ async function convertHeicToJpegIfNeeded(file){
     return file;
   }
 }
-function readFileAsDataUrl(file){
-  return convertHeicToJpegIfNeeded(file).then(f=> readFileAsDataUrlCore(f));
+// ───── 모바일 사진 촬영 + 여러 장 누적 첨부 위젯 ─────
+// 사진 업로드 칸(실행력 점검 사진, 사은품 영수증/증빙 등)에 [촬영] [앨범/파일] 버튼과 썸네일 목록을 붙인다.
+// 촬영/선택한 사진은 그 자리에서 바로 줄여서(일반 사진 1280px·65%, 영수증/증빙 1600px·72%) 원래의
+// <input type="file">에 그대로 채워 넣으므로, 기존 등록/저장 코드는 바꾸지 않아도 된다.
+// 휴대폰(터치 기기)에서만 동작하고, PC는 기존 파일 선택/드래그앤드롭을 그대로 쓴다.
+const PRECOMPRESSED_KEYS = new Set();
+function photoKey(f){ return (f.name||'')+'|'+f.size+'|'+f.lastModified; }
+const CAMERA_INPUT_RE = /^(epFile|epe_.+_file|gcReceipt|gceReceipt_.+|cgEvidenceFiles|cge_.+_evidence|stcEvidenceFiles|stce_.+_evidence)$/;
+function cameraProfileFor(id){ return /^(epFile|epe_)/.test(id) ? {dim:1280, q:0.65} : {dim:1600, q:0.72}; }
+function isTouchDevice(){
+  try{ return window.matchMedia('(pointer:coarse)').matches || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent||''); }
+  catch(e){ return false; }
 }
-function readFileAsDataUrlCore(file){
+async function precompressPhotoFile(file, prof, seq){
+  let f = await convertHeicToJpegIfNeeded(file);
+  const isImg = (f.type && f.type.startsWith('image/')) || /\.(jpe?g|png|webp|bmp|avif)$/i.test(f.name||'');
+  if(!isImg || f.type==='image/gif') return f;
+  try{
+    const dataUrl = await new Promise((res, rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsDataURL(f); });
+    const out = await compressImageDataUrl(dataUrl, prof.dim, prof.q);
+    const blob = await (await fetch(out)).blob();
+    if(!blob || blob.type!=='image/jpeg' || blob.size>=f.size) return f;
+    const d = new Date(); const p2 = n=>String(n).padStart(2,'0');
+    const base = (!f.name || /^image\.(jpe?g|png)$/i.test(f.name))
+      ? `촬영_${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}_${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}_${seq}`
+      : f.name.replace(/\.[^.]+$/, '');
+    const nf = new File([blob], base+'.jpg', { type:'image/jpeg', lastModified: Date.now() });
+    PRECOMPRESSED_KEYS.add(photoKey(nf));
+    return nf;
+  }catch(e){ return f; }
+}
+function setupCameraWidget(input){
+  if(input.dataset.cam) return;
+  input.dataset.cam = '1';
+  if(!isTouchDevice()) return;
+  const prof = cameraProfileFor(input.id);
+  const MAX = 10;
+  let items = []; // {file, url}
+  let busy = false, seq = 0;
+  const wrap = document.createElement('div');
+  wrap.className = 'cam-widget';
+  wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;width:100%;';
+  wrap.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      <button type="button" class="btn btn-primary cam-shot" style="flex:1;min-width:110px;">📷 사진 촬영</button>
+      <button type="button" class="btn cam-pick" style="flex:1;min-width:110px;">🖼 앨범/파일</button>
+    </div>
+    <div class="cam-count muted" style="font-size:11px;">사진을 계속 찍어 여러 장 모을 수 있습니다 (최대 ${MAX}개).</div>
+    <div class="cam-list" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+    <input type="file" class="cam-in-shot" accept="image/*" capture="environment" style="display:none">
+    <input type="file" class="cam-in-pick" multiple style="display:none">`;
+  input.style.display = 'none';
+  input.insertAdjacentElement('afterend', wrap);
+  const listEl = wrap.querySelector('.cam-list');
+  const countEl = wrap.querySelector('.cam-count');
+  const btns = wrap.querySelectorAll('button');
+  function sync(){
+    try{
+      const dt = new DataTransfer();
+      items.forEach(it=>dt.items.add(it.file));
+      input.files = dt.files;
+    }catch(e){}
+    listEl.innerHTML = '';
+    items.forEach((it, i)=>{
+      const isImg = it.file.type.startsWith('image/');
+      const box = document.createElement('div');
+      box.style.cssText = 'position:relative;width:64px;height:64px;border:1px solid var(--border);border-radius:6px;overflow:hidden;background:var(--bg);display:flex;align-items:center;justify-content:center;font-size:10px;text-align:center;';
+      if(isImg){ const im = document.createElement('img'); im.src = it.url; im.style.cssText = 'width:100%;height:100%;object-fit:cover;'; box.appendChild(im); }
+      else { box.textContent = (it.file.name||'파일').slice(0,12); }
+      const x = document.createElement('button');
+      x.type = 'button'; x.textContent = '✕';
+      x.style.cssText = 'position:absolute;top:0;right:0;width:20px;height:20px;border:none;background:rgba(0,0,0,.6);color:#fff;font-size:11px;cursor:pointer;line-height:1;';
+      x.onclick = ()=>{ URL.revokeObjectURL(it.url); items.splice(i,1); sync(); };
+      box.appendChild(x);
+      listEl.appendChild(box);
+    });
+    const total = items.reduce((s,it)=>s+it.file.size,0);
+    countEl.textContent = items.length===0
+      ? `사진을 계속 찍어 여러 장 모을 수 있습니다 (최대 ${MAX}개).`
+      : `${items.length}개 첨부됨 · 약 ${Math.max(1,Math.round(total/1024))}KB (자동 압축)`;
+  }
+  async function addFiles(fileList){
+    if(busy) return;
+    const files = Array.from(fileList||[]);
+    if(files.length===0) return;
+    busy = true; btns.forEach(b=>b.disabled=true);
+    const old = countEl.textContent; countEl.textContent = '사진 처리 중...';
+    try{
+      for(const f of files){
+        if(items.length>=MAX){ alert(`최대 ${MAX}개까지 첨부할 수 있습니다.`); break; }
+        const nf = await precompressPhotoFile(f, prof, ++seq);
+        items.push({ file:nf, url:URL.createObjectURL(nf) });
+      }
+    }catch(e){ alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'); countEl.textContent = old; }
+    busy = false; btns.forEach(b=>b.disabled=false);
+    sync();
+  }
+  const shotIn = wrap.querySelector('.cam-in-shot');
+  const pickIn = wrap.querySelector('.cam-in-pick');
+  wrap.querySelector('.cam-shot').onclick = ()=> shotIn.click();
+  wrap.querySelector('.cam-pick').onclick = ()=> pickIn.click();
+  shotIn.onchange = ()=>{ addFiles(shotIn.files).then(()=>{ shotIn.value=''; }); };
+  pickIn.onchange = ()=>{ addFiles(pickIn.files).then(()=>{ pickIn.value=''; }); };
+}
+function setupCameraWidgets(root){
+  (root||document).querySelectorAll('input[type="file"]:not([data-cam])').forEach(inp=>{
+    if(inp.id && CAMERA_INPUT_RE.test(inp.id)) setupCameraWidget(inp);
+  });
+}
+(function(){
+  let pending = false;
+  function schedule(){ if(pending) return; pending = true; requestAnimationFrame(()=>{ pending = false; try{ setupCameraWidgets(document); }catch(e){} }); }
+  function start(){
+    if(!document.body) return;
+    new MutationObserver(schedule).observe(document.body, { childList:true, subtree:true });
+    schedule();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', start); else start();
+})();
+// profile: 'photo' = 일반 현장 사진(1280px/65%), 그 외(기본) = 증빙·영수증용(1600px/72%).
+// files.map(readFileAsDataUrl)처럼 호출돼 두 번째 인자로 숫자(index)가 들어와도 무시된다.
+function readFileAsDataUrl(file, profile){
+  const prof = (profile==='photo') ? 'photo' : 'doc';
+  return convertHeicToJpegIfNeeded(file).then(f=> readFileAsDataUrlCore(f, prof));
+}
+function readFileAsDataUrlCore(file, prof){
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onload = async e=>{
@@ -13451,9 +13574,11 @@ function readFileAsDataUrlCore(file){
       const looksLikeGifByName = /\.gif$/i.test(file.name || '');
       const isImageFile = (file.type && file.type.startsWith('image/')) || (!file.type && (looksLikeImageByName || looksLikeGifByName));
       // gif는 애니메이션이 깨질 수 있어 압축 대상에서 제외. 이미지가 아니면(PDF 등) 그대로 통과.
-      if(isImageFile && file.type !== 'image/gif' && !looksLikeGifByName){
+      if(isImageFile && file.type !== 'image/gif' && !looksLikeGifByName && !PRECOMPRESSED_KEYS.has(photoKey(file))){
         try{
-          const compressed = await compressImageDataUrl(dataUrl, 1600, 0.72);
+          const compressed = (prof==='photo')
+            ? await compressImageDataUrl(dataUrl, 1280, 0.65)
+            : await compressImageDataUrl(dataUrl, 1600, 0.72);
           if(compressed && compressed.length < dataUrl.length){ dataUrl = compressed; contentType = 'image/jpeg'; }
         }catch(err){ /* 압축 실패 시 원본 사용 */ }
       }
