@@ -13394,7 +13394,52 @@ function deleteFromStorage(url){
   if(!path || !sbClient) return;
   try{ sbClient.storage.from('attachments').remove([path]).catch(()=>{}); }catch(e){ /* 무시 */ }
 }
+// 갤럭시/아이폰의 HEIC(고효율) 사진은 크롬·윈도우 PC 브라우저가 화면에 그리지 못하고, 아래 압축 단계
+// (캔버스)도 통과하지 못해 원본 .heic 그대로 저장되어 "사진이 안 보이는" 문제가 있었다(2026-10 성서점).
+// 업로드 직전에 heic2any 라이브러리(필요할 때만 CDN에서 내려받음)로 JPG로 변환한다. 변환에 실패하면
+// 원본 그대로 올리되 사용자에게 JPG로 다시 올리도록 안내한다.
+function isHeicFile(file){
+  return !!file && (/image\/(heic|heif)/i.test(file.type||'') || /\.(heic|heif)$/i.test(file.name||''));
+}
+let heic2anyLoading = null;
+function loadHeic2any(){
+  if(window.heic2any) return Promise.resolve(window.heic2any);
+  if(heic2anyLoading) return heic2anyLoading;
+  const urls = [
+    'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js'
+  ];
+  function tryLoad(i){
+    return new Promise((resolve, reject)=>{
+      if(i>=urls.length){ reject(new Error('heic2any 로드 실패')); return; }
+      const s = document.createElement('script');
+      s.src = urls[i];
+      s.onload = ()=> window.heic2any ? resolve(window.heic2any) : tryLoad(i+1).then(resolve, reject);
+      s.onerror = ()=> tryLoad(i+1).then(resolve, reject);
+      document.head.appendChild(s);
+    });
+  }
+  heic2anyLoading = tryLoad(0).catch(e=>{ heic2anyLoading = null; throw e; });
+  return heic2anyLoading;
+}
+async function convertHeicToJpegIfNeeded(file){
+  if(!isHeicFile(file)) return file;
+  try{
+    const h = await loadHeic2any();
+    const out = await h({ blob: file, toType: 'image/jpeg', quality: 0.8 });
+    const blob = Array.isArray(out) ? out[0] : out;
+    const newName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '') + '.jpg';
+    return new File([blob], newName, { type: 'image/jpeg' });
+  }catch(e){
+    console.error('HEIC 변환 실패:', e);
+    alert(`"${file.name}" 사진은 HEIC 형식이라 자동 변환에 실패했습니다. 휴대폰 카메라 설정에서 HEIC를 끄거나 JPG로 저장한 뒤 다시 올려주세요. (이 상태로는 PC에서 사진이 보이지 않습니다)`);
+    return file;
+  }
+}
 function readFileAsDataUrl(file){
+  return convertHeicToJpegIfNeeded(file).then(f=> readFileAsDataUrlCore(f));
+}
+function readFileAsDataUrlCore(file){
   return new Promise((resolve, reject)=>{
     const reader = new FileReader();
     reader.onload = async e=>{
