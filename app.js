@@ -11955,7 +11955,7 @@ function renderCollectPhoto(){
     }
     const photosHtml = (r.photos||[]).length>0
       ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;">${(r.photos||[]).map(p=> isImageAttachment(p)
-          ? `<img src="${p.dataUrl}" onclick="openImgLightbox(this.src)" style="width:calc(50% - 2px);height:90px;object-fit:cover;border-radius:6px;cursor:zoom-in;">`
+          ? `<img src="${p.dataUrl}" loading="lazy" decoding="async" onclick="openImgLightbox(this.src)" style="width:calc(50% - 2px);height:90px;object-fit:cover;border-radius:6px;cursor:zoom-in;">`
           : `<a href="${p.dataUrl}" download="${escapeHtml(p.name||'file')}" style="display:flex;align-items:center;gap:5px;width:calc(50% - 2px);height:90px;padding:6px;border:1px solid var(--border);border-radius:6px;background:#f7f7f8;font-size:11px;text-decoration:none;color:inherit;overflow:hidden;"><i class="ti ti-file-text" aria-hidden="true" style="font-size:15px;color:var(--text-sub);"></i> <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(p.name||'파일')}</span></a>`
         ).join('')}</div>`
       : `<div class="muted" style="margin-bottom:6px;">등록된 파일이 없습니다.</div>`;
@@ -12037,13 +12037,16 @@ function submitExecPhoto(){
   const branchId = document.getElementById('epBranch').value;
   const week = document.getElementById('epWeek').value;
   const fileInput = document.getElementById('epFile');
-  const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, 10);
+  const files = (fileInput.files ? Array.from(fileInput.files) : []).slice(0, EXEC_PHOTO_MAX);
   if(!week){ alert('실행 주차를 선택해 주세요.'); return; }
   if(files.length===0){ alert('파일을 선택해 주세요.'); return; }
   // 사진은 등록 시 자동으로 줄이므로 원본 크기 제한은 사진이 아닌 파일(PPT/엑셀 등)에만 적용한다.
   const oversized = files.find(f=>f.size > 5*1024*1024 && !(f.type||'').startsWith('image/') && !isHeicFile(f));
   if(oversized){ alert(`"${oversized.name}" 파일은 5MB 이하로 업로드해 주세요.`); return; }
-  Promise.all(files.map(f=>readFileAsDataUrl(f,'photo'))).then(async uploaded=>{
+  if(execPhotoBusy){ alert('사진을 업로드 중입니다. 잠시만 기다려 주세요.'); return; }
+  execPhotoBusy = true;
+  const BTN = 'button[onclick="submitExecPhoto()"]';
+  readFilesSequential(files, 'photo', (i,n)=> setExecBtnBusy(BTN, true, `업로드 중 ${i}/${n}...`)).then(async uploaded=>{
     DB.execPhotos.push({
       id: 'ep_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
       branchId, week, photos: uploaded.map(u=>({dataUrl:u.dataUrl, name:u.name})),
@@ -12057,8 +12060,9 @@ function submitExecPhoto(){
     const ok = await saveDB();
     if(!ok){ alert('사진은 처리했지만 서버 저장에 실패했습니다. 등록 버튼을 다시 눌러 재시도해 주세요.'); }
     logActivity('post', `${SESSION.name}님이 [실행력 점검 사진]을 등록했습니다 (${branchName(branchId)} · ${week})`);
+    execPhotoBusy = false;
     renderTab('collectPhoto');
-  }).catch(()=>alert('사진 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+  }).catch(()=>{ execPhotoBusy = false; setExecBtnBusy(BTN, false); alert('사진 업로드에 실패했습니다. 네트워크를 확인하고 다시 등록해 주세요. (선택한 사진은 그대로 남아 있습니다)'); });
 }
 function startEditExecPhoto(id){
   const r = DB.execPhotos.find(x=>x.id===id);
@@ -12077,7 +12081,7 @@ function saveEditExecPhoto(id){
   const week = document.getElementById(`epe_${id}_week`).value;
   if(!week){ alert('실행 주차를 선택해 주세요.'); return; }
   const fileInput = document.getElementById(`epe_${id}_file`);
-  const files = (fileInput && fileInput.files) ? Array.from(fileInput.files).slice(0, 10) : [];
+  const files = (fileInput && fileInput.files) ? Array.from(fileInput.files).slice(0, EXEC_PHOTO_MAX) : [];
   function finalize(newPhotos){
     r.branchId = branchId;
     r.week = week;
@@ -12092,7 +12096,10 @@ function saveEditExecPhoto(id){
   if(files.length>0){
     const oversized = files.find(f=>f.size > 5*1024*1024 && !(f.type||'').startsWith('image/') && !isHeicFile(f));
     if(oversized){ alert(`"${oversized.name}" 파일은 5MB 이하로 업로드해 주세요.`); return; }
-    Promise.all(files.map(f=>readFileAsDataUrl(f,'photo'))).then(finalize).catch(()=>alert('파일 처리 중 오류가 발생했습니다. 다시 시도해 주세요.'));
+    if(execPhotoBusy){ alert('사진을 업로드 중입니다. 잠시만 기다려 주세요.'); return; }
+    execPhotoBusy = true;
+    const EBTN = `button[onclick="saveEditExecPhoto('${id}')"]`;
+    readFilesSequential(files, 'photo', (i,n)=> setExecBtnBusy(EBTN, true, `업로드 중 ${i}/${n}...`)).then(u=>{ execPhotoBusy = false; finalize(u); }).catch(()=>{ execPhotoBusy = false; setExecBtnBusy(EBTN, false); alert('사진 업로드에 실패했습니다. 네트워크를 확인하고 다시 시도해 주세요.'); });
   } else {
     finalize(null);
   }
@@ -13442,6 +13449,24 @@ async function convertHeicToJpegIfNeeded(file){
 // 촬영/선택한 사진은 그 자리에서 바로 줄여서(일반 사진 1280px·65%, 영수증/증빙 1600px·72%) 원래의
 // <input type="file">에 그대로 채워 넣으므로, 기존 등록/저장 코드는 바꾸지 않아도 된다.
 // 휴대폰(터치 기기)에서만 동작하고, PC는 기존 파일 선택/드래그앤드롭을 그대로 쓴다.
+// 실행력 점검 사진은 한 번에 최대 20장까지 등록할 수 있다(지점당 약 17장 업로드 대응).
+const EXEC_PHOTO_MAX = 20;
+// 여러 장을 동시에 처리하면 휴대폰이 느려지거나 멈추므로 한 장씩 순서대로 처리하고 진행 상황을 알려준다.
+async function readFilesSequential(files, profile, onProgress){
+  const out = [];
+  for(let i=0;i<files.length;i++){
+    if(onProgress) onProgress(i+1, files.length);
+    out.push(await readFileAsDataUrl(files[i], profile));
+  }
+  return out;
+}
+let execPhotoBusy = false;
+function setExecBtnBusy(selector, busy, label){
+  const b = document.querySelector(selector);
+  if(!b) return;
+  if(busy){ if(!b.dataset.orig) b.dataset.orig = b.textContent; b.disabled = true; b.textContent = label; }
+  else { b.disabled = false; if(b.dataset.orig){ b.textContent = b.dataset.orig; delete b.dataset.orig; } }
+}
 const PRECOMPRESSED_KEYS = new Set();
 function photoKey(f){ return (f.name||'')+'|'+f.size+'|'+f.lastModified; }
 const CAMERA_INPUT_RE = /^(epFile|epe_.+_file|gcReceipt|gceReceipt_.+|cgEvidenceFiles|cge_.+_evidence|stcEvidenceFiles|stce_.+_evidence)$/;
@@ -13473,7 +13498,7 @@ function setupCameraWidget(input){
   input.dataset.cam = '1';
   if(!isTouchDevice()) return;
   const prof = cameraProfileFor(input.id);
-  const MAX = 10;
+  const MAX = /^(epFile|epe_)/.test(input.id) ? EXEC_PHOTO_MAX : 10;
   let items = []; // {file, url}
   let busy = false, seq = 0;
   const wrap = document.createElement('div');
@@ -13586,8 +13611,14 @@ function readFileAsDataUrlCore(file, prof){
       try{
         if(sbClient){
           const blob = await (await fetch(dataUrl)).blob();
-          const url = await uploadBlobToStorage(blob, file.name, contentType);
+          let url = null;
+          for(let t=0;t<3 && !url;t++){
+            url = await uploadBlobToStorage(blob, file.name, contentType);
+            if(!url) await new Promise(r=>setTimeout(r, 700*(t+1)));
+          }
           if(url){ resolve({dataUrl:url, name:file.name}); return; }
+          // 일반 사진은 업로드가 끝내 실패하면 DB에 원본(base64)을 밀어 넣지 않고 오류로 돌려보낸다.
+          if(prof==='photo' && isImageFile){ reject(new Error('storage upload failed')); return; }
         }
       }catch(err){ /* 업로드 실패 시 아래에서 base64로 폴백 */ }
       resolve({dataUrl, name:file.name});
