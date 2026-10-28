@@ -4931,12 +4931,14 @@ function fmtDbBytes(n){
   return Math.round(n/1024) + 'KB';
 }
 function dbSizeCardHtml(){
-  let total = 0, rows = [];
+  let total = 0, rows = [], extBytes = 0;
   try{
     const enc = new TextEncoder();
     Object.keys(DB||{}).forEach(k=>{
       let sz = 0;
       try{ sz = enc.encode(JSON.stringify(DB[k]) || '').length; }catch(e){ sz = 0; }
+      // 재고/가망고객/판매데이터는 kpi_blob에 따로(gzip 압축) 저장되므로 메인 DB 용량 경고 대상에서 제외하고 별도로 표시한다.
+      if(EXT_KEYS.indexOf(k) !== -1){ extBytes += sz; return; }
       total += sz;
       rows.push({k, sz});
     });
@@ -4962,6 +4964,7 @@ function dbSizeCardHtml(){
       <div style="height:7px;background:var(--bg);border-radius:4px;overflow:hidden;margin:4px 0 6px;"><div style="width:${pct}%;height:100%;background:#A50034;"></div></div>
       ${over ? `<div style="font-size:11px;color:#b3261e;margin-bottom:2px;">기준 초과 - 로딩이 느려질 수 있어요. 큰 항목부터 확인하세요.</div>` : ''}
       ${topHtml}
+      <div class="muted" style="font-size:10.5px;margin-top:6px;">별도 압축 저장(재고·가망고객·판매데이터): 원본 ${fmtDbBytes(extBytes)} → 실제 저장 약 ${fmtDbBytes(Math.round(extBytes*0.2))} (경고 기준 제외)</div>
     </div>
 `;
 }
